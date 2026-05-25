@@ -2,24 +2,29 @@
 
 import csv
 import json
+import os
 import shlex
 import sys
 import time
+from pathlib import Path
 from typing import Optional
 
 import typer
 from prompt_toolkit import PromptSession
-from prompt_toolkit.formatted_text import ANSI
+from prompt_toolkit.application import Application
+from prompt_toolkit.completion import PathCompleter, Completer, Completion
+from prompt_toolkit.formatted_text import ANSI, FormattedText
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import Layout
+from prompt_toolkit.layout.containers import Window
+from prompt_toolkit.layout.controls import FormattedTextControl
 
 from opencold import config, crawler, generator
 from opencold.prompts import (
-    Category,
-    SYSTEM_PROMPTS,
+    SYSTEM_PROMPT,
     build_user_prompt,
     build_template_prompt,
-    category_label,
 )
 
 app = typer.Typer(
@@ -40,6 +45,7 @@ DIM = "\033[2m"
 GREEN = "\033[32m"
 YELLOW = "\033[33m"
 RED = "\033[31m"
+CYAN = "\033[36m"
 RESET = "\033[0m"
 
 
@@ -96,6 +102,279 @@ def _confirm(text: str, default: bool = False) -> bool:
         return result.strip().lower() in ("y", "yes")
     except KeyboardInterrupt:
         raise Cancelled()
+
+
+# ── interactive campaign selector ───────────────────────────────────────────
+
+
+def _truncate(text: str, max_words: int = 22) -> str:
+    """Truncate text to max_words, adding '...' if truncated."""
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    return " ".join(words[:max_words]) + "..."
+
+
+def _select_campaign() -> dict | None:
+    """Interactive campaign selector with arrow keys.
+
+    Returns the selected campaign dict, or None if cancelled.
+    The user can press 'd' to delete a campaign.
+    """
+    while True:
+        campaigns = config.list_campaigns()
+        items = [c["title"] for c in campaigns] + ["+ Add new campaign"]
+        total = len(items)
+
+        if total == 1:
+            # No saved campaigns, go straight to "Add new"
+            return _create_campaign()
+
+        selected = [0]
+        deleted = [False]
+
+        kb = KeyBindings()
+
+        @kb.add("up")
+        @kb.add("k")
+        def _up(event):
+            selected[0] = (selected[0] - 1) % total
+
+        @kb.add("down")
+        @kb.add("j")
+        def _down(event):
+            selected[0] = (selected[0] + 1) % total
+
+        @kb.add("enter")
+        def _select(event):
+            event.app.exit(result=selected[0])
+
+        @kb.add("d")
+        def _delete(event):
+            idx = selected[0]
+            if idx < len(campaigns):
+                deleted[0] = True
+                event.app.exit(result=idx)
+
+        @kb.add("escape")
+        @kb.add("q")
+        def _quit(event):
+            event.app.exit(result=None)
+
+        def _get_text():
+            lines = []
+            lines.append(("", "\n"))
+            lines.append(("bold", "  Select a campaign  "))
+            lines.append(("fg:ansibrightblack", "(\u2191\u2193 move, Enter select, d delete, Esc cancel)\n\n"))
+            for i, label in enumerate(items):
+                is_add_new = i == len(items) - 1
+                if i == selected[0]:
+                    if is_add_new:
+                        lines.append(("fg:green bold", f"  \u25b8 {label}\n"))
+                    else:
+                        desc = _truncate(campaigns[i].get("description", ""))
+                        pitch = _truncate(campaigns[i].get("pitch", ""))
+                        lines.append(("fg:cyan bold", f"  \u25b8 {label}\n"))
+                        if desc:
+                            lines.append(("", f"    {desc}\n"))
+                        if pitch:
+                            lines.append(("fg:ansibrightblack", f"    {pitch}\n"))
+                else:
+                    if is_add_new:
+                        lines.append(("fg:ansibrightblack", f"    {label}\n"))
+                    else:
+                        lines.append(("", f"    {label}\n"))
+                if not is_add_new and i < len(items) - 2:
+                    lines.append(("fg:ansibrightblack", "    ────────────────────────────\n"))
+            return FormattedText(lines)
+
+        control = FormattedTextControl(_get_text)
+        layout = Layout(Window(content=control, always_hide_cursor=True))
+        result = Application(layout=layout, key_bindings=kb, full_screen=False).run()
+
+        if result is None:
+            return None
+
+        if deleted[0]:
+            idx = result
+            title = campaigns[idx]["title"]
+            typer.echo(f"\n  Delete campaign '{title}'?")
+            if _confirm("Confirm delete", default=False):
+                config.delete_campaign(idx)
+                typer.echo(f"  Deleted '{title}'.")
+            continue  # re-render the menu
+
+        if result == len(campaigns):
+            return _create_campaign()
+
+        return campaigns[result]
+
+
+def _create_campaign() -> dict | None:
+    """Prompt user to create a new campaign and save it."""
+    typer.echo(f"\n  {BOLD}New campaign{RESET} {DIM}(ESC to cancel){RESET}\n")
+    try:
+        title = _ask("Campaign title")
+        if not title:
+            typer.echo(f"  {DIM}Title is required.{RESET}")
+            return None
+        description = _ask("Briefly describe what you / your company does")
+        pitch = _ask("What's the key message or pitch for this outreach?")
+        config.add_campaign(title, description, pitch)
+        typer.echo(f"\n  Saved campaign '{title}'.")
+        return {"title": title, "description": description, "pitch": pitch}
+    except Cancelled:
+        return None
+
+
+# ── interactive CSV file selector ───────────────────────────────────────────
+
+
+def _list_csv_files() -> list[str]:
+    """List .csv files in the current directory."""
+    return sorted(
+        f for f in os.listdir(".")
+        if f.lower().endswith(".csv") and os.path.isfile(f)
+    )
+
+
+def _select_csv_file() -> str | None:
+    """Interactive file selector for CSV files with arrow keys."""
+    csv_files = _list_csv_files()
+    if not csv_files:
+        typer.echo(f"  {DIM}No .csv files found in the current directory.{RESET}")
+        return None
+
+    selected = [0]
+    total = len(csv_files)
+
+    kb = KeyBindings()
+
+    @kb.add("up")
+    @kb.add("k")
+    def _up(event):
+        selected[0] = (selected[0] - 1) % total
+
+    @kb.add("down")
+    @kb.add("j")
+    def _down(event):
+        selected[0] = (selected[0] + 1) % total
+
+    @kb.add("enter")
+    def _select(event):
+        event.app.exit(result=selected[0])
+
+    @kb.add("escape")
+    @kb.add("q")
+    def _quit(event):
+        event.app.exit(result=None)
+
+    def _get_text():
+        lines = []
+        lines.append(("", "\n"))
+        lines.append(("bold", "  Select a CSV file  "))
+        lines.append(("fg:ansibrightblack", "(\u2191\u2193 move, Enter select, Esc cancel)\n\n"))
+        for i, fname in enumerate(csv_files):
+            try:
+                size = os.path.getsize(fname)
+                size_str = f"{size:,} bytes" if size < 1024 else f"{size / 1024:.1f} KB"
+            except OSError:
+                size_str = ""
+            if i == selected[0]:
+                lines.append(("fg:cyan bold", f"  \u25b8 {fname}"))
+                if size_str:
+                    lines.append(("fg:ansibrightblack", f"  ({size_str})"))
+                lines.append(("", "\n"))
+            else:
+                lines.append(("", f"    {fname}"))
+                if size_str:
+                    lines.append(("fg:ansibrightblack", f"  ({size_str})"))
+                lines.append(("", "\n"))
+        return FormattedText(lines)
+
+    control = FormattedTextControl(_get_text)
+    layout = Layout(Window(content=control, always_hide_cursor=True))
+    result = Application(layout=layout, key_bindings=kb, full_screen=False).run()
+
+    if result is None:
+        return None
+    return csv_files[result]
+
+
+# ── REPL completer ──────────────────────────────────────────────────────────
+
+
+class _ReplCompleter(Completer):
+    """Tab-completer for the REPL: completes commands and file paths."""
+
+    _TOP_COMMANDS = ["run", "config", "profile", "help", "exit", "quit"]
+    _CONFIG_SUBS = ["init", "set-key"]
+    _PROFILE_SUBS = ["list", "create", "use", "delete"]
+    # Subcommands that accept a profile name as 3rd argument
+    _PROFILE_NAME_SUBS = {"use", "delete"}
+
+    def __init__(self):
+        self._path_completer = PathCompleter(
+            expanduser=True,
+            file_filter=lambda name: name.lower().endswith(".csv") or os.path.isdir(name),
+        )
+
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor
+        words = text.split()
+
+        # Complete top-level commands when typing the first word
+        if len(words) == 0 or (len(words) == 1 and not text.endswith(" ")):
+            word = words[0] if words else ""
+            for cmd in self._TOP_COMMANDS:
+                if cmd.startswith(word.lower()) and cmd != word.lower():
+                    yield Completion(cmd, start_position=-len(word))
+            return
+
+        first = words[0].lower()
+
+        # Subcommands for "config"
+        if first == "config":
+            # Only complete subcommand (2nd word), nothing after
+            if len(words) == 2 and not text.endswith(" "):
+                sub = words[1]
+                for s in self._CONFIG_SUBS:
+                    if s.startswith(sub.lower()) and s != sub.lower():
+                        yield Completion(s, start_position=-len(sub))
+            elif len(words) == 1 and text.endswith(" "):
+                for s in self._CONFIG_SUBS:
+                    yield Completion(s)
+            return
+
+        # Subcommands for "profile"
+        if first == "profile":
+            # Complete subcommand (2nd word)
+            if len(words) == 2 and not text.endswith(" "):
+                sub = words[1]
+                for s in self._PROFILE_SUBS:
+                    if s.startswith(sub.lower()) and s != sub.lower():
+                        yield Completion(s, start_position=-len(sub))
+            elif len(words) == 1 and text.endswith(" "):
+                for s in self._PROFILE_SUBS:
+                    yield Completion(s)
+            # Complete profile names for "use" and "delete"
+            elif len(words) >= 2:
+                sub = words[1].lower()
+                if sub in self._PROFILE_NAME_SUBS:
+                    partial = words[2] if len(words) == 3 and not text.endswith(" ") else ""
+                    if len(words) <= 3:
+                        for name in config.list_profiles():
+                            if name.startswith(partial) and name != partial:
+                                yield Completion(name, start_position=-len(partial))
+            return
+
+        # After "run", complete file paths (CSV files)
+        if first == "run":
+            prefix_len = len(words[0]) + 1
+            from prompt_toolkit.document import Document
+            sub_text = text[prefix_len:] if len(text) > prefix_len else ""
+            sub_doc = Document(sub_text)
+            yield from self._path_completer.get_completions(sub_doc, complete_event)
 
 
 # ── config commands ──────────────────────────────────────────────────────────
@@ -206,6 +485,18 @@ def config_show(ctx: typer.Context = None) -> None:
         else:
             typer.echo(f"    {DIM}(empty — run config init to fill in){RESET}")
 
+        # ── Campaigns under this profile ──
+        raw_campaigns = pdata.get("campaigns", [])
+        if isinstance(raw_campaigns, list) and raw_campaigns:
+            typer.echo(f"    {DIM}Campaigns:{RESET}")
+            for c in raw_campaigns:
+                if isinstance(c, dict):
+                    typer.echo(f"      {CYAN}\u25cf{RESET} {c.get('title', '(untitled)')}")
+        elif isinstance(raw_campaigns, dict) and raw_campaigns:
+            typer.echo(f"    {DIM}Campaigns:{RESET}")
+            for key in raw_campaigns:
+                typer.echo(f"      {CYAN}\u25cf{RESET} {key.capitalize()}")
+
         typer.echo("")
 
 
@@ -306,32 +597,8 @@ def _ensure_config() -> dict:
     return config.load_config()
 
 
-def _collect_context(category: Category) -> dict:
-    saved = config.get_campaign(category.value)
-    if saved and (saved.get("description") or saved.get("pitch")):
-        typer.echo(f"\n  Last {category_label(category)} campaign settings:\n")
-        if saved.get("description"):
-            typer.echo(f"    {DIM}Description:{RESET} {saved['description']}")
-        if saved.get("pitch"):
-            typer.echo(f"    {DIM}Pitch:{RESET}       {saved['pitch']}")
-        typer.echo("")
-        if _confirm("Use these settings?", default=True):
-            return saved
-
-    prof = config.get_profile()
-    default_bio = (saved or {}).get("description") or prof.get("bio", "")
-    default_pitch = (saved or {}).get("pitch") or prof.get("pitch", "")
-    typer.echo(f"\n  Context for {category_label(category)} outreach {DIM}(ESC to cancel){RESET}\n")
-    description = _ask("Briefly describe what you / your company does", default=default_bio)
-    pitch = _ask("What's the key message or pitch for this outreach?", default=default_pitch)
-
-    ctx = {"description": description, "pitch": pitch}
-    config.set_campaign(category.value, ctx)
-    return ctx
-
-
-def _has_enough_context(ctx: dict) -> bool:
-    return bool(ctx.get("description") and ctx.get("pitch"))
+def _has_enough_context(campaign: dict) -> bool:
+    return bool(campaign.get("description") and campaign.get("pitch"))
 
 
 def _read_csv(path: str) -> list[dict]:
@@ -349,6 +616,47 @@ def _read_csv(path: str) -> list[dict]:
     if missing:
         typer.echo(f"Error: CSV missing columns: {', '.join(missing)}", err=True)
         raise typer.Exit(1)
+    return rows
+
+
+def _validate_csv(rows: list[dict]) -> list[dict] | None:
+    """Validate CSV rows for email and website. Returns filtered rows or None to abort."""
+    # Check email column — must have at least one valid email
+    missing_email = [r for r in rows if not r.get("email", "").strip()]
+    if missing_email:
+        typer.echo(
+            f"\n  {RED}Error:{RESET} {len(missing_email)} row(s) have no email address. "
+            f"Cannot proceed without email addresses."
+        )
+        return None
+
+    # Check website column
+    has_website_col = "website" in rows[0]
+    if not has_website_col:
+        typer.echo(
+            f"\n  {YELLOW}Warning:{RESET} No 'website' column found. "
+            f"AI will use its own knowledge to personalize emails."
+        )
+        if not _confirm("Proceed without website data?", default=True):
+            return None
+        return rows
+
+    # Check how many rows are missing website values
+    missing_website = [r for r in rows if not r.get("website", "").strip()]
+    if missing_website:
+        typer.echo(
+            f"\n  {YELLOW}Warning:{RESET} {len(missing_website)} of {len(rows)} "
+            f"contact(s) don't have a company website."
+        )
+        if not _confirm("Proceed without them?", default=True):
+            return None
+        # Filter out rows without website
+        rows = [r for r in rows if r.get("website", "").strip()]
+        if not rows:
+            typer.echo(f"  {RED}No contacts left after filtering.{RESET}")
+            return None
+        typer.echo(f"  Continuing with {len(rows)} contact(s).")
+
     return rows
 
 
@@ -396,24 +704,26 @@ def do_run(
     profile = config.get_profile()
 
     rows = _read_csv(input_csv)
+
+    # Validate email and website columns
+    rows = _validate_csv(rows)
+    if rows is None:
+        return
+
     client = generator.create_client(api_key)
 
     use_flags = system_prompt is not None or prompt_template is not None
-    category = None
-    context = None
+    campaign = None
 
     if use_flags:
-        sys_prompt = system_prompt or SYSTEM_PROMPTS[Category.sales]
+        sys_prompt = system_prompt or SYSTEM_PROMPT
     else:
-        typer.echo(f"\n  Select outreach category {DIM}(ESC to cancel){RESET}\n")
-        for i, cat in enumerate(Category, 1):
-            typer.echo(f"    {i}. {category_label(cat)}")
-        choice = _ask("\n  Category", default="1")
-        idx = max(0, min(int(choice) - 1, len(Category) - 1))
-        category = list(Category)[idx]
-        typer.echo(f"\n  Selected: {category_label(category)}")
-        sys_prompt = SYSTEM_PROMPTS[category]
-        context = _collect_context(category)
+        campaign = _select_campaign()
+        if campaign is None:
+            typer.echo(f"\n  {DIM}Cancelled.{RESET}")
+            return
+        typer.echo(f"\n  Campaign: {BOLD}{campaign['title']}{RESET}")
+        sys_prompt = SYSTEM_PROMPT
 
     # ── Crawl websites if column present ──
     has_websites = "website" in rows[0]
@@ -450,10 +760,10 @@ def do_run(
                 f"Write a cold outreach email to {row['first_name']} {row['last_name']} "
                 f"at {row['company']}. Their email is {row['email']}."
             )
-        elif context and _has_enough_context(context):
-            user_prompt = build_user_prompt(row, identity, profile, category, context, website_text)
+        elif campaign and _has_enough_context(campaign):
+            user_prompt = build_user_prompt(row, identity, profile, campaign, website_text)
         else:
-            user_prompt = build_template_prompt(row, identity, profile, category)
+            user_prompt = build_template_prompt(row, identity, profile)
 
         try:
             email_text = generator.generate_with_retry(
@@ -486,8 +796,8 @@ def run(
     output_format: str = typer.Option("csv", "-f", "--format", help="Output format: csv, json, stdout"),
     model: str = typer.Option(generator.DEFAULT_MODEL, "--model", help="Claude model ID"),
     max_tokens: int = typer.Option(generator.DEFAULT_MAX_TOKENS, "--max-tokens"),
-    system_prompt: Optional[str] = typer.Option(None, "--system-prompt", help="Custom system prompt (Path A)"),
-    prompt_template: Optional[str] = typer.Option(None, "--template", help="Custom prompt template (Path A)"),
+    system_prompt: Optional[str] = typer.Option(None, "--system-prompt", help="Custom system prompt"),
+    prompt_template: Optional[str] = typer.Option(None, "--template", help="Custom prompt template"),
     delay: float = typer.Option(0.5, "--delay"),
 ) -> None:
     """Generate personalized cold outreach emails from a CSV."""
@@ -503,8 +813,8 @@ SHELL_HELP = f"""\
       -o, --output <path>         Output path (default: output.csv)
       -f, --format <csv|json|stdout>
       --model <model-id>
-      --system-prompt <text>      Path A: custom system prompt
-      --template <text>           Path A: custom prompt template
+      --system-prompt <text>      Custom system prompt
+      --template <text>           Custom prompt template
       --delay <seconds>
 
   {GREEN}config{RESET}                        Show current configuration
@@ -574,7 +884,7 @@ def _run_shell() -> None:
     typer.echo(f"Logged in as {pc}\u25cf {display_name}{RESET} (profile: {pc}{profile_name}{RESET})")
     typer.echo(f"Type {GREEN}help{RESET} for commands, {GREEN}exit{RESET} to quit.\n")
 
-    session = PromptSession(history=InMemoryHistory())
+    session = PromptSession(history=InMemoryHistory(), completer=_ReplCompleter())
 
     while True:
         try:
@@ -606,7 +916,10 @@ def _run_shell() -> None:
             elif cmd == "run":
                 args = _parse_run_args(rest)
                 if not args:
-                    typer.echo("Usage: run <file.csv> [options]")
+                    # No file specified — show interactive selector
+                    csv_file = _select_csv_file()
+                    if csv_file:
+                        do_run(input_csv=csv_file)
                 else:
                     do_run(**args)
 

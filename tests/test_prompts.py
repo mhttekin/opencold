@@ -1,49 +1,63 @@
 """Tests for prompts module."""
 
 from opencold.prompts import (
-    Category,
-    SYSTEM_PROMPTS,
+    SYSTEM_PROMPT,
     build_user_prompt,
     build_template_prompt,
-    category_label,
+    _is_usable_text,
+    _sanitize_website_text,
 )
 
 
-class TestCategory:
-    def test_enum_values(self):
-        assert Category.sales.value == "sales"
-        assert Category.partnerships.value == "partnerships"
-        assert Category.personal.value == "personal"
+class TestSystemPrompt:
+    def test_prompt_exists(self):
+        assert len(SYSTEM_PROMPT) > 100
 
-    def test_category_label_contains_value(self):
-        label = category_label(Category.sales)
-        assert "sales" in label
-        assert "\u25cf" in label  # colored circle
+    def test_prompt_contains_word_limit(self):
+        assert "80 words" in SYSTEM_PROMPT
+
+    def test_prompt_bans_genuinely(self):
+        lower = SYSTEM_PROMPT.lower()
+        assert "genuinely" in lower
+
+    def test_prompt_forbids_meta_commentary(self):
+        lower = SYSTEM_PROMPT.lower()
+        assert "fourth wall" in lower or "data quality" in lower
+
+    def test_prompt_requires_variance(self):
+        assert "variance" in SYSTEM_PROMPT.lower() or "different" in SYSTEM_PROMPT.lower()
+
+    def test_prompt_requires_always_output(self):
+        lower = SYSTEM_PROMPT.lower()
+        assert "always" in lower
+        assert "never refuse" in lower
+
+    def test_prompt_handles_bad_input(self):
+        lower = SYSTEM_PROMPT.lower()
+        assert "nonsensical" in lower or "gibberish" in lower
 
 
-class TestSystemPrompts:
-    def test_all_categories_have_prompts(self):
-        for cat in Category:
-            assert cat in SYSTEM_PROMPTS
-            assert len(SYSTEM_PROMPTS[cat]) > 100
+class TestSanitizeWebsiteText:
+    def test_usable_text_passes(self):
+        text = "Acme Corp builds rockets for Mars colonization. Founded in 2020."
+        assert _is_usable_text(text) is True
 
-    def test_prompts_contain_word_limit(self):
-        for cat in Category:
-            assert "80 words" in SYSTEM_PROMPTS[cat]
+    def test_short_text_fails(self):
+        assert _is_usable_text("hi") is False
 
-    def test_prompts_ban_genuinely(self):
-        for cat in Category:
-            prompt = SYSTEM_PROMPTS[cat].lower()
-            assert "genuinely" in prompt  # it's in the ban list
-            assert "never use" in prompt or "never" in prompt
+    def test_empty_text_fails(self):
+        assert _is_usable_text("") is False
+        assert _is_usable_text(None) is False
 
-    def test_prompts_forbid_meta_commentary(self):
-        for cat in Category:
-            assert "crawling" in SYSTEM_PROMPTS[cat].lower() or "data quality" in SYSTEM_PROMPTS[cat].lower()
+    def test_sanitize_returns_none_for_bad(self):
+        assert _sanitize_website_text("") is None
+        assert _sanitize_website_text("abc") is None
 
-    def test_prompts_require_variance(self):
-        for cat in Category:
-            assert "vary" in SYSTEM_PROMPTS[cat].lower()
+    def test_sanitize_returns_text_for_good(self):
+        good = "This is a perfectly normal company description with enough words."
+        result = _sanitize_website_text(good)
+        assert result is not None
+        assert "normal company" in result
 
 
 class TestBuildUserPrompt:
@@ -57,39 +71,57 @@ class TestBuildUserPrompt:
     PROFILE = {"company": "BuildCo", "role": "Founder", "bio": "I build tools", "pitch": "Automate everything"}
 
     def test_contains_recipient(self):
-        prompt = build_user_prompt(self.ROW, self.IDENTITY, self.PROFILE, Category.sales)
+        campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
+        prompt = build_user_prompt(self.ROW, self.IDENTITY, self.PROFILE, campaign)
         assert "Alice Smith" in prompt
         assert "Acme" in prompt
 
     def test_contains_sender(self):
-        prompt = build_user_prompt(self.ROW, self.IDENTITY, self.PROFILE, Category.sales)
+        campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
+        prompt = build_user_prompt(self.ROW, self.IDENTITY, self.PROFILE, campaign)
         assert "Bob Builder" in prompt
         assert "BuildCo" in prompt
         assert "Founder" in prompt
 
-    def test_uses_profile_bio_as_default(self):
-        prompt = build_user_prompt(self.ROW, self.IDENTITY, self.PROFILE, Category.sales)
+    def test_uses_campaign_context(self):
+        campaign = {"title": "SaaS", "description": "We do AI", "pitch": "Try our AI"}
+        prompt = build_user_prompt(self.ROW, self.IDENTITY, self.PROFILE, campaign)
+        assert "We do AI" in prompt
+        assert "Try our AI" in prompt
+
+    def test_falls_back_to_profile(self):
+        campaign = {"title": "Minimal", "description": "", "pitch": ""}
+        prompt = build_user_prompt(self.ROW, self.IDENTITY, self.PROFILE, campaign)
         assert "I build tools" in prompt
         assert "Automate everything" in prompt
 
-    def test_context_overrides_profile(self):
-        ctx = {"description": "We do AI", "pitch": "Try our AI"}
-        prompt = build_user_prompt(self.ROW, self.IDENTITY, self.PROFILE, Category.sales, context=ctx)
-        assert "We do AI" in prompt
-        assert "Try our AI" in prompt
-        assert "I build tools" not in prompt
-
-    def test_website_text_included(self):
+    def test_website_text_included_when_readable(self):
+        campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
         prompt = build_user_prompt(
-            self.ROW, self.IDENTITY, self.PROFILE, Category.sales,
-            website_text="Acme builds rockets for Mars colonization.",
+            self.ROW, self.IDENTITY, self.PROFILE, campaign,
+            website_text="Acme builds rockets for Mars colonization and space exploration.",
         )
         assert "Acme builds rockets" in prompt
         assert "website content" in prompt.lower()
 
-    def test_no_website_text(self):
-        prompt = build_user_prompt(self.ROW, self.IDENTITY, self.PROFILE, Category.sales)
+    def test_garbled_website_text_excluded(self):
+        campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
+        prompt = build_user_prompt(
+            self.ROW, self.IDENTITY, self.PROFILE, campaign,
+            website_text="abc",  # too short
+        )
         assert "website content" not in prompt.lower()
+        assert "your own knowledge" in prompt.lower()
+
+    def test_no_website_text_uses_own_knowledge(self):
+        campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
+        prompt = build_user_prompt(self.ROW, self.IDENTITY, self.PROFILE, campaign)
+        assert "your own knowledge" in prompt.lower()
+
+    def test_always_includes_output_reminder(self):
+        campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
+        prompt = build_user_prompt(self.ROW, self.IDENTITY, self.PROFILE, campaign)
+        assert "ONLY the email body" in prompt
 
 
 class TestBuildTemplatePrompt:
@@ -103,14 +135,15 @@ class TestBuildTemplatePrompt:
     def test_contains_recipient(self):
         identity = {"name": "Bob"}
         profile = {}
-        prompt = build_template_prompt(self.ROW, identity, profile, Category.sales)
+        prompt = build_template_prompt(self.ROW, identity, profile)
         assert "Alice Smith" in prompt
         assert "Acme" in prompt
 
     def test_uses_placeholder_without_name(self):
-        prompt = build_template_prompt(self.ROW, {}, {}, Category.personal)
+        prompt = build_template_prompt(self.ROW, {}, {})
         assert "[Your Name]" in prompt
 
-    def test_contains_category(self):
-        prompt = build_template_prompt(self.ROW, {"name": "X"}, {}, Category.partnerships)
-        assert "partnerships" in prompt
+    def test_includes_output_constraints(self):
+        prompt = build_template_prompt(self.ROW, {"name": "X"}, {})
+        assert "ONLY the email body" in prompt
+        assert "80 words" in prompt

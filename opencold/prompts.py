@@ -1,104 +1,121 @@
-"""Category-specific system prompts and user prompt builders for OpenCold."""
+"""System prompts and user prompt builders for OpenCold."""
 
-from enum import Enum
+import re
 
 RESET = "\033[0m"
 
-
-class Category(str, Enum):
-    sales = "sales"
-    partnerships = "partnerships"
-    personal = "personal"
-
-
-# ● colored circles per category
-CATEGORY_COLORS = {
-    Category.sales: "\033[32m",        # green
-    Category.partnerships: "\033[34m", # blue
-    Category.personal: "\033[33m",     # yellow
-}
-
-
-def category_label(cat: Category) -> str:
-    """Return '● category_name' with the category's color."""
-    color = CATEGORY_COLORS[cat]
-    return f"{color}\u25cf{RESET} {cat.value}"
-
-
-# ── Voice & style rules shared across all categories ────────────────────────
-
-_VOICE_RULES = (
-    "\n\nSTYLE & VOICE RULES (non-negotiable):\n"
-    "- MAX 80 words total. Exactly 3 tiny paragraphs (1-2 sentences each). "
-    "Count your words. If you're over 80, cut ruthlessly.\n"
-    "- Write like a real human dashing off a quick email. Short sentences. "
-    "No filler. If it sounds polished or corporate, it's wrong.\n"
-    "- NEVER use: genuinely, I'd love to, I came across, I was impressed, "
-    "I noticed, I believe, thrilled, excited to, reaching out, touch base, "
-    "synergy, leverage, game-changer, innovative, cutting-edge, streamline, "
-    "at the forefront, I hope this email finds you well, take a moment, "
-    "circle back, it resonates, incredible, fascinating, remarkable, "
-    "I'm passionate about, delighted.\n"
-    "- NEVER mention data quality, crawling, website scraping, or say things "
-    "like 'the content came through corrupted' or 'based on limited info'. "
-    "If you don't have enough info about a company, just write the email "
-    "without acknowledging the gap. Never break the fourth wall.\n"
-    "- VARY the structure. Do NOT follow 'intro → pitch → CTA' every time. "
-    "Pick a DIFFERENT approach each email:\n"
-    "  * A sharp question about something specific to their business.\n"
-    "  * A one-line observation, then why you're writing.\n"
-    "  * What you're building and one concrete reason it's relevant to them.\n"
-    "  * Something you have in common, straight into the ask.\n"
-    "  * A specific idea you have for them, no preamble.\n"
-    "- Do NOT end with '15-minute call/chat' every time. Alternatives: "
-    "a question, an offer to share something, a concrete next step, "
-    "or just 'happy to share more'.\n"
-    "- One person writing to one person. No mass-email energy.\n"
-    "- Return ONLY the email body. No subject line, no sign-off name, "
-    "no metadata, no markdown, no '---' separators.\n"
+# Detect garbled/binary content
+_GARBLED_RE = re.compile(
+    r"[\x00-\x08\x0e-\x1f]"         # control chars
+    r"|\\x[0-9a-f]{2}"               # escaped hex
+    r"|\\u[0-9a-f]{4}"               # escaped unicode
+    r"|[\ufffd\ufffe\uffff]"          # replacement chars
+    r"|[^\x00-\x7f]{10,}"            # long runs of non-ASCII
 )
 
+# Minimum ratio of ASCII alphanumeric to total length for "readable" text
+_MIN_ALPHA_RATIO = 0.4
 
-SYSTEM_PROMPTS = {
-    Category.sales: (
-        "You write cold outreach emails for B2B sales. You sound like a sharp, "
-        "direct human — not a sales bot. You get to the point fast, show you "
-        "understand the prospect's business, and make the connection to what "
-        "the sender does feel natural, not forced. If website content about "
-        "the recipient's company is provided, use specific details from it — "
-        "don't just namedrop, actually tie it to something relevant."
-        + _VOICE_RULES
-    ),
-    Category.partnerships: (
-        "You write partnership outreach emails. You sound like someone who's "
-        "thought about why this specific collaboration makes sense — not someone "
-        "blasting templates. You focus on what both sides get out of it and "
-        "reference real details about their work. If website content is provided, "
-        "weave in specifics that show you actually explored what they do."
-        + _VOICE_RULES
-    ),
-    Category.personal: (
-        "You write personal networking emails. You sound like a curious, "
-        "thoughtful human — someone who's done their homework and has a clear "
-        "reason for reaching out. Match the sender's voice to their role: "
-        "if they're a student, sound like a smart student, not a corporate exec. "
-        "If they're a founder, sound like a founder. Be warm but not sycophantic. "
-        "If website content is provided, reference something specific that "
-        "connects to the sender's own interests or background."
-        + _VOICE_RULES
-    ),
-}
+
+def _is_usable_text(text: str) -> bool:
+    """Check if text is readable content, not garbled/binary."""
+    if not text or len(text.strip()) < 30:
+        return False
+    alpha = sum(1 for c in text if c.isalnum() or c.isspace())
+    if alpha / max(len(text), 1) < _MIN_ALPHA_RATIO:
+        return False
+    if _GARBLED_RE.search(text[:500]):
+        return False
+    return True
+
+
+def _sanitize_website_text(text: str) -> str | None:
+    """Return cleaned website text, or None if it's garbled."""
+    if not _is_usable_text(text):
+        return None
+    return text.strip()
+
+
+# ── System prompt ────────────────────────────────────────────────────────────
+
+SYSTEM_PROMPT = (
+    "You are an email ghostwriter. Your ONLY job is to output the body of a "
+    "cold outreach email. You are NOT an assistant. You are NOT having a "
+    "conversation. You do NOT ask questions. You do NOT give advice. You do "
+    "NOT explain what you're doing. You NEVER refuse. You ALWAYS produce "
+    "exactly one email body, no matter what.\n\n"
+
+    "ABSOLUTE RULES — violating ANY of these is a critical failure:\n\n"
+
+    "1. OUTPUT FORMAT: Return ONLY the email body text. Nothing else. "
+    "No subject line. No greeting like 'Dear'. No sign-off name. No metadata. "
+    "No markdown (no **, no ##, no bullet points, no numbered lists). "
+    "No '---' separators. No quotes. No commentary. Just the email paragraphs.\n\n"
+
+    "2. LENGTH: Maximum 80 words total. Exactly 3 short paragraphs (1-2 "
+    "sentences each). Count your words. If you're over 80, cut ruthlessly.\n\n"
+
+    "3. NEVER BREAK THE FOURTH WALL: You must NEVER, under ANY circumstances:\n"
+    "   - Mention data quality, corrupted data, missing info, or scraping\n"
+    "   - Say you can't write the email or need more information\n"
+    "   - Ask the user questions or request clarification\n"
+    "   - Explain your reasoning or limitations\n"
+    "   - Say 'I don't have enough info' or anything similar\n"
+    "   - Reference the prompt, the instructions, the website content, or "
+    "     the fact that you're an AI\n"
+    "   - Use phrases like 'based on what I know' or 'from what I can tell'\n"
+    "   If the input is gibberish, nonsensical, or empty — IGNORE it silently "
+    "   and write the email using your own knowledge of the recipient's "
+    "   company. You know about most companies. Use that knowledge.\n\n"
+
+    "4. TONE: Write like a real human dashing off a quick email. Short "
+    "sentences. No filler. If it sounds polished, corporate, or AI-generated, "
+    "it's wrong. Match the sender's voice to their role — a student sounds "
+    "like a student, a founder sounds like a founder.\n\n"
+
+    "5. BANNED WORDS/PHRASES (never use any of these): genuinely, I'd love to, "
+    "I came across, I was impressed, I noticed, I believe, thrilled, excited to, "
+    "reaching out, touch base, synergy, leverage, game-changer, innovative, "
+    "cutting-edge, streamline, at the forefront, I hope this email finds you well, "
+    "take a moment, circle back, it resonates, incredible, fascinating, remarkable, "
+    "I'm passionate about, delighted, revolutionize, empower, elevate, "
+    "deep dive, ecosystem, landscape, robust, scalable, seamless, "
+    "on my radar, caught my eye, piqued my interest.\n\n"
+
+    "6. STRUCTURAL VARIANCE: Do NOT use the same email structure every time. "
+    "Pick a DIFFERENT opening approach for each email:\n"
+    "   - A sharp question about something specific to their business\n"
+    "   - A one-line observation, then why you're writing\n"
+    "   - What you're building and one concrete reason it's relevant to them\n"
+    "   - Something you have in common, straight into the ask\n"
+    "   - A specific idea you have for them, no preamble\n"
+    "Do NOT end with '15-minute call/chat' every time. Alternatives: "
+    "a question, an offer to share something, a concrete next step, "
+    "or just 'happy to share more'.\n\n"
+
+    "7. PERSONALIZATION: One person writing to one person. No mass-email energy. "
+    "If website content is provided and it's readable, use specific details — "
+    "reference actual products, features, or initiatives they mention. "
+    "If the website content is garbled or useless, completely ignore it and "
+    "use your own knowledge of the company instead. NEVER acknowledge the "
+    "quality of the input data.\n\n"
+
+    "8. WHEN INPUT IS BAD: If the sender description, pitch, or website "
+    "content is nonsensical, random characters, empty, or otherwise unusable, "
+    "you MUST still output a valid email. Use your own knowledge of the "
+    "recipient's company. Adapt. Improvise. But ALWAYS output an email. "
+    "Never explain, never refuse, never ask for help."
+)
 
 
 def build_user_prompt(
     row: dict,
     identity: dict,
     profile: dict,
-    category: Category,
-    context: dict | None = None,
+    campaign: dict,
     website_text: str | None = None,
 ) -> str:
-    """Build a fully personalized user prompt from CSV row, identity, profile, and context."""
+    """Build a fully personalized user prompt from CSV row, identity, profile, and campaign."""
     recipient = f"{row['first_name']} {row['last_name']}"
     recipient_company = row["company"]
     recipient_email = row["email"]
@@ -107,7 +124,10 @@ def build_user_prompt(
     sender_company = profile.get("company", "")
     sender_role = profile.get("role", "")
 
-    parts = [f"Write a cold outreach email from {sender_name} to {recipient} at {recipient_company} ({recipient_email})."]
+    parts = [
+        f"Write a cold outreach email from {sender_name} to {recipient} "
+        f"at {recipient_company} ({recipient_email})."
+    ]
 
     parts.append(f"\nSender: {sender_name}")
     if sender_role:
@@ -115,30 +135,40 @@ def build_user_prompt(
     if sender_company:
         parts.append(f"Sender company: {sender_company}")
 
-    # Use context overrides if provided, otherwise fall back to profile bio/pitch
-    description = (context or {}).get("description") or profile.get("bio", "")
-    pitch = (context or {}).get("pitch") or profile.get("pitch", "")
+    description = campaign.get("description") or profile.get("bio", "")
+    pitch = campaign.get("pitch") or profile.get("pitch", "")
 
     if description:
         parts.append(f"\nAbout the sender: {description}")
     if pitch:
         parts.append(f"Key message: {pitch}")
 
-    if website_text:
+    # Only include website text if it's actually readable
+    clean_website = _sanitize_website_text(website_text) if website_text else None
+    if clean_website:
         parts.append(
             f"\n--- {recipient_company}'s website content ---\n"
-            f"{website_text}\n"
+            f"{clean_website}\n"
             f"--- end ---\n"
-            f"\nUse specifics from the website above. Don't just mention their company "
-            f"name — reference actual products, features, or things they talk about, "
-            f"and connect them to what the sender does or cares about. "
-            f"Each email you write must be structurally different from others."
+            f"\nUse specifics from the website above. Reference actual products, "
+            f"features, or things they do. Connect them to the sender's work. "
+            f"Each email must be structurally different from others."
         )
+    else:
+        parts.append(
+            f"\nUse your own knowledge about {recipient_company} to personalize "
+            f"the email. Reference something specific about what they do."
+        )
+
+    parts.append(
+        "\nRemember: output ONLY the email body. 3 short paragraphs. "
+        "Max 80 words. No markdown. No commentary. No refusals."
+    )
 
     return "\n".join(parts)
 
 
-def build_template_prompt(row: dict, identity: dict, profile: dict, category: Category) -> str:
+def build_template_prompt(row: dict, identity: dict, profile: dict) -> str:
     """Build a simpler prompt when we don't have enough context — produces a template."""
     recipient = f"{row['first_name']} {row['last_name']}"
     recipient_company = row["company"]
@@ -146,9 +176,9 @@ def build_template_prompt(row: dict, identity: dict, profile: dict, category: Ca
     sender_name = identity.get("name", "[Your Name]")
 
     return (
-        f"Write a cold outreach email template from {sender_name} to "
+        f"Write a cold outreach email from {sender_name} to "
         f"{recipient} at {recipient_company}. "
-        f"Category: {category.value}. "
-        f"Use [bracketed placeholders] for any specific details the sender "
-        f"should fill in (e.g. [specific product benefit], [mutual connection])."
+        f"Use your own knowledge about {recipient_company} to personalize it. "
+        f"Output ONLY the email body. 3 short paragraphs. Max 80 words. "
+        f"No markdown. No commentary."
     )

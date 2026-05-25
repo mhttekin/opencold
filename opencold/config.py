@@ -267,21 +267,58 @@ def color_ansi(code: int) -> str:
     return f"\033[38;5;{code}m"
 
 
-# ── campaign settings (per profile × category) ─────────────────────────────
+# ── campaigns (per profile) ─────────────────────────────────────────────────
 
 
-def get_campaign(category: str) -> dict | None:
-    """Return saved campaign context for a category on the active profile, or None."""
+def _migrate_campaigns(profile: dict) -> list[dict]:
+    """Migrate old dict-format campaigns to new list format."""
+    raw = profile.get("campaigns", [])
+    if isinstance(raw, dict):
+        # Old format: {"sales": {"description": "...", "pitch": "..."}, ...}
+        migrated = []
+        for key, val in raw.items():
+            if isinstance(val, dict):
+                migrated.append({
+                    "title": key.capitalize(),
+                    "description": val.get("description", ""),
+                    "pitch": val.get("pitch", ""),
+                })
+        profile["campaigns"] = migrated
+        return migrated
+    return list(raw)
+
+
+def list_campaigns() -> list[dict]:
+    """Return saved campaigns for the active profile."""
     cfg = load_config()
     name = cfg.get("active_profile", DEFAULT_PROFILE)
     profile = cfg.get("profiles", {}).get(name, {})
-    return profile.get("campaigns", {}).get(category)
+    campaigns = _migrate_campaigns(profile)
+    # Save if migration happened
+    if isinstance(cfg.get("profiles", {}).get(name, {}).get("campaigns"), dict):
+        save_config(cfg)
+    return campaigns
 
 
-def set_campaign(category: str, context: dict) -> None:
-    """Save campaign context for a category on the active profile."""
+def add_campaign(title: str, description: str, pitch: str) -> None:
+    """Add a new campaign to the active profile."""
     cfg = load_config()
     name = cfg.get("active_profile", DEFAULT_PROFILE)
     profile = cfg["profiles"].setdefault(name, {"color": _pick_color(cfg)})
-    profile.setdefault("campaigns", {})[category] = context
+    # Migrate old dict format if needed
+    _migrate_campaigns(profile)
+    campaigns = profile.setdefault("campaigns", [])
+    campaigns.append({"title": title, "description": description, "pitch": pitch})
     save_config(cfg)
+
+
+def delete_campaign(index: int) -> None:
+    """Delete a campaign by index from the active profile."""
+    cfg = load_config()
+    name = cfg.get("active_profile", DEFAULT_PROFILE)
+    profile = cfg.get("profiles", {}).get(name, {})
+    _migrate_campaigns(profile)
+    campaigns = profile.get("campaigns", [])
+    if 0 <= index < len(campaigns):
+        campaigns.pop(index)
+        save_config(cfg)

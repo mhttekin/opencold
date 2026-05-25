@@ -94,22 +94,59 @@ class TestProfiles:
 
 
 class TestCampaigns:
-    def test_get_campaign_empty(self, tmp_config):
+    def test_list_campaigns_empty(self, tmp_config):
         config.create_profile("test")
-        assert config.get_campaign("sales") is None
+        assert config.list_campaigns() == []
 
-    def test_set_and_get_campaign(self, tmp_config):
+    def test_add_and_list_campaign(self, tmp_config):
         config.create_profile("test")
-        ctx = {"description": "We do X", "pitch": "Try X"}
-        config.set_campaign("sales", ctx)
-        assert config.get_campaign("sales") == ctx
+        config.add_campaign("SaaS Sales", "We do AI", "Try our AI")
+        campaigns = config.list_campaigns()
+        assert len(campaigns) == 1
+        assert campaigns[0]["title"] == "SaaS Sales"
+        assert campaigns[0]["description"] == "We do AI"
+        assert campaigns[0]["pitch"] == "Try our AI"
 
-    def test_campaigns_per_category(self, tmp_config):
+    def test_multiple_campaigns(self, tmp_config):
         config.create_profile("test")
-        config.set_campaign("sales", {"description": "sales stuff", "pitch": "buy"})
-        config.set_campaign("personal", {"description": "personal stuff", "pitch": "hi"})
-        assert config.get_campaign("sales")["description"] == "sales stuff"
-        assert config.get_campaign("personal")["description"] == "personal stuff"
+        config.add_campaign("Sales", "desc1", "pitch1")
+        config.add_campaign("Partner", "desc2", "pitch2")
+        campaigns = config.list_campaigns()
+        assert len(campaigns) == 2
+        assert campaigns[0]["title"] == "Sales"
+        assert campaigns[1]["title"] == "Partner"
+
+    def test_delete_campaign(self, tmp_config):
+        config.create_profile("test")
+        config.add_campaign("Sales", "desc1", "pitch1")
+        config.add_campaign("Partner", "desc2", "pitch2")
+        config.delete_campaign(0)
+        campaigns = config.list_campaigns()
+        assert len(campaigns) == 1
+        assert campaigns[0]["title"] == "Partner"
+
+    def test_delete_campaign_out_of_range(self, tmp_config):
+        config.create_profile("test")
+        config.add_campaign("Sales", "desc1", "pitch1")
+        config.delete_campaign(5)  # should not crash
+        assert len(config.list_campaigns()) == 1
+
+    def test_migrates_old_dict_format(self, tmp_config):
+        """Old campaigns were stored as {category: {description, pitch}} dicts."""
+        config.create_profile("test")
+        # Manually write old format
+        cfg = config.load_config()
+        cfg["profiles"]["test"]["campaigns"] = {
+            "sales": {"description": "We sell stuff", "pitch": "Buy now"},
+            "personal": {"description": "Networking", "pitch": "Let's chat"},
+        }
+        config.save_config(cfg)
+        # list_campaigns should migrate
+        campaigns = config.list_campaigns()
+        assert len(campaigns) == 2
+        titles = [c["title"] for c in campaigns]
+        assert "Sales" in titles
+        assert "Personal" in titles
 
 
 class TestMigration:
