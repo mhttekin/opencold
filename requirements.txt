@@ -1,0 +1,5 @@
+anthropic>=0.40.0
+typer>=0.15.0
+prompt_toolkit>=3.0
+trafilatura>=2.0
+beautifulsoup4>=4.12

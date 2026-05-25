@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opencold"
+version = "0.1.0"
+description = "CLI tool for generating personalized cold outreach emails using Claude API"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.40.0",
+    "typer>=0.15.0",
+    "prompt_toolkit>=3.0",
+    "trafilatura>=2.0",
+    "beautifulsoup4>=4.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+opencold = "opencold.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
