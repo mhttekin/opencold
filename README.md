@@ -91,15 +91,6 @@ Required columns:
 Optional columns:
 - `website` - company website URL (used for personalization)
 
-## Tech Stack
-
-- **anthropic** - Claude API client
-- **openai** - OpenAI API client (also used for proxy providers)
-- **typer** - CLI framework
-- **prompt_toolkit** - Interactive shell with autocomplete
-- **trafilatura** - Web scraping / text extraction
-- **beautifulsoup4** - HTML parsing
-
 ## Running Tests
 
 ```bash
