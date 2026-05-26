@@ -1,5 +1,6 @@
 """System prompts and user prompt builders for OpenCold."""
 
+import hashlib
 import re
 
 RESET = "\033[0m"
@@ -51,7 +52,8 @@ SYSTEM_PROMPT = (
     "No subject line. No greeting (no 'Hi Name,', 'Dear', 'Hello', 'Hey'). "
     "No sign-off name. No metadata. "
     "No markdown (no **, no ##, no bullet points, no numbered lists). "
-    "No '---' separators. No quotation marks (\", '). No commentary. "
+    "No '---' separators. No quotation marks (\"). No em dashes (— or –), "
+    "use commas instead. No commentary. "
     "Start directly with the first sentence of the email body.\n\n"
 
     "2. LENGTH: Maximum 80 words total. Exactly 3 short paragraphs (1-2 "
@@ -84,16 +86,17 @@ SYSTEM_PROMPT = (
     "deep dive, ecosystem, landscape, robust, scalable, seamless, "
     "on my radar, caught my eye, piqued my interest.\n\n"
 
-    "6. STRUCTURAL VARIANCE: Do NOT use the same email structure every time. "
-    "Pick a DIFFERENT opening approach for each email:\n"
-    "   - A sharp question about something specific to their business\n"
-    "   - A one-line observation, then why you're writing\n"
-    "   - What you're building and one concrete reason it's relevant to them\n"
-    "   - Something you have in common, straight into the ask\n"
-    "   - A specific idea you have for them, no preamble\n"
-    "Do NOT end with '15-minute call/chat' every time. Alternatives: "
-    "a question, an offer to share something, a concrete next step, "
-    "or just 'happy to share more'.\n\n"
+    "6. STRUCTURAL VARIANCE: This is critical. You MUST follow the structural "
+    "approach specified in the user prompt. Do NOT default to the same pattern.\n"
+    "   BANNED PATTERN: Do NOT write emails that follow 'observation about "
+    "company' -> 'I'm [Name], [self-intro]' -> 'ask for role'. This is the "
+    "lazy default. Avoid it.\n"
+    "   The sender info should be WOVEN IN naturally, not dumped in a "
+    "dedicated self-intro paragraph. Never start a paragraph with "
+    "'I'm [Name], founder of...' — that's a dead giveaway of mass email.\n"
+    "   Do NOT end with 'Happy to share more/what I've built' every time. "
+    "Alternatives: a question, a specific offer, a concrete next step, "
+    "or just end with the ask itself.\n\n"
 
     "7. PERSONALIZATION: One person writing to one person. No mass-email energy. "
     "If website content is provided and it's readable, use specific details — "
@@ -125,6 +128,42 @@ SYSTEM_PROMPT = (
     "- Would it look normal if pasted directly into Gmail and sent?\n"
     "If any answer is no, fix it before outputting."
 )
+
+
+# Structural approaches — rotated per recipient to force variety
+_STRUCTURES = [
+    (
+        "STRUCTURE: Lead with a sharp question about their business. "
+        "Weave in who you are mid-sentence (not a separate intro paragraph). "
+        "End with a specific offer or concrete next step."
+    ),
+    (
+        "STRUCTURE: Open with what you're building and ONE concrete reason "
+        "it connects to their work. Don't introduce yourself separately, "
+        "let it come through naturally. Close with a direct question."
+    ),
+    (
+        "STRUCTURE: Start with a specific idea you have for them, no preamble. "
+        "Mention your background only as it supports the idea. "
+        "End by asking if it's worth exploring."
+    ),
+    (
+        "STRUCTURE: Open with something concrete you noticed about their "
+        "product or company, then pivot to how your skills map to that. "
+        "Close the email with a question, not an offer."
+    ),
+    (
+        "STRUCTURE: Lead with your ask directly in the first paragraph. "
+        "Use the second paragraph to back it up with why you're a fit. "
+        "End with a specific, low-effort next step for them."
+    ),
+]
+
+
+def _pick_structure(recipient_email: str) -> str:
+    """Deterministically pick a structure based on recipient email."""
+    h = int(hashlib.md5(recipient_email.encode()).hexdigest(), 16)
+    return _STRUCTURES[h % len(_STRUCTURES)]
 
 
 def build_user_prompt(
@@ -170,8 +209,7 @@ def build_user_prompt(
             f"{clean_website}\n"
             f"--- end ---\n"
             f"\nUse specifics from the website above. Reference actual products, "
-            f"features, or things they do. Connect them to the sender's work. "
-            f"Each email must be structurally different from others."
+            f"features, or things they do. Connect them to the sender's work."
         )
     else:
         parts.append(
@@ -179,8 +217,14 @@ def build_user_prompt(
             f"the email. Reference something specific about what they do."
         )
 
+    # Rotate structural approach per recipient
+    structure = _pick_structure(recipient_email)
+    parts.append(f"\n{structure}")
+
     parts.append(
-        "\nCRITICAL: Output ONLY the email body. Exactly 3 short paragraphs. "
+        "\nDo NOT start any paragraph with 'I'm [Name], founder of...' or similar "
+        "self-introductions. Weave sender info naturally into sentences.\n"
+        "CRITICAL: Output ONLY the email body. Exactly 3 short paragraphs. "
         "Max 80 words total. No markdown. No commentary. No explanations. "
         "No notes after the email. No 'here is' preamble. "
         "Your entire output will be pasted directly into an email client and sent. "

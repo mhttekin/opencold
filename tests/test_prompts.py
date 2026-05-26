@@ -6,6 +6,8 @@ from opencold.prompts import (
     build_template_prompt,
     _is_usable_text,
     _sanitize_website_text,
+    _pick_structure,
+    _STRUCTURES,
 )
 
 
@@ -122,6 +124,29 @@ class TestBuildUserPrompt:
         campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
         prompt = build_user_prompt(self.ROW, self.IDENTITY, self.PROFILE, campaign)
         assert "ONLY the email body" in prompt
+
+    def test_includes_structure_hint(self):
+        campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
+        prompt = build_user_prompt(self.ROW, self.IDENTITY, self.PROFILE, campaign)
+        assert "STRUCTURE:" in prompt
+
+    def test_different_emails_get_different_structures(self):
+        structures = set()
+        for email in ["a@x.com", "b@y.com", "c@z.com", "d@w.com", "e@v.com",
+                       "f@u.com", "g@t.com", "h@s.com", "i@r.com", "j@q.com"]:
+            structures.add(_pick_structure(email))
+        # With 10 emails and 5 structures, we should hit at least 2 different ones
+        assert len(structures) >= 2
+
+    def test_structure_is_deterministic(self):
+        s1 = _pick_structure("alice@acme.com")
+        s2 = _pick_structure("alice@acme.com")
+        assert s1 == s2
+
+    def test_bans_self_intro_pattern(self):
+        campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
+        prompt = build_user_prompt(self.ROW, self.IDENTITY, self.PROFILE, campaign)
+        assert "Do NOT start any paragraph with" in prompt
 
 
 class TestBuildTemplatePrompt:

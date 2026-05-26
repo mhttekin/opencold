@@ -62,6 +62,20 @@ def _prompt_str() -> str:
     return f"{DIM}[{pc}\u25cf {name}{RESET}{DIM}]{RESET} opencold> "
 
 
+def _rprompt_str() -> str:
+    """Right-side prompt showing default provider and model."""
+    provider_name = config.get_default_provider_name()
+    if not provider_name:
+        return ""
+    prov = config.get_provider(provider_name)
+    if not prov:
+        return ""
+    model = prov.get("default_model", "")
+    if model:
+        return f"{DIM}{provider_name}:{model}{RESET}"
+    return f"{DIM}{provider_name}{RESET}"
+
+
 # ── ESC-cancellable prompts ─────────────────────────────────────────────────
 
 
@@ -962,56 +976,96 @@ def do_run(
     website_cache: dict[str, str | None] = {}
 
     if has_websites:
-        urls = {row["website"] for row in rows if row.get("website", "").strip()}
+        urls = list({row["website"] for row in rows if row.get("website", "").strip()})
         if urls:
-            typer.echo(f"\n  Crawling {len(urls)} website(s)...\n")
-            for url in urls:
-                typer.echo(f"    {url} ... ", nl=False)
-                text = crawler.crawl_website(url)
-                website_cache[url] = text
-                if text:
-                    typer.echo(f"ok ({len(text)} chars)")
-                else:
-                    typer.echo("skipped (no content)")
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            typer.echo(f"\n  Crawling {len(urls)} unique website(s)...\n")
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                future_to_url = {executor.submit(crawler.crawl_website, url): url for url in urls}
+                for future in as_completed(future_to_url):
+                    url = future_to_url[future]
+                    try:
+                        text = future.result()
+                    except Exception:
+                        text = None
+                    website_cache[url] = text
+                    if text:
+                        typer.echo(f"    {url} ... ok ({len(text)} chars)")
+                    else:
+                        typer.echo(f"    {url} ... skipped (no content)")
 
     typer.echo(f"\n  Processing {len(rows)} contacts with '{effective_model}' ({provider_name})...\n")
     results = []
+    sender_name = identity.get("name", "")
+    batch_size = 5
 
-    for i, row in enumerate(rows, 1):
-        name = f"{row['first_name']} {row['last_name']}"
-        typer.echo(f"  [{i}/{len(rows)}] {name} ({row['company']})... ", nl=False)
-
-        website_text = None
-        if has_websites:
-            website_text = website_cache.get(row.get("website", ""))
-
+    def _build_prompt(row, website_text):
         if use_flags and prompt_template:
-            user_prompt = prompt_template.format(**row)
+            return prompt_template.format(**row)
         elif use_flags:
-            user_prompt = (
+            return (
                 f"Write a cold outreach email to {row['first_name']} {row['last_name']} "
                 f"at {row['company']}. Their email is {row['email']}."
             )
         elif campaign and _has_enough_context(campaign):
-            user_prompt = build_user_prompt(row, identity, profile, campaign, website_text)
+            return build_user_prompt(row, identity, profile, campaign, website_text)
         else:
-            user_prompt = build_template_prompt(row, identity, profile)
+            return build_template_prompt(row, identity, profile)
 
-        try:
-            email_text = generator.generate_with_retry(
-                provider_config, sys_prompt, user_prompt, effective_model, max_tokens
-            )
-            # Append sender name as sign-off
-            sender_name = identity.get("name", "")
-            if sender_name:
-                email_text = f"{email_text}\n\n{sender_name}"
-            results.append({**row, "generated_email": email_text})
-            typer.echo("done")
-        except Exception as e:
-            typer.echo(f"failed: {e}")
-            results.append({**row, "generated_email": f"ERROR: {e}"})
+    def _generate_one(row):
+        website_text = None
+        if has_websites:
+            website_text = website_cache.get(row.get("website", ""))
+        user_prompt = _build_prompt(row, website_text)
+        email_text = generator.generate_with_retry(
+            provider_config, sys_prompt, user_prompt, effective_model, max_tokens
+        )
+        if sender_name:
+            email_text = f"{email_text}\n\n{sender_name}"
+        return email_text
 
-        if i < len(rows):
+    # Process in parallel batches
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    for batch_start in range(0, len(rows), batch_size):
+        batch = rows[batch_start:batch_start + batch_size]
+        batch_indices = list(range(batch_start, batch_start + len(batch)))
+
+        # Show what we're processing
+        for idx in batch_indices:
+            row = rows[idx]
+            name = f"{row['first_name']} {row['last_name']}"
+            typer.echo(f"  [{idx + 1}/{len(rows)}] {name} ({row['company']})... ", nl=False)
+            typer.echo("sending")
+
+        # Run batch in parallel
+        batch_results: dict[int, str | Exception] = {}
+        with ThreadPoolExecutor(max_workers=batch_size) as executor:
+            future_to_idx = {
+                executor.submit(_generate_one, rows[idx]): idx
+                for idx in batch_indices
+            }
+            for future in as_completed(future_to_idx):
+                idx = future_to_idx[future]
+                try:
+                    batch_results[idx] = future.result()
+                except Exception as e:
+                    batch_results[idx] = e
+
+        # Collect results in order
+        for idx in batch_indices:
+            row = rows[idx]
+            name = f"{row['first_name']} {row['last_name']}"
+            result = batch_results[idx]
+            if isinstance(result, Exception):
+                typer.echo(f"  [{idx + 1}/{len(rows)}] {name} ... failed: {result}")
+                results.append({**row, "generated_email": f"ERROR: {result}"})
+            else:
+                typer.echo(f"  [{idx + 1}/{len(rows)}] {name} ... done")
+                results.append({**row, "generated_email": result})
+
+        # Delay between batches, not between individual requests
+        if batch_start + batch_size < len(rows):
             time.sleep(delay)
 
     _write_results(rows, results, output, output_format)
@@ -1130,7 +1184,7 @@ def _run_shell() -> None:
 
     while True:
         try:
-            line = session.prompt(ANSI(_prompt_str())).strip()
+            line = session.prompt(ANSI(_prompt_str()), rprompt=ANSI(_rprompt_str())).strip()
         except (EOFError, KeyboardInterrupt):
             typer.echo("\nBye!")
             break

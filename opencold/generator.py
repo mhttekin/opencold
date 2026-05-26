@@ -149,11 +149,15 @@ def _is_leaked_paragraph(para: str) -> bool:
 def _clean_output(text: str) -> str:
     """Strip meta-commentary, leaked data, and formatting issues from model output."""
     text = text.strip()
-    # Strip surrounding quote characters models sometimes wrap the email in
-    text = text.strip('"\'')
+    # Strip surrounding double quotes models sometimes wrap the email in
+    text = text.strip('"')
     text = text.strip()
-    # Remove all quote characters from the body
-    text = text.replace('"', '').replace("'", '')
+    # Remove double quotes from the body (keep apostrophes for contractions)
+    text = text.replace('"', '')
+    # Replace em/en dashes with commas (looks less AI-generated)
+    text = text.replace('—', ',').replace('–', ',')
+    # Clean up double commas or comma-space-comma from dash replacement
+    text = re.sub(r',\s*,', ',', text)
     for pattern in _META_PATTERNS:
         text = pattern.sub("", text)
     # Remove leading "Subject:" or greeting lines some models prepend

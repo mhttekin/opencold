@@ -238,12 +238,28 @@ class TestCleanOutput:
         assert "Mehmet" not in result
         assert "Para 3." in result
 
-    def test_strips_quotes(self):
+    def test_strips_double_quotes_preserves_apostrophes(self):
         text = 'He said "hello" and she said \'goodbye\'.'
         result = generator._clean_output(text)
         assert '"' not in result
-        assert "'" not in result
+        assert "'" in result  # apostrophes preserved
         assert "He said hello" in result
+
+    def test_preserves_contractions(self):
+        text = "I'm excited about what you're building.\n\nIt's a great fit.\n\nDon't hesitate."
+        result = generator._clean_output(text)
+        assert "I'm" in result
+        assert "you're" in result
+        assert "It's" in result
+        assert "Don't" in result
+
+    def test_replaces_em_dashes_with_commas(self):
+        text = "Your platform — built for scale — is impressive.\n\nPara 2.\n\nPara 3."
+        result = generator._clean_output(text)
+        assert "—" not in result
+        assert "–" not in result
+        assert ",," not in result
+        assert "Your platform" in result
 
     def test_strips_wrapping_quotes(self):
         text = '"Para 1.\n\nPara 2.\n\nPara 3."'
