@@ -279,3 +279,35 @@ class TestConfigExists:
     def test_with_api_key_exists(self, tmp_config):
         config.set_api_key("anthropic", "sk-test")
         assert config.config_exists() is True
+
+
+class TestSmtp:
+    def test_no_smtp_returns_none(self, tmp_config):
+        assert config.get_smtp() is None
+
+    def test_set_and_get_smtp(self, tmp_config):
+        config.set_smtp(
+            host="smtp.gmail.com",
+            port=587,
+            username="user@gmail.com",
+            password="app-password",
+            sender_email="user@gmail.com",
+            sender_name="Test User",
+            use_tls=True,
+        )
+        smtp = config.get_smtp()
+        assert smtp is not None
+        assert smtp["host"] == "smtp.gmail.com"
+        assert smtp["port"] == 587
+        assert smtp["username"] == "user@gmail.com"
+        assert smtp["password"] == "app-password"
+        assert smtp["sender_email"] == "user@gmail.com"
+        assert smtp["sender_name"] == "Test User"
+        assert smtp["use_tls"] is True
+
+    def test_smtp_persists_across_loads(self, tmp_config):
+        config.set_smtp("smtp.test.com", 465, "u", "p", "u@t.com")
+        # Force reload
+        smtp = config.get_smtp()
+        assert smtp["host"] == "smtp.test.com"
+        assert smtp["port"] == 465

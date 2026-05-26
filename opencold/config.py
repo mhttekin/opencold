@@ -420,3 +420,44 @@ def delete_campaign(index: int) -> None:
     if 0 <= index < len(campaigns):
         campaigns.pop(index)
         save_config(cfg)
+
+
+# ── SMTP configuration ──────────────────────────────────────────────────────
+
+
+def get_smtp() -> dict | None:
+    """Return SMTP config dict, or None if not configured."""
+    cfg = load_config()
+    smtp = cfg.get("smtp")
+    if not smtp or not smtp.get("host"):
+        return None
+    return smtp
+
+
+def set_smtp(
+    host: str,
+    port: int,
+    username: str,
+    password: str,
+    sender_email: str,
+    sender_name: str = "",
+    use_tls: bool = True,
+) -> None:
+    """Save SMTP settings."""
+    cfg = load_config()
+    cfg["smtp"] = {
+        "host": host,
+        "port": port,
+        "username": username,
+        "password": password,
+        "sender_email": sender_email,
+        "sender_name": sender_name,
+        "use_tls": use_tls,
+    }
+    save_config(cfg)
+
+
+def get_default_subject() -> str:
+    """Return saved default email subject, or empty string."""
+    cfg = load_config()
+    return cfg.get("default_subject", "")

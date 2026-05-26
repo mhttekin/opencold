@@ -20,7 +20,7 @@ from prompt_toolkit.layout import Layout
 from prompt_toolkit.layout.containers import Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 
-from opencold import config, crawler, generator
+from opencold import config, crawler, generator, sender
 from opencold.prompts import (
     SYSTEM_PROMPT,
     build_user_prompt,
@@ -323,10 +323,11 @@ def _select_csv_file() -> str | None:
 class _ReplCompleter(Completer):
     """Tab-completer for the REPL: completes commands and file paths."""
 
-    _TOP_COMMANDS = ["run", "config", "profile", "provider", "help", "exit", "q"]
+    _TOP_COMMANDS = ["run", "send", "smtp", "config", "profile", "provider", "help", "exit", "q"]
     _CONFIG_SUBS = ["init", "set-key"]
     _PROFILE_SUBS = ["list", "create", "use", "delete"]
     _PROVIDER_SUBS = ["list", "add", "delete", "default"]
+    _SMTP_SUBS = ["setup", "test", "show"]
     # Subcommands that accept a name as 3rd argument
     _PROFILE_NAME_SUBS = {"use", "delete"}
     _PROVIDER_NAME_SUBS = {"delete", "default"}
@@ -414,7 +415,7 @@ class _ReplCompleter(Completer):
             if current_word.startswith("-"):
                 run_flags = [
                     "--model", "--max-tokens", "--output", "--format",
-                    "--system-prompt", "--template", "--delay",
+                    "--system-prompt", "--template", "--delay", "--send",
                 ]
                 for flag in run_flags:
                     if flag.startswith(current_word) and flag != current_word:
@@ -426,6 +427,32 @@ class _ReplCompleter(Completer):
             sub_text = text[prefix_len:] if len(text) > prefix_len else ""
             sub_doc = Document(sub_text)
             yield from self._path_completer.get_completions(sub_doc, complete_event)
+
+        # After "send", complete file paths and --flags
+        if first == "send":
+            current_word = words[-1] if not text.endswith(" ") else ""
+            if current_word.startswith("-"):
+                for flag in ["--subject"]:
+                    if flag.startswith(current_word) and flag != current_word:
+                        yield Completion(flag, start_position=-len(current_word))
+                return
+            prefix_len = len(words[0]) + 1
+            from prompt_toolkit.document import Document
+            sub_text = text[prefix_len:] if len(text) > prefix_len else ""
+            sub_doc = Document(sub_text)
+            yield from self._path_completer.get_completions(sub_doc, complete_event)
+
+        # Subcommands for "smtp"
+        if first == "smtp":
+            if len(words) == 2 and not text.endswith(" "):
+                sub = words[1]
+                for s in self._SMTP_SUBS:
+                    if s.startswith(sub.lower()) and s != sub.lower():
+                        yield Completion(s, start_position=-len(sub))
+            elif len(words) == 1 and text.endswith(" "):
+                for s in self._SMTP_SUBS:
+                    yield Completion(s)
+            return
 
 
 # ── config commands ──────────────────────────────────────────────────────────
@@ -917,6 +944,7 @@ def do_run(
     system_prompt: str | None = None,
     prompt_template: str | None = None,
     delay: float = 0.5,
+    send: bool = False,
 ) -> None:
     """Core run logic shared by the CLI command and the REPL."""
     _ensure_config()
@@ -1075,6 +1103,157 @@ def do_run(
     if output_format == "csv" and output != "-":
         typer.echo(f"  Output saved to: {output}")
 
+    # Send via SMTP if --send flag is set
+    if send:
+        _do_send_results(results)
+
+
+def _do_send_results(results: list[dict], subject: str = "") -> None:
+    """Send generated emails via SMTP."""
+    smtp_config = config.get_smtp()
+    if not smtp_config:
+        typer.echo(f"\n  {YELLOW}SMTP not configured.{RESET} Let's set it up now.\n")
+        smtp_setup_cmd()
+        smtp_config = config.get_smtp()
+        if not smtp_config:
+            typer.echo(f"\n  {RED}SMTP setup was cancelled. Cannot send emails.{RESET}")
+            return
+
+    # Ask for subject if not provided
+    if not subject:
+        subject = _ask("Email subject line")
+        if not subject:
+            typer.echo(f"  {RED}Subject is required.{RESET}")
+            return
+
+    # Filter to successful emails only
+    sendable = [r for r in results if not r.get("generated_email", "").startswith("ERROR:")]
+    if not sendable:
+        typer.echo(f"  {YELLOW}No emails to send.{RESET}")
+        return
+
+    typer.echo(f"\n  {BOLD}Sending {len(sendable)} emails...{RESET}")
+    typer.echo(f"  From: {smtp_config.get('sender_name', '')} <{smtp_config['sender_email']}>")
+    typer.echo(f"  Subject: {subject}\n")
+
+    if not _confirm(f"Send {len(sendable)} emails?"):
+        typer.echo(f"  {DIM}Cancelled.{RESET}")
+        return
+
+    sent = 0
+    failed = 0
+    for r in sendable:
+        to_email = r["email"]
+        to_name = f"{r.get('first_name', '')} {r.get('last_name', '')}".strip()
+        body = r["generated_email"]
+        try:
+            sender.send_email(smtp_config, to_email, to_name, subject, body)
+            typer.echo(f"  {GREEN}✓{RESET} {to_name} <{to_email}>")
+            sent += 1
+        except Exception as e:
+            typer.echo(f"  {RED}✗{RESET} {to_name} <{to_email}> — {e}")
+            failed += 1
+
+    typer.echo(f"\n  Sent: {sent}, Failed: {failed}")
+
+
+def do_send(input_csv: str, subject: str = "") -> None:
+    """Send emails from a previously generated output CSV."""
+    path = Path(input_csv)
+    if not path.exists():
+        typer.echo(f"  {RED}File not found:{RESET} {input_csv}")
+        return
+
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    if not rows:
+        typer.echo(f"  {RED}No rows found in {input_csv}{RESET}")
+        return
+
+    # Validate required columns
+    required = {"email", "generated_email"}
+    missing = required - set(rows[0].keys())
+    if missing:
+        typer.echo(f"  {RED}Missing columns:{RESET} {', '.join(missing)}")
+        typer.echo(f"  Expected a CSV with at least: email, first_name, last_name, generated_email")
+        return
+
+    _do_send_results(rows, subject)
+
+
+# ── SMTP setup commands ──────────────────────────────────────────────────────
+
+
+def smtp_setup_cmd() -> None:
+    """Interactive SMTP configuration."""
+    typer.echo(f"\n  {BOLD}SMTP Setup{RESET} {DIM}(press ESC to cancel){RESET}\n")
+
+    # Common presets
+    typer.echo(f"  {DIM}Common SMTP hosts:{RESET}")
+    typer.echo(f"    Gmail:     smtp.gmail.com (port 587, use app password)")
+    typer.echo(f"    Outlook:   smtp.office365.com (port 587)")
+    typer.echo(f"    Zoho:      smtp.zoho.com (port 587)")
+    typer.echo(f"    Custom:    your own SMTP server\n")
+
+    host = _ask("SMTP host", "smtp.gmail.com")
+    port_str = _ask("SMTP port", "587")
+    port = int(port_str)
+    username = _ask("SMTP username (email)")
+
+    # Show app password guidance for Gmail
+    if "gmail" in host.lower():
+        typer.echo(f"\n  {YELLOW}Gmail requires an App Password (not your regular password).{RESET}")
+        typer.echo(f"  {DIM}1. Enable 2-Step Verification on your Google account{RESET}")
+        typer.echo(f"  {DIM}2. Go to: https://myaccount.google.com/apppasswords{RESET}")
+        typer.echo(f"  {DIM}3. Generate a password for 'Mail' and paste it below{RESET}\n")
+
+    password = _ask("SMTP password (app password for Gmail)", hide=True)
+    sender_email = _ask("Sender email", username)
+
+    identity = config.get_identity()
+    default_name = identity.get("name", "")
+    sender_name = _ask("Sender display name", default_name)
+
+    use_tls = _confirm("Use TLS?", default=True)
+
+    config.set_smtp(host, port, username, password, sender_email, sender_name, use_tls)
+    typer.echo(f"\n  {GREEN}SMTP settings saved.{RESET}")
+
+    # Offer to test
+    if _confirm("Test connection now?", default=True):
+        smtp_test_cmd()
+
+
+def smtp_test_cmd() -> None:
+    """Test the SMTP connection."""
+    smtp_config = config.get_smtp()
+    if not smtp_config:
+        typer.echo(f"  {RED}SMTP not configured.{RESET} Run 'smtp setup' first.")
+        return
+
+    typer.echo(f"  Testing connection to {smtp_config['host']}:{smtp_config['port']}...")
+    err = sender.test_connection(smtp_config)
+    if err:
+        typer.echo(f"  {RED}Connection failed:{RESET} {err}")
+    else:
+        typer.echo(f"  {GREEN}Connection successful!{RESET}")
+
+
+def smtp_show_cmd() -> None:
+    """Show current SMTP configuration."""
+    smtp_config = config.get_smtp()
+    if not smtp_config:
+        typer.echo(f"  {DIM}SMTP not configured. Run 'smtp setup' to set up.{RESET}")
+        return
+    typer.echo(f"  Host:     {smtp_config['host']}")
+    typer.echo(f"  Port:     {smtp_config['port']}")
+    typer.echo(f"  Username: {smtp_config['username']}")
+    typer.echo(f"  Password: {'*' * 8}")
+    typer.echo(f"  From:     {smtp_config.get('sender_name', '')} <{smtp_config['sender_email']}>")
+    typer.echo(f"  TLS:      {'yes' if smtp_config.get('use_tls', True) else 'no'}")
+
 
 # ── typer run command (for direct CLI usage) ─────────────────────────────────
 
@@ -1089,9 +1268,10 @@ def run(
     system_prompt: Optional[str] = typer.Option(None, "--system-prompt", help="Custom system prompt"),
     prompt_template: Optional[str] = typer.Option(None, "--template", help="Custom prompt template"),
     delay: float = typer.Option(0.5, "--delay"),
+    send: bool = typer.Option(False, "--send", help="Send emails via SMTP after generating"),
 ) -> None:
     """Generate personalized cold outreach emails from a CSV."""
-    do_run(input_csv, output, output_format, model, max_tokens, system_prompt, prompt_template, delay)
+    do_run(input_csv, output, output_format, model, max_tokens, system_prompt, prompt_template, delay, send)
 
 
 # ── REPL shell ───────────────────────────────────────────────────────────────
@@ -1107,6 +1287,14 @@ SHELL_HELP = f"""\
       --system-prompt <text>      Custom system prompt
       --template <text>           Custom prompt template
       --delay <seconds>
+      --send                      Send emails via SMTP after generating
+
+  {GREEN}send{RESET} <output.csv>             Send emails from a previously generated CSV
+      --subject <text>            Email subject line
+
+  {GREEN}smtp setup{RESET}                   Configure SMTP settings
+  {GREEN}smtp test{RESET}                    Test SMTP connection
+  {GREEN}smtp show{RESET}                    Show current SMTP config
 
   {GREEN}config{RESET}                        Show current configuration
   {GREEN}config init{RESET}                  Set up API key & profile info
@@ -1139,6 +1327,7 @@ def _parse_run_args(tokens: list[str]) -> dict:
         "system_prompt": None,
         "prompt_template": None,
         "delay": 0.5,
+        "send": False,
     }
     positional = []
     i = 0
@@ -1158,9 +1347,28 @@ def _parse_run_args(tokens: list[str]) -> dict:
             args["prompt_template"] = tokens[i + 1]; i += 2
         elif tok == "--delay" and i + 1 < len(tokens):
             args["delay"] = float(tokens[i + 1]); i += 2
+        elif tok == "--send":
+            args["send"] = True; i += 1
         else:
             positional.append(tok); i += 1
 
+    if not positional:
+        return {}
+    args["input_csv"] = positional[0]
+    return args
+
+
+def _parse_send_args(tokens: list[str]) -> dict:
+    """Parse send subcommand arguments from REPL tokens."""
+    args: dict = {"subject": ""}
+    positional = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "--subject" and i + 1 < len(tokens):
+            args["subject"] = tokens[i + 1]; i += 2
+        else:
+            positional.append(tok); i += 1
     if not positional:
         return {}
     args["input_csv"] = positional[0]
@@ -1273,6 +1481,24 @@ def _run_shell() -> None:
                         provider_default_cmd(rest[1])
                 else:
                     typer.echo(f"Unknown provider command: {sub}")
+
+            elif cmd == "send":
+                args = _parse_send_args(rest)
+                if not args:
+                    typer.echo("Usage: send <output.csv> [--subject <text>]")
+                else:
+                    do_send(**args)
+
+            elif cmd == "smtp":
+                sub = rest[0] if rest else "show"
+                if sub == "setup":
+                    smtp_setup_cmd()
+                elif sub == "test":
+                    smtp_test_cmd()
+                elif sub == "show":
+                    smtp_show_cmd()
+                else:
+                    typer.echo(f"Unknown smtp command: {sub}")
 
             else:
                 typer.echo(f"Unknown command: {cmd}. Type 'help' for available commands.")
