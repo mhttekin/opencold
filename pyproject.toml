@@ -9,6 +9,7 @@ description = "CLI tool for generating personalized cold outreach emails using C
 requires-python = ">=3.11"
 dependencies = [
     "anthropic>=0.40.0",
+    "openai>=1.0",
     "typer>=0.15.0",
     "prompt_toolkit>=3.0",
     "trafilatura>=2.0",

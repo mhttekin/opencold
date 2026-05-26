@@ -36,6 +36,8 @@ config_app = typer.Typer(help="Manage API keys and user profile.", invoke_withou
 app.add_typer(config_app, name="config")
 profile_app = typer.Typer(help="Manage named profiles.")
 app.add_typer(profile_app, name="profile")
+provider_app = typer.Typer(help="Manage LLM providers.")
+app.add_typer(provider_app, name="provider")
 
 
 # ── ANSI helpers ─────────────────────────────────────────────────────────────
@@ -70,7 +72,7 @@ class Cancelled(Exception):
 def _esc_bindings() -> KeyBindings:
     kb = KeyBindings()
 
-    @kb.add("escape", eager=True)
+    @kb.add("escape", eager=False)
     def _cancel(event):
         event.app.exit(exception=Cancelled())
 
@@ -307,11 +309,13 @@ def _select_csv_file() -> str | None:
 class _ReplCompleter(Completer):
     """Tab-completer for the REPL: completes commands and file paths."""
 
-    _TOP_COMMANDS = ["run", "config", "profile", "help", "exit", "quit"]
+    _TOP_COMMANDS = ["run", "config", "profile", "provider", "help", "exit", "q"]
     _CONFIG_SUBS = ["init", "set-key"]
     _PROFILE_SUBS = ["list", "create", "use", "delete"]
-    # Subcommands that accept a profile name as 3rd argument
+    _PROVIDER_SUBS = ["list", "add", "delete", "default"]
+    # Subcommands that accept a name as 3rd argument
     _PROFILE_NAME_SUBS = {"use", "delete"}
+    _PROVIDER_NAME_SUBS = {"delete", "default"}
 
     def __init__(self):
         self._path_completer = PathCompleter(
@@ -368,8 +372,41 @@ class _ReplCompleter(Completer):
                                 yield Completion(name, start_position=-len(partial))
             return
 
-        # After "run", complete file paths (CSV files)
+        # Subcommands for "provider"
+        if first == "provider":
+            if len(words) == 2 and not text.endswith(" "):
+                sub = words[1]
+                for s in self._PROVIDER_SUBS:
+                    if s.startswith(sub.lower()) and s != sub.lower():
+                        yield Completion(s, start_position=-len(sub))
+            elif len(words) == 1 and text.endswith(" "):
+                for s in self._PROVIDER_SUBS:
+                    yield Completion(s)
+            # Complete provider names for "delete" and "default"
+            elif len(words) >= 2:
+                sub = words[1].lower()
+                if sub in self._PROVIDER_NAME_SUBS:
+                    partial = words[2] if len(words) == 3 and not text.endswith(" ") else ""
+                    if len(words) <= 3:
+                        for name in config.get_providers().keys():
+                            if name.startswith(partial) and name != partial:
+                                yield Completion(name, start_position=-len(partial))
+            return
+
+        # After "run", complete file paths and --flags
         if first == "run":
+            current_word = words[-1] if not text.endswith(" ") else ""
+            # Suggest --flags when user starts typing with -
+            if current_word.startswith("-"):
+                run_flags = [
+                    "--model", "--max-tokens", "--output", "--format",
+                    "--system-prompt", "--template", "--delay",
+                ]
+                for flag in run_flags:
+                    if flag.startswith(current_word) and flag != current_word:
+                        yield Completion(flag, start_position=-len(current_word))
+                return
+            # Otherwise complete file paths (CSV files)
             prefix_len = len(words[0]) + 1
             from prompt_toolkit.document import Document
             sub_text = text[prefix_len:] if len(text) > prefix_len else ""
@@ -567,6 +604,176 @@ def profile_delete(name: str = typer.Argument(help="Profile to delete")) -> None
         typer.echo(str(e))
 
 
+# ── provider commands ────────────────────────────────────────────────────────
+
+_PROVIDER_CHOICES = [
+    ("Anthropic", "anthropic", "claude-sonnet-4-6"),
+    ("OpenAI", "openai", "gpt-4o"),
+    ("Proxy (OpenAI-compatible)", "proxy", ""),
+]
+
+
+def _select_provider_type() -> tuple[str, str, str] | None:
+    """Interactive selector for provider type. Returns (label, type, default_model) or None."""
+    existing = config.get_providers()
+    existing_types = {p.get("type") for p in existing.values()}
+
+    items = []
+    for label, ptype, default_model in _PROVIDER_CHOICES:
+        # Proxy can be added multiple times, others only once
+        already = ptype in existing_types and ptype != "proxy"
+        items.append((label, ptype, default_model, already))
+
+    total = len(items)
+    selected = [0]
+
+    kb = KeyBindings()
+
+    @kb.add("up")
+    @kb.add("k")
+    def _up(event):
+        selected[0] = (selected[0] - 1) % total
+
+    @kb.add("down")
+    @kb.add("j")
+    def _down(event):
+        selected[0] = (selected[0] + 1) % total
+
+    @kb.add("enter")
+    def _select(event):
+        event.app.exit(result=selected[0])
+
+    @kb.add("escape")
+    @kb.add("q")
+    def _quit(event):
+        event.app.exit(result=None)
+
+    def _get_text():
+        lines = []
+        lines.append(("", "\n"))
+        lines.append(("bold", "  Select provider:\n\n"))
+        for i, (label, ptype, dm, already) in enumerate(items):
+            check = f" {GREEN}\u2713{RESET}" if already else ""
+            if i == selected[0]:
+                lines.append(("fg:cyan bold", f"  \u25b8 {label}"))
+                if already:
+                    lines.append(("fg:green", " \u2713"))
+                lines.append(("", "\n"))
+            else:
+                lines.append(("", f"    {label}"))
+                if already:
+                    lines.append(("fg:green", " \u2713"))
+                lines.append(("", "\n"))
+        return FormattedText(lines)
+
+    control = FormattedTextControl(_get_text)
+    layout = Layout(Window(content=control, always_hide_cursor=True))
+    result = Application(layout=layout, key_bindings=kb, full_screen=False).run()
+
+    if result is None:
+        return None
+    label, ptype, default_model, _ = items[result]
+    return label, ptype, default_model
+
+
+@provider_app.command("list")
+def provider_list_cmd() -> None:
+    """List configured providers and the default."""
+    providers = config.get_providers()
+    default = config.get_default_provider_name()
+
+    if not providers:
+        typer.echo(f"  {DIM}No providers configured. Run: provider add{RESET}")
+        return
+
+    for name, prov in providers.items():
+        key = prov.get("api_key", "")
+        masked = key[:8] + "..." + key[-4:] if len(key) > 12 else "***"
+        model = prov.get("default_model", "")
+        is_default = name == default
+        marker = f"  {CYAN}\u2190 default{RESET}" if is_default else ""
+        check = f"{GREEN}\u2713{RESET}" if is_default else "\u25cf"
+        base_url = prov.get("base_url", "")
+        url_info = f"  {DIM}{base_url}{RESET}" if base_url else ""
+        typer.echo(f"  {check} {BOLD}{name}{RESET}  {DIM}{masked}{RESET}  ({model}){marker}{url_info}")
+
+
+@provider_app.command("add")
+def provider_add_cmd() -> None:
+    """Interactively add a new provider."""
+    choice = _select_provider_type()
+    if choice is None:
+        typer.echo(f"  {DIM}Cancelled.{RESET}")
+        return
+
+    label, ptype, suggested_model = choice
+    typer.echo("")
+
+    try:
+        api_key = _ask("API key", hide=True)
+        if not api_key:
+            typer.echo(f"  {DIM}API key is required.{RESET}")
+            return
+
+        default_model = _ask("Default model", default=suggested_model)
+
+        default_max = "4096" if ptype == "proxy" else "1024"
+        max_tokens_str = _ask("Max tokens", default=default_max)
+        max_tokens = int(max_tokens_str) if max_tokens_str.isdigit() else int(default_max)
+
+        base_url = ""
+        if ptype == "proxy":
+            base_url = _ask("Base URL (e.g. https://your-router.com/v1)")
+            if not base_url:
+                typer.echo(f"  {DIM}Base URL is required for proxy providers.{RESET}")
+                return
+
+        # Use type as name for anthropic/openai, ask for title for proxy
+        if ptype == "proxy":
+            name = _ask("Name for this provider (e.g. huggingface, deepinfra, ollama)")
+            if not name:
+                typer.echo(f"  {DIM}Name is required.{RESET}")
+                return
+            name = name.lower().replace(" ", "-")
+        else:
+            name = ptype
+
+        config.add_provider(name, ptype, api_key, default_model, base_url, max_tokens)
+        typer.echo(f"\n  {GREEN}\u2713{RESET} {name} added.")
+    except Cancelled:
+        typer.echo(f"\n  {DIM}Cancelled.{RESET}")
+
+
+@provider_app.command("delete")
+def provider_delete_cmd(name: str = typer.Argument(help="Provider to delete")) -> None:
+    """Delete a configured provider."""
+    try:
+        prov = config.get_provider(name)
+        if not prov:
+            typer.echo(f"Provider '{name}' not found.")
+            return
+        if _confirm(f"Remove {name}?", default=False):
+            config.remove_provider(name)
+            typer.echo(f"  {GREEN}\u2713{RESET} Removed.")
+        else:
+            typer.echo(f"  {DIM}Cancelled.{RESET}")
+    except Cancelled:
+        typer.echo(f"\n  {DIM}Cancelled.{RESET}")
+
+
+@provider_app.command("default")
+def provider_default_cmd(name: str = typer.Argument(help="Provider to set as default")) -> None:
+    """Set the default provider for runs."""
+    try:
+        config.set_default_provider(name)
+        prov = config.get_provider(name)
+        model = prov.get("default_model", "") if prov else ""
+        typer.echo(f"  {GREEN}\u2713{RESET} Default provider set to {BOLD}{name}{RESET} ({model})")
+    except KeyError:
+        available = ", ".join(config.get_providers().keys())
+        typer.echo(f"Provider '{name}' not found. Available: {available}")
+
+
 # ── shared helpers ───────────────────────────────────────────────────────────
 
 
@@ -691,17 +898,44 @@ def do_run(
     input_csv: str,
     output: str = "output.csv",
     output_format: str = "csv",
-    model: str = generator.DEFAULT_MODEL,
-    max_tokens: int = generator.DEFAULT_MAX_TOKENS,
+    model: str | None = None,
+    max_tokens: int | None = None,
     system_prompt: str | None = None,
     prompt_template: str | None = None,
     delay: float = 0.5,
 ) -> None:
     """Core run logic shared by the CLI command and the REPL."""
     _ensure_config()
-    api_key = config.get_api_key("anthropic")
     identity = config.get_identity()
     profile = config.get_profile()
+
+    # ── Resolve provider ──
+    providers = config.get_providers()
+    default_provider_name = config.get_default_provider_name()
+
+    if model:
+        detected = generator.detect_provider_for_model(model, providers)
+        provider_name = detected or default_provider_name
+    else:
+        provider_name = default_provider_name
+
+    provider_config = providers.get(provider_name)
+    if not provider_config:
+        # Fallback: check legacy api_keys
+        legacy_key = config.get_api_key("anthropic")
+        if legacy_key:
+            provider_config = {"type": "anthropic", "api_key": legacy_key, "default_model": generator.DEFAULT_MODEL}
+        else:
+            typer.echo(f"{RED}Error:{RESET} No provider configured. Run: provider add")
+            return
+
+    effective_model = model or provider_config.get("default_model") or generator.DEFAULT_MODEL
+
+    if provider_config.get("type") == "proxy":
+        typer.echo(
+            f"  {YELLOW}Note:{RESET} Using proxy provider. Output quality depends on the model. "
+            f"For best results, use Claude or GPT-4 class models."
+        )
 
     rows = _read_csv(input_csv)
 
@@ -709,8 +943,6 @@ def do_run(
     rows = _validate_csv(rows)
     if rows is None:
         return
-
-    client = generator.create_client(api_key)
 
     use_flags = system_prompt is not None or prompt_template is not None
     campaign = None
@@ -742,7 +974,7 @@ def do_run(
                 else:
                     typer.echo("skipped (no content)")
 
-    typer.echo(f"\n  Processing {len(rows)} contacts with '{model}'...\n")
+    typer.echo(f"\n  Processing {len(rows)} contacts with '{effective_model}' ({provider_name})...\n")
     results = []
 
     for i, row in enumerate(rows, 1):
@@ -767,8 +999,12 @@ def do_run(
 
         try:
             email_text = generator.generate_with_retry(
-                client, sys_prompt, user_prompt, model, max_tokens
+                provider_config, sys_prompt, user_prompt, effective_model, max_tokens
             )
+            # Append sender name as sign-off
+            sender_name = identity.get("name", "")
+            if sender_name:
+                email_text = f"{email_text}\n\n{sender_name}"
             results.append({**row, "generated_email": email_text})
             typer.echo("done")
         except Exception as e:
@@ -794,8 +1030,8 @@ def run(
     input_csv: str = typer.Argument(help="Path to input CSV file"),
     output: str = typer.Option("output.csv", "-o", "--output", help="Output path (use '-' for stdout)"),
     output_format: str = typer.Option("csv", "-f", "--format", help="Output format: csv, json, stdout"),
-    model: str = typer.Option(generator.DEFAULT_MODEL, "--model", help="Claude model ID"),
-    max_tokens: int = typer.Option(generator.DEFAULT_MAX_TOKENS, "--max-tokens"),
+    model: Optional[str] = typer.Option(None, "--model", help="Model ID (auto-detects provider)"),
+    max_tokens: Optional[int] = typer.Option(None, "--max-tokens", help="Override max tokens"),
     system_prompt: Optional[str] = typer.Option(None, "--system-prompt", help="Custom system prompt"),
     prompt_template: Optional[str] = typer.Option(None, "--template", help="Custom prompt template"),
     delay: float = typer.Option(0.5, "--delay"),
@@ -812,6 +1048,7 @@ SHELL_HELP = f"""\
   {GREEN}run{RESET} <file.csv> [options]     Generate emails from a CSV
       -o, --output <path>         Output path (default: output.csv)
       -f, --format <csv|json|stdout>
+      --max-tokens <number>
       --model <model-id>
       --system-prompt <text>      Custom system prompt
       --template <text>           Custom prompt template
@@ -826,8 +1063,13 @@ SHELL_HELP = f"""\
   {GREEN}profile use{RESET} <name>           Switch to a profile
   {GREEN}profile delete{RESET} <name>        Delete a profile
 
+  {GREEN}provider list{RESET}                Show configured providers & default
+  {GREEN}provider add{RESET}                 Add a new provider (Anthropic/OpenAI/Proxy)
+  {GREEN}provider delete{RESET} <name>       Delete a provider
+  {GREEN}provider default{RESET} <name>      Set default provider for runs
+
   {GREEN}help{RESET}                         Show this help
-  {GREEN}exit{RESET} / {GREEN}quit{RESET}                    Exit the shell
+  {GREEN}exit{RESET} / {GREEN}q{RESET}                    Exit the shell
 
   {DIM}Press ESC during any prompt to cancel.{RESET}
 """
@@ -838,8 +1080,8 @@ def _parse_run_args(tokens: list[str]) -> dict:
     args: dict = {
         "output": "output.csv",
         "output_format": "csv",
-        "model": generator.DEFAULT_MODEL,
-        "max_tokens": generator.DEFAULT_MAX_TOKENS,
+        "model": None,
+        "max_tokens": None,
         "system_prompt": None,
         "prompt_template": None,
         "delay": 0.5,
@@ -906,7 +1148,7 @@ def _run_shell() -> None:
         rest = tokens[1:]
 
         try:
-            if cmd in ("exit", "quit"):
+            if cmd in ("exit", "q"):
                 typer.echo("Bye!")
                 break
 
@@ -958,6 +1200,25 @@ def _run_shell() -> None:
                         profile_delete(rest[1])
                 else:
                     typer.echo(f"Unknown profile command: {sub}")
+
+            elif cmd == "provider":
+                sub = rest[0] if rest else "list"
+                if sub == "list":
+                    provider_list_cmd()
+                elif sub == "add":
+                    provider_add_cmd()
+                elif sub == "delete":
+                    if len(rest) < 2:
+                        typer.echo("Usage: provider delete <name>")
+                    else:
+                        provider_delete_cmd(rest[1])
+                elif sub == "default":
+                    if len(rest) < 2:
+                        typer.echo("Usage: provider default <name>")
+                    else:
+                        provider_default_cmd(rest[1])
+                else:
+                    typer.echo(f"Unknown provider command: {sub}")
 
             else:
                 typer.echo(f"Unknown command: {cmd}. Type 'help' for available commands.")

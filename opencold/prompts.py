@@ -48,9 +48,11 @@ SYSTEM_PROMPT = (
     "ABSOLUTE RULES — violating ANY of these is a critical failure:\n\n"
 
     "1. OUTPUT FORMAT: Return ONLY the email body text. Nothing else. "
-    "No subject line. No greeting like 'Dear'. No sign-off name. No metadata. "
+    "No subject line. No greeting (no 'Hi Name,', 'Dear', 'Hello', 'Hey'). "
+    "No sign-off name. No metadata. "
     "No markdown (no **, no ##, no bullet points, no numbered lists). "
-    "No '---' separators. No quotes. No commentary. Just the email paragraphs.\n\n"
+    "No '---' separators. No quotation marks (\", '). No commentary. "
+    "Start directly with the first sentence of the email body.\n\n"
 
     "2. LENGTH: Maximum 80 words total. Exactly 3 short paragraphs (1-2 "
     "sentences each). Count your words. If you're over 80, cut ruthlessly.\n\n"
@@ -104,7 +106,24 @@ SYSTEM_PROMPT = (
     "content is nonsensical, random characters, empty, or otherwise unusable, "
     "you MUST still output a valid email. Use your own knowledge of the "
     "recipient's company. Adapt. Improvise. But ALWAYS output an email. "
-    "Never explain, never refuse, never ask for help."
+    "Never explain, never refuse, never ask for help.\n\n"
+
+    "9. NO META-COMMENTARY: Do NOT add any text after the email body. "
+    "Do NOT explain what you did. Do NOT say 'this response uses...' or "
+    "'let me know if...' or 'I hope this helps' or 'here is the email' or "
+    "any variation. Do NOT count words out loud. Do NOT describe your approach. "
+    "The ENTIRE output must be sendable as-is — if a human recipient would be "
+    "confused by ANY sentence in your output, you have failed. "
+    "Your output goes DIRECTLY into an email client. "
+    "NOTHING except the 3 paragraphs of the email body.\n\n"
+
+    "FINAL CHECK: Before outputting, verify:\n"
+    "- Is it EXACTLY 3 short paragraphs? (not 2, not 4)\n"
+    "- Is it under 80 words total?\n"
+    "- Does it contain ZERO banned phrases?\n"
+    "- Is there ZERO meta-commentary, explanation, or notes?\n"
+    "- Would it look normal if pasted directly into Gmail and sent?\n"
+    "If any answer is no, fix it before outputting."
 )
 
 
@@ -161,8 +180,11 @@ def build_user_prompt(
         )
 
     parts.append(
-        "\nRemember: output ONLY the email body. 3 short paragraphs. "
-        "Max 80 words. No markdown. No commentary. No refusals."
+        "\nCRITICAL: Output ONLY the email body. Exactly 3 short paragraphs. "
+        "Max 80 words total. No markdown. No commentary. No explanations. "
+        "No notes after the email. No 'here is' preamble. "
+        "Your entire output will be pasted directly into an email client and sent. "
+        "Do NOT add anything that would confuse the recipient."
     )
 
     return "\n".join(parts)

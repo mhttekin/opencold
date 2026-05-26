@@ -40,6 +40,8 @@ def _empty_config() -> dict:
         "name": "",
         "email": "",
         "api_keys": {},
+        "providers": {},
+        "default_provider": "",
         "active_profile": DEFAULT_PROFILE,
         "profiles": {},
     }
@@ -56,6 +58,25 @@ def _migrate(cfg: dict) -> dict:
     """Migrate from old profile-centric format to identity+hats format."""
     # Already new format
     if "name" in cfg and "profiles" in cfg:
+        # Migrate api_keys → providers if not done yet
+        if "providers" not in cfg and cfg.get("api_keys"):
+            cfg["providers"] = {}
+            for name, key in cfg["api_keys"].items():
+                ptype = "anthropic" if "anthropic" in name else (
+                    "openai" if "openai" in name else "proxy"
+                )
+                default_model = "claude-sonnet-4-6" if ptype == "anthropic" else (
+                    "gpt-4o" if ptype == "openai" else ""
+                )
+                cfg["providers"][name] = {
+                    "type": ptype,
+                    "api_key": key,
+                    "default_model": default_model,
+                }
+            cfg["default_provider"] = "anthropic" if "anthropic" in cfg["providers"] else (
+                next(iter(cfg["providers"]), "")
+            )
+            save_config(cfg)
         return cfg
 
     # Old format: profiles held full_name, email, api_keys per profile
@@ -142,7 +163,13 @@ def set_identity(name: str | None = None, email: str | None = None) -> None:
 
 
 def get_api_key(provider: str = "anthropic") -> str | None:
-    return load_config().get("api_keys", {}).get(provider)
+    cfg = load_config()
+    # New format first
+    prov = cfg.get("providers", {}).get(provider)
+    if prov:
+        return prov.get("api_key")
+    # Legacy fallback
+    return cfg.get("api_keys", {}).get(provider)
 
 
 def set_api_key(provider: str, key: str) -> None:
@@ -153,6 +180,77 @@ def set_api_key(provider: str, key: str) -> None:
 
 def get_all_api_keys() -> dict:
     return dict(load_config().get("api_keys", {}))
+
+
+# ── providers ────────────────────────────────────────────────────────────────
+
+PROVIDER_TYPES = ("anthropic", "openai", "proxy")
+
+DEFAULT_MODELS = {
+    "anthropic": "claude-sonnet-4-6",
+    "openai": "gpt-4o",
+    "proxy": "",
+}
+
+
+def get_providers() -> dict:
+    """Return all configured providers."""
+    return dict(load_config().get("providers", {}))
+
+
+def get_provider(name: str) -> dict | None:
+    """Return a single provider's config dict."""
+    return load_config().get("providers", {}).get(name)
+
+
+def add_provider(name: str, provider_type: str, api_key: str,
+                 default_model: str = "", base_url: str = "",
+                 max_tokens: int = 0) -> None:
+    """Add or update a provider."""
+    cfg = load_config()
+    entry = {
+        "type": provider_type,
+        "api_key": api_key,
+        "default_model": default_model or DEFAULT_MODELS.get(provider_type, ""),
+    }
+    if base_url:
+        entry["base_url"] = base_url
+    if max_tokens:
+        entry["max_tokens"] = max_tokens
+    cfg.setdefault("providers", {})[name] = entry
+    # Also write to legacy api_keys for backward compat
+    cfg.setdefault("api_keys", {})[name] = api_key
+    # Set as default if it's the first provider
+    if not cfg.get("default_provider"):
+        cfg["default_provider"] = name
+    save_config(cfg)
+
+
+def remove_provider(name: str) -> None:
+    """Remove a provider by name."""
+    cfg = load_config()
+    providers = cfg.get("providers", {})
+    if name not in providers:
+        raise KeyError(f"Provider '{name}' does not exist.")
+    del providers[name]
+    cfg.get("api_keys", {}).pop(name, None)
+    if cfg.get("default_provider") == name:
+        cfg["default_provider"] = next(iter(providers), "")
+    save_config(cfg)
+
+
+def get_default_provider_name() -> str:
+    """Return the name of the default provider."""
+    return load_config().get("default_provider", "") or "anthropic"
+
+
+def set_default_provider(name: str) -> None:
+    """Set the default provider."""
+    cfg = load_config()
+    if name not in cfg.get("providers", {}):
+        raise KeyError(f"Provider '{name}' does not exist.")
+    cfg["default_provider"] = name
+    save_config(cfg)
 
 
 # ── active profile ───────────────────────────────────────────────────────────

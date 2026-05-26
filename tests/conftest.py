@@ -28,6 +28,14 @@ def seeded_config(tmp_config):
         "name": "Test User",
         "email": "test@example.com",
         "api_keys": {"anthropic": "sk-ant-test-key-1234567890"},
+        "providers": {
+            "anthropic": {
+                "type": "anthropic",
+                "api_key": "sk-ant-test-key-1234567890",
+                "default_model": "claude-sonnet-4-6",
+            },
+        },
+        "default_provider": "anthropic",
         "active_profile": "default",
         "profiles": {
             "default": {

@@ -187,6 +187,74 @@ class TestMigration:
         assert cfg["api_keys"]["anthropic"] == "sk-multi"
         assert cfg["profiles"]["work"]["company"] == "WorkCo"
 
+    def test_migrate_api_keys_to_providers(self, tmp_config):
+        """Old config with api_keys but no providers should auto-migrate."""
+        old = {
+            "name": "Test",
+            "email": "t@t.com",
+            "api_keys": {"anthropic": "sk-ant-123"},
+            "active_profile": "default",
+            "profiles": {"default": {"company": "", "role": "", "bio": "", "pitch": "", "color": 75}},
+        }
+        tmp_config.write_text(json.dumps(old))
+        cfg = config.load_config()
+        assert "providers" in cfg
+        assert "anthropic" in cfg["providers"]
+        assert cfg["providers"]["anthropic"]["type"] == "anthropic"
+        assert cfg["providers"]["anthropic"]["api_key"] == "sk-ant-123"
+        assert cfg["default_provider"] == "anthropic"
+
+
+class TestProviders:
+    def test_add_provider(self, tmp_config):
+        config.add_provider("anthropic", "anthropic", "sk-ant-test", "claude-sonnet-4-6")
+        providers = config.get_providers()
+        assert "anthropic" in providers
+        assert providers["anthropic"]["type"] == "anthropic"
+        assert providers["anthropic"]["api_key"] == "sk-ant-test"
+        assert providers["anthropic"]["default_model"] == "claude-sonnet-4-6"
+
+    def test_add_provider_sets_default_if_first(self, tmp_config):
+        config.add_provider("openai", "openai", "sk-test", "gpt-4o")
+        assert config.get_default_provider_name() == "openai"
+
+    def test_add_proxy_with_base_url(self, tmp_config):
+        config.add_provider("hf", "proxy", "sk-hf", "llama-3", "https://hf.co/v1")
+        prov = config.get_provider("hf")
+        assert prov["base_url"] == "https://hf.co/v1"
+        assert prov["type"] == "proxy"
+
+    def test_remove_provider(self, tmp_config):
+        config.add_provider("anthropic", "anthropic", "sk-ant", "claude-sonnet-4-6")
+        config.add_provider("openai", "openai", "sk-oai", "gpt-4o")
+        config.remove_provider("openai")
+        assert "openai" not in config.get_providers()
+
+    def test_remove_default_picks_new_default(self, tmp_config):
+        config.add_provider("anthropic", "anthropic", "sk-ant", "claude-sonnet-4-6")
+        config.add_provider("openai", "openai", "sk-oai", "gpt-4o")
+        config.set_default_provider("openai")
+        config.remove_provider("openai")
+        assert config.get_default_provider_name() == "anthropic"
+
+    def test_remove_nonexistent_raises(self, tmp_config):
+        with pytest.raises(KeyError):
+            config.remove_provider("nope")
+
+    def test_set_default_provider(self, tmp_config):
+        config.add_provider("anthropic", "anthropic", "sk-ant", "claude-sonnet-4-6")
+        config.add_provider("openai", "openai", "sk-oai", "gpt-4o")
+        config.set_default_provider("openai")
+        assert config.get_default_provider_name() == "openai"
+
+    def test_set_default_nonexistent_raises(self, tmp_config):
+        with pytest.raises(KeyError):
+            config.set_default_provider("nope")
+
+    def test_get_api_key_from_providers(self, tmp_config):
+        config.add_provider("anthropic", "anthropic", "sk-from-provider", "claude-sonnet-4-6")
+        assert config.get_api_key("anthropic") == "sk-from-provider"
+
     def test_new_format_untouched(self, tmp_config):
         new = {
             "name": "New User",
