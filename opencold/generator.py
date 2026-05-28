@@ -187,6 +187,52 @@ def _clean_output(text: str) -> str:
     return text.strip()
 
 
+def _clean_subject(subject: str) -> str:
+    """Clean up a generated subject line."""
+    subject = subject.strip().strip('"').strip("'")
+    # Remove em/en dashes
+    subject = subject.replace('—', ',').replace('–', ',')
+    subject = re.sub(r',\s*,', ',', subject)
+    # Strip trailing punctuation that looks weird in subject
+    subject = subject.rstrip('.')
+    return subject
+
+
+# ── Subject/body splitting ───────────────────────────────────────────────────
+
+
+def _split_subject_body(text: str) -> tuple[str, str]:
+    """Split model output into (subject, body).
+
+    Expected format: first line is subject, blank line, then body.
+    Handles common model quirks: 'Subject: ' prefix, no blank line, etc.
+    """
+    text = text.strip()
+
+    # Try splitting on first blank line
+    if "\n\n" in text:
+        first, rest = text.split("\n\n", 1)
+    elif "\n" in text:
+        first, rest = text.split("\n", 1)
+    else:
+        # Single block — no subject line, treat whole thing as body
+        return "", text
+
+    first = first.strip()
+    rest = rest.strip()
+
+    # Strip common prefixes models prepend
+    for prefix in ("Subject:", "Subject Line:", "SUBJECT:", "Re:"):
+        if first.lower().startswith(prefix.lower()):
+            first = first[len(prefix):].strip()
+
+    # Sanity check: if "subject" is too long, it's probably body text
+    if len(first.split()) > 12:
+        return "", text
+
+    return first, rest
+
+
 # ── Unified interface ────────────────────────────────────────────────────────
 
 
@@ -196,8 +242,10 @@ def generate_email(
     user_prompt: str,
     model: str | None = None,
     max_tokens: int | None = None,
-) -> str:
+) -> dict:
     """Generate an email using the specified provider configuration.
+
+    Returns {"subject": str, "body": str}.
 
     provider_config: {"type": "anthropic"|"openai"|"proxy", "api_key": "...",
                       "default_model": "...", "base_url": "...", "max_tokens": N}
@@ -217,7 +265,8 @@ def generate_email(
     else:
         raise ValueError(f"Unknown provider type: {provider_type}")
 
-    return _clean_output(raw)
+    subject, body = _split_subject_body(raw)
+    return {"subject": _clean_subject(subject), "body": _clean_output(body)}
 
 
 def generate_with_retry(
@@ -226,8 +275,8 @@ def generate_with_retry(
     user_prompt: str,
     model: str | None = None,
     max_tokens: int | None = None,
-) -> str:
-    """Generate with a single retry on rate-limit errors."""
+) -> dict:
+    """Generate with a single retry on rate-limit errors. Returns {"subject": str, "body": str}."""
     try:
         return generate_email(provider_config, system_prompt, user_prompt, model, max_tokens)
     except anthropic.RateLimitError:

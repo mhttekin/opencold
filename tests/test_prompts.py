@@ -123,7 +123,7 @@ class TestBuildUserPrompt:
     def test_always_includes_output_reminder(self):
         campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
         prompt = build_user_prompt(self.ROW, self.IDENTITY, self.PROFILE, campaign)
-        assert "ONLY the email body" in prompt
+        assert "subject line" in prompt.lower()
 
     def test_includes_structure_hint(self):
         campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}

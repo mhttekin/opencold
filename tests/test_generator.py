@@ -30,13 +30,17 @@ PROXY_CONFIG = {"type": "proxy", "api_key": "sk-proxy", "default_model": "llama-
 
 class TestGenerateEmail:
     @patch("opencold.generator.anthropic.Anthropic")
-    def test_anthropic_returns_text(self, MockAnthropic):
+    def test_anthropic_returns_dict(self, MockAnthropic):
         client = MagicMock()
-        client.messages.create.return_value = _mock_anthropic_response("Hi Alice, great email here.")
+        client.messages.create.return_value = _mock_anthropic_response(
+            "Quick question\n\nHi Alice, great email here."
+        )
         MockAnthropic.return_value = client
 
         result = generator.generate_email(ANTHROPIC_CONFIG, "system", "user prompt")
-        assert result == "Hi Alice, great email here."
+        assert isinstance(result, dict)
+        assert result["subject"] == "Quick question"
+        assert "great email here" in result["body"]
 
     @patch("opencold.generator.anthropic.Anthropic")
     def test_anthropic_passes_params(self, MockAnthropic):
@@ -57,21 +61,23 @@ class TestGenerateEmail:
 
     @patch("opencold.generator._generate_openai")
     def test_openai_dispatch(self, mock_gen):
-        mock_gen.return_value = "Hello from OpenAI"
+        mock_gen.return_value = "Great subject\n\nHello from OpenAI"
         result = generator.generate_email(OPENAI_CONFIG, "sys", "user")
-        assert result == "Hello from OpenAI"
+        assert result["subject"] == "Great subject"
+        assert "Hello from OpenAI" in result["body"]
         mock_gen.assert_called_once_with("sk-test", "sys", "user", "gpt-4o", 1024, None)
 
     @patch("opencold.generator._generate_openai")
     def test_proxy_dispatch_with_base_url(self, mock_gen):
-        mock_gen.return_value = "Hello from proxy"
+        mock_gen.return_value = "Hey there\n\nHello from proxy"
         result = generator.generate_email(PROXY_CONFIG, "sys", "user")
-        assert result == "Hello from proxy"
+        assert result["subject"] == "Hey there"
+        assert "Hello from proxy" in result["body"]
         mock_gen.assert_called_once_with("sk-proxy", "sys", "user", "llama-3", 1024, "https://proxy.test/v1")
 
     @patch("opencold.generator._generate_openai")
     def test_proxy_uses_config_max_tokens(self, mock_gen):
-        mock_gen.return_value = "Hello"
+        mock_gen.return_value = "Subj\n\nHello"
         proxy_cfg = {**PROXY_CONFIG, "max_tokens": 4096}
         generator.generate_email(proxy_cfg, "sys", "user")
         call_kwargs = mock_gen.call_args[0]
@@ -79,7 +85,7 @@ class TestGenerateEmail:
 
     @patch("opencold.generator._generate_openai")
     def test_explicit_max_tokens_overrides_config(self, mock_gen):
-        mock_gen.return_value = "Hello"
+        mock_gen.return_value = "Subj\n\nHello"
         proxy_cfg = {**PROXY_CONFIG, "max_tokens": 4096}
         generator.generate_email(proxy_cfg, "sys", "user", max_tokens=8192)
         call_kwargs = mock_gen.call_args[0]
@@ -118,13 +124,14 @@ class TestGenerateWithRetry:
                 response=mock_resp,
                 body={"error": {"type": "rate_limit_error", "message": "rate limited"}},
             ),
-            _mock_anthropic_response("retry success"),
+            _mock_anthropic_response("Good subject\n\nretry success"),
         ]
         MockAnthropic.return_value = client
 
         with patch("opencold.generator.time.sleep"):
             result = generator.generate_with_retry(ANTHROPIC_CONFIG, "sys", "user")
-            assert result == "retry success"
+            assert isinstance(result, dict)
+            assert "retry success" in result["body"]
             assert client.messages.create.call_count == 2
 
 
@@ -320,6 +327,53 @@ class TestCleanOutput:
     def test_keeps_valid_3_paragraphs(self):
         text = "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
         assert generator._clean_output(text) == text
+
+
+class TestSplitSubjectBody:
+    def test_normal_format(self):
+        subject, body = generator._split_subject_body("Quick chat\n\nFirst para.\n\nSecond.")
+        assert subject == "Quick chat"
+        assert "First para." in body
+
+    def test_strips_subject_prefix(self):
+        subject, body = generator._split_subject_body("Subject: Quick chat\n\nBody here.")
+        assert subject == "Quick chat"
+        assert "Body here." in body
+
+    def test_strips_subject_line_prefix(self):
+        subject, body = generator._split_subject_body("Subject Line: Hello\n\nBody.")
+        assert subject == "Hello"
+
+    def test_no_blank_line_uses_newline(self):
+        subject, body = generator._split_subject_body("Quick chat\nFirst para.")
+        assert subject == "Quick chat"
+        assert "First para." in body
+
+    def test_no_newline_returns_empty_subject(self):
+        subject, body = generator._split_subject_body("Just a single block of text")
+        assert subject == ""
+        assert body == "Just a single block of text"
+
+    def test_long_first_line_treated_as_body(self):
+        long_line = "This is way too long to be a subject line and should be treated as body text entirely"
+        subject, body = generator._split_subject_body(f"{long_line}\n\nSecond para.")
+        assert subject == ""
+        assert long_line in body
+
+
+class TestCleanSubject:
+    def test_strips_quotes(self):
+        assert generator._clean_subject('"Hello there"') == "Hello there"
+
+    def test_strips_trailing_period(self):
+        assert generator._clean_subject("Quick question.") == "Quick question"
+
+    def test_replaces_em_dashes(self):
+        result = generator._clean_subject("Sales — Q4")
+        assert "—" not in result
+
+    def test_clean_subject_passthrough(self):
+        assert generator._clean_subject("Quick question") == "Quick question"
 
 
 class TestDefaults:

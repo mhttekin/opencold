@@ -254,6 +254,58 @@ def _list_csv_files() -> list[str]:
     )
 
 
+def _select_proxy_provider(proxy_providers: dict) -> str | None:
+    """Interactive selector for proxy providers. Returns provider name or None."""
+    names = list(proxy_providers.keys())
+    total = len(names)
+    selected = [0]
+
+    kb = KeyBindings()
+
+    @kb.add("up")
+    @kb.add("k")
+    def _up(event):
+        selected[0] = (selected[0] - 1) % total
+
+    @kb.add("down")
+    @kb.add("j")
+    def _down(event):
+        selected[0] = (selected[0] + 1) % total
+
+    @kb.add("enter")
+    def _select(event):
+        event.app.exit(result=selected[0])
+
+    @kb.add("escape")
+    @kb.add("q")
+    def _quit(event):
+        event.app.exit(result=None)
+
+    def _get_text():
+        lines = []
+        lines.append(("", "\n"))
+        lines.append(("bold", "  Select proxy provider"))
+        lines.append(("", f"  {DIM}(↑↓ move, Enter select, Esc cancel){RESET}\n\n"))
+        for i, name in enumerate(names):
+            prov = proxy_providers[name]
+            base = prov.get("base_url", "")
+            detail = f" {DIM}({base}){RESET}" if base else ""
+            if i == selected[0]:
+                lines.append(("fg:cyan bold", f"  ▸ {name}"))
+                lines.append(("", f"{detail}\n"))
+            else:
+                lines.append(("", f"    {name}{detail}\n"))
+        return FormattedText(lines)
+
+    control = FormattedTextControl(_get_text)
+    layout = Layout(Window(content=control, always_hide_cursor=True))
+    result = Application(layout=layout, key_bindings=kb, full_screen=False).run()
+
+    if result is None:
+        return None
+    return names[result]
+
+
 def _select_csv_file() -> str | None:
     """Interactive file selector for CSV files with arrow keys."""
     csv_files = _list_csv_files()
@@ -920,10 +972,12 @@ def _write_results(rows: list[dict], results: list[dict], output: str, fmt: str)
             name = f"{r['first_name']} {r['last_name']}"
             typer.echo(f"\n{'='*60}")
             typer.echo(f"To: {name} <{r['email']}> @ {r['company']}")
+            if r.get("generated_subject"):
+                typer.echo(f"Subject: {r['generated_subject']}")
             typer.echo(f"{'='*60}")
             typer.echo(r["generated_email"])
     else:
-        fieldnames = list(rows[0].keys()) + ["generated_email"]
+        fieldnames = list(rows[0].keys()) + ["generated_subject", "generated_email"]
         dest = sys.stdout if output == "-" else open(output, "w", newline="", encoding="utf-8")
         writer = csv.DictWriter(dest, fieldnames=fieldnames)
         writer.writeheader()
@@ -957,7 +1011,26 @@ def do_run(
 
     if model:
         detected = generator.detect_provider_for_model(model, providers)
-        provider_name = detected or default_provider_name
+        if detected:
+            provider_name = detected
+        else:
+            # Unknown model prefix — route to a proxy provider
+            proxy_providers = {n: p for n, p in providers.items() if p.get("type") == "proxy"}
+            if len(proxy_providers) > 1:
+                picked = _select_proxy_provider(proxy_providers)
+                if not picked:
+                    typer.echo(f"  {DIM}Cancelled.{RESET}")
+                    return
+                provider_name = picked
+            elif len(proxy_providers) == 1:
+                provider_name = next(iter(proxy_providers))
+            else:
+                typer.echo(
+                    f"  {RED}Error:{RESET} Model '{model}' doesn't match any configured provider.\n"
+                    f"  Known prefixes: claude-* → anthropic, gpt-*/o1-*/o3-* → openai.\n"
+                    f"  For custom models, add a proxy provider first: provider add"
+                )
+                return
     else:
         provider_name = default_provider_name
 
@@ -1045,12 +1118,13 @@ def do_run(
         if has_websites:
             website_text = website_cache.get(row.get("website", ""))
         user_prompt = _build_prompt(row, website_text)
-        email_text = generator.generate_with_retry(
+        result = generator.generate_with_retry(
             provider_config, sys_prompt, user_prompt, effective_model, max_tokens
         )
+        body = result["body"]
         if sender_name:
-            email_text = f"{email_text}\n\n{sender_name}"
-        return email_text
+            body = f"{body}\n\n{sender_name}"
+        return {"subject": result["subject"], "body": body}
 
     # Process in parallel batches
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1087,10 +1161,10 @@ def do_run(
             result = batch_results[idx]
             if isinstance(result, Exception):
                 typer.echo(f"  [{idx + 1}/{len(rows)}] {name} ... failed: {result}")
-                results.append({**row, "generated_email": f"ERROR: {result}"})
+                results.append({**row, "generated_subject": "", "generated_email": f"ERROR: {result}"})
             else:
                 typer.echo(f"  [{idx + 1}/{len(rows)}] {name} ... done")
-                results.append({**row, "generated_email": result})
+                results.append({**row, "generated_subject": result["subject"], "generated_email": result["body"]})
 
         # Delay between batches, not between individual requests
         if batch_start + batch_size < len(rows):
@@ -1109,7 +1183,10 @@ def do_run(
 
 
 def _do_send_results(results: list[dict], subject: str = "") -> None:
-    """Send generated emails via SMTP."""
+    """Send generated emails via SMTP.
+
+    Subject priority: --subject flag > per-email generated_subject > prompt user.
+    """
     smtp_config = config.get_smtp()
     if not smtp_config:
         typer.echo(f"\n  {YELLOW}SMTP not configured.{RESET} Let's set it up now.\n")
@@ -1119,22 +1196,29 @@ def _do_send_results(results: list[dict], subject: str = "") -> None:
             typer.echo(f"\n  {RED}SMTP setup was cancelled. Cannot send emails.{RESET}")
             return
 
-    # Ask for subject if not provided
-    if not subject:
-        subject = _ask("Email subject line")
-        if not subject:
-            typer.echo(f"  {RED}Subject is required.{RESET}")
-            return
-
     # Filter to successful emails only
     sendable = [r for r in results if not r.get("generated_email", "").startswith("ERROR:")]
     if not sendable:
         typer.echo(f"  {YELLOW}No emails to send.{RESET}")
         return
 
+    # Check if we have per-email subjects
+    has_per_email_subjects = any(r.get("generated_subject") for r in sendable)
+
+    # Determine subject strategy
+    if not subject and not has_per_email_subjects:
+        subject = _ask("Email subject line")
+        if not subject:
+            typer.echo(f"  {RED}Subject is required.{RESET}")
+            return
+
     typer.echo(f"\n  {BOLD}Sending {len(sendable)} emails...{RESET}")
     typer.echo(f"  From: {smtp_config.get('sender_name', '')} <{smtp_config['sender_email']}>")
-    typer.echo(f"  Subject: {subject}\n")
+    if subject:
+        typer.echo(f"  Subject: {subject} (all emails)")
+    else:
+        typer.echo(f"  Subject: {DIM}per-email (AI-generated){RESET}")
+    typer.echo()
 
     if not _confirm(f"Send {len(sendable)} emails?"):
         typer.echo(f"  {DIM}Cancelled.{RESET}")
@@ -1146,9 +1230,14 @@ def _do_send_results(results: list[dict], subject: str = "") -> None:
         to_email = r["email"]
         to_name = f"{r.get('first_name', '')} {r.get('last_name', '')}".strip()
         body = r["generated_email"]
+        email_subject = subject or r.get("generated_subject", "")
+        if not email_subject:
+            typer.echo(f"  {RED}✗{RESET} {to_name} <{to_email}> — no subject line")
+            failed += 1
+            continue
         try:
-            sender.send_email(smtp_config, to_email, to_name, subject, body)
-            typer.echo(f"  {GREEN}✓{RESET} {to_name} <{to_email}>")
+            sender.send_email(smtp_config, to_email, to_name, email_subject, body)
+            typer.echo(f"  {GREEN}✓{RESET} {to_name} <{to_email}> — {DIM}{email_subject}{RESET}")
             sent += 1
         except Exception as e:
             typer.echo(f"  {RED}✗{RESET} {to_name} <{to_email}> — {e}")
