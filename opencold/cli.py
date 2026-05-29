@@ -20,7 +20,7 @@ from prompt_toolkit.layout import Layout
 from prompt_toolkit.layout.containers import Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 
-from opencold import config, crawler, generator, sender
+from opencold import config, crawler, generator, sender, verifier
 from opencold.prompts import (
     SYSTEM_PROMPT,
     build_user_prompt,
@@ -284,17 +284,21 @@ def _select_proxy_provider(proxy_providers: dict) -> str | None:
     def _get_text():
         lines = []
         lines.append(("", "\n"))
-        lines.append(("bold", "  Select proxy provider"))
-        lines.append(("", f"  {DIM}(↑↓ move, Enter select, Esc cancel){RESET}\n\n"))
+        lines.append(("bold", "  Select proxy provider  "))
+        lines.append(("fg:ansibrightblack", "(↑↓ move, Enter select, Esc cancel)\n\n"))
         for i, name in enumerate(names):
             prov = proxy_providers[name]
             base = prov.get("base_url", "")
-            detail = f" {DIM}({base}){RESET}" if base else ""
             if i == selected[0]:
                 lines.append(("fg:cyan bold", f"  ▸ {name}"))
-                lines.append(("", f"{detail}\n"))
+                if base:
+                    lines.append(("fg:ansibrightblack", f" ({base})"))
+                lines.append(("", "\n"))
             else:
-                lines.append(("", f"    {name}{detail}\n"))
+                lines.append(("", f"    {name}"))
+                if base:
+                    lines.append(("fg:ansibrightblack", f" ({base})"))
+                lines.append(("", "\n"))
         return FormattedText(lines)
 
     control = FormattedTextControl(_get_text)
@@ -375,7 +379,7 @@ def _select_csv_file() -> str | None:
 class _ReplCompleter(Completer):
     """Tab-completer for the REPL: completes commands and file paths."""
 
-    _TOP_COMMANDS = ["run", "send", "smtp", "config", "profile", "provider", "help", "exit", "q"]
+    _TOP_COMMANDS = ["run", "send", "verify", "smtp", "config", "profile", "provider", "help", "exit", "q"]
     _CONFIG_SUBS = ["init", "set-key"]
     _PROFILE_SUBS = ["list", "create", "use", "delete"]
     _PROVIDER_SUBS = ["list", "add", "delete", "default"]
@@ -488,6 +492,14 @@ class _ReplCompleter(Completer):
                     if flag.startswith(current_word) and flag != current_word:
                         yield Completion(flag, start_position=-len(current_word))
                 return
+            prefix_len = len(words[0]) + 1
+            from prompt_toolkit.document import Document
+            sub_text = text[prefix_len:] if len(text) > prefix_len else ""
+            sub_doc = Document(sub_text)
+            yield from self._path_completer.get_completions(sub_doc, complete_event)
+
+        # After "verify", complete file paths
+        if first == "verify":
             prefix_len = len(words[0]) + 1
             from prompt_toolkit.document import Document
             sub_text = text[prefix_len:] if len(text) > prefix_len else ""
@@ -1059,6 +1071,33 @@ def do_run(
     if rows is None:
         return
 
+    # ── Verify email addresses (format + MX) ──
+    typer.echo(f"\n  Verifying {len(rows)} email(s)...")
+    domains_seen: set[str] = set()
+    invalid = []
+    for row in rows:
+        result = verifier.verify_email(row["email"])
+        domain = row["email"].split("@")[-1] if "@" in row["email"] else ""
+        if domain and domain not in domains_seen:
+            domains_seen.add(domain)
+        if not result["valid"]:
+            invalid.append((row, result["reason"]))
+
+    if invalid:
+        typer.echo(f"  {RED}{len(invalid)} invalid email(s):{RESET}")
+        for row, reason in invalid:
+            name = f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
+            typer.echo(f"    {RED}✗{RESET} {row['email']} — {reason}")
+        valid_rows = [r for r in rows if r not in [inv[0] for inv in invalid]]
+        if not valid_rows:
+            typer.echo(f"\n  {RED}No valid emails remaining.{RESET}")
+            return
+        if not _confirm(f"Continue with {len(valid_rows)}/{len(rows)} valid emails?", default=True):
+            return
+        rows = valid_rows
+    else:
+        typer.echo(f"  {GREEN}All {len(rows)} email(s) verified{RESET} ({len(domains_seen)} domain(s) checked)")
+
     use_flags = system_prompt is not None or prompt_template is not None
     campaign = None
 
@@ -1272,6 +1311,44 @@ def do_send(input_csv: str, subject: str = "") -> None:
     _do_send_results(rows, subject)
 
 
+def do_verify(input_csv: str) -> None:
+    """Verify email addresses in a CSV file."""
+    path = Path(input_csv)
+    if not path.exists():
+        typer.echo(f"  {RED}File not found:{RESET} {input_csv}")
+        return
+
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    if not rows:
+        typer.echo(f"  {RED}No rows found in {input_csv}{RESET}")
+        return
+
+    if "email" not in rows[0]:
+        typer.echo(f"  {RED}Missing 'email' column{RESET}")
+        return
+
+    typer.echo(f"\n  Verifying {len(rows)} email(s)...\n")
+
+    valid_count = 0
+    invalid_count = 0
+    for row in rows:
+        email = row["email"].strip()
+        result = verifier.verify_email(email)
+        name = f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
+        label = f"{name} <{email}>" if name else email
+        if result["valid"]:
+            typer.echo(f"  {GREEN}✓{RESET} {label}")
+            valid_count += 1
+        else:
+            typer.echo(f"  {RED}✗{RESET} {label} — {result['reason']}")
+            invalid_count += 1
+
+    typer.echo(f"\n  Valid: {valid_count}, Invalid: {invalid_count}")
+
+
 # ── SMTP setup commands ──────────────────────────────────────────────────────
 
 
@@ -1380,6 +1457,8 @@ SHELL_HELP = f"""\
 
   {GREEN}send{RESET} <output.csv>             Send emails from a previously generated CSV
       --subject <text>            Email subject line
+
+  {GREEN}verify{RESET} <file.csv>             Verify email addresses (format + MX)
 
   {GREEN}smtp setup{RESET}                   Configure SMTP settings
   {GREEN}smtp test{RESET}                    Test SMTP connection
@@ -1570,6 +1649,12 @@ def _run_shell() -> None:
                         provider_default_cmd(rest[1])
                 else:
                     typer.echo(f"Unknown provider command: {sub}")
+
+            elif cmd == "verify":
+                if not rest:
+                    typer.echo("Usage: verify <file.csv>")
+                else:
+                    do_verify(rest[0])
 
             elif cmd == "send":
                 args = _parse_send_args(rest)

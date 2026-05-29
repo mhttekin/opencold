@@ -185,7 +185,3 @@ Output adds:
 ```bash
 pytest
 ```
-
-## License
-
-MIT
