@@ -20,7 +20,7 @@ from prompt_toolkit.layout import Layout
 from prompt_toolkit.layout.containers import Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 
-from opencold import config, crawler, generator, sender, verifier
+from opencold import config, crawler, discovery, enricher, generator, quality, sender, verifier
 from opencold.prompts import (
     SYSTEM_PROMPT,
     build_user_prompt,
@@ -38,6 +38,8 @@ profile_app = typer.Typer(help="Manage named profiles.")
 app.add_typer(profile_app, name="profile")
 provider_app = typer.Typer(help="Manage LLM providers.")
 app.add_typer(provider_app, name="provider")
+smtp_app = typer.Typer(help="Manage SMTP sending configuration.")
+app.add_typer(smtp_app, name="smtp")
 
 
 # ── ANSI helpers ─────────────────────────────────────────────────────────────
@@ -110,13 +112,15 @@ def _ask(text: str, default: str = "", hide: bool = False) -> str:
 
 def _confirm(text: str, default: bool = False) -> bool:
     """Yes/no confirmation. Press ESC or Ctrl+C to cancel."""
+    if not sys.stdin.isatty():
+        return default
     yn = "Y/n" if default else "y/N"
     try:
         result = PromptSession(key_bindings=_kb).prompt(f"  {text} [{yn}]: ")
         if not result.strip():
             return default
         return result.strip().lower() in ("y", "yes")
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError, OSError):
         raise Cancelled()
 
 
@@ -379,7 +383,7 @@ def _select_csv_file() -> str | None:
 class _ReplCompleter(Completer):
     """Tab-completer for the REPL: completes commands and file paths."""
 
-    _TOP_COMMANDS = ["run", "send", "verify", "smtp", "config", "profile", "provider", "help", "exit", "q"]
+    _TOP_COMMANDS = ["discover", "run", "prepare", "draft", "review", "send", "verify", "smtp", "config", "profile", "provider", "help", "exit", "q"]
     _CONFIG_SUBS = ["init", "set-key"]
     _PROFILE_SUBS = ["list", "create", "use", "delete"]
     _PROVIDER_SUBS = ["list", "add", "delete", "default"]
@@ -464,20 +468,48 @@ class _ReplCompleter(Completer):
                                 yield Completion(name, start_position=-len(partial))
             return
 
-        # After "run", complete file paths and --flags
-        if first == "run":
+        # After "run"/"draft", complete file paths and --flags
+        if first in ("run", "draft"):
             current_word = words[-1] if not text.endswith(" ") else ""
             # Suggest --flags when user starts typing with -
             if current_word.startswith("-"):
                 run_flags = [
                     "--model", "--max-tokens", "--output", "--format",
-                    "--system-prompt", "--template", "--delay", "--send",
+                    "--system-prompt", "--template", "--delay", "--workers", "--send",
                 ]
                 for flag in run_flags:
                     if flag.startswith(current_word) and flag != current_word:
                         yield Completion(flag, start_position=-len(current_word))
                 return
             # Otherwise complete file paths (CSV files)
+            prefix_len = len(words[0]) + 1
+            from prompt_toolkit.document import Document
+            sub_text = text[prefix_len:] if len(text) > prefix_len else ""
+            sub_doc = Document(sub_text)
+            yield from self._path_completer.get_completions(sub_doc, complete_event)
+
+        # After "discover", complete source files and --flags
+        if first == "discover":
+            current_word = words[-1] if not text.endswith(" ") else ""
+            if current_word.startswith("-"):
+                for flag in ["--icp", "--output", "--limit", "--source-limit", "--require-contact", "--guess-role-email", "--max-pages", "--workers"]:
+                    if flag.startswith(current_word) and flag != current_word:
+                        yield Completion(flag, start_position=-len(current_word))
+                return
+            prefix_len = len(words[0]) + 1
+            from prompt_toolkit.document import Document
+            sub_text = text[prefix_len:] if len(text) > prefix_len else ""
+            sub_doc = Document(sub_text)
+            yield from self._path_completer.get_completions(sub_doc, complete_event)
+
+        # After "prepare", complete file paths and --flags
+        if first == "prepare":
+            current_word = words[-1] if not text.endswith(" ") else ""
+            if current_word.startswith("-"):
+                for flag in ["--output", "--max-pages", "--workers"]:
+                    if flag.startswith(current_word) and flag != current_word:
+                        yield Completion(flag, start_position=-len(current_word))
+                return
             prefix_len = len(words[0]) + 1
             from prompt_toolkit.document import Document
             sub_text = text[prefix_len:] if len(text) > prefix_len else ""
@@ -498,8 +530,8 @@ class _ReplCompleter(Completer):
             sub_doc = Document(sub_text)
             yield from self._path_completer.get_completions(sub_doc, complete_event)
 
-        # After "verify", complete file paths
-        if first == "verify":
+        # After "verify"/"review", complete file paths
+        if first in ("verify", "review"):
             prefix_len = len(words[0]) + 1
             from prompt_toolkit.document import Document
             sub_text = text[prefix_len:] if len(text) > prefix_len else ""
@@ -715,6 +747,7 @@ _PROVIDER_CHOICES = [
     ("Anthropic", "anthropic", "claude-sonnet-4-6"),
     ("OpenAI", "openai", "gpt-4o"),
     ("Proxy (OpenAI-compatible)", "proxy", ""),
+    ("Serper (for discovery)", "serper", ""),
 ]
 
 
@@ -795,12 +828,16 @@ def provider_list_cmd() -> None:
         key = prov.get("api_key", "")
         masked = key[:8] + "..." + key[-4:] if len(key) > 12 else "***"
         model = prov.get("default_model", "")
+        ptype = prov.get("type", "")
         is_default = name == default
         marker = f"  {CYAN}\u2190 default{RESET}" if is_default else ""
         check = f"{GREEN}\u2713{RESET}" if is_default else "\u25cf"
         base_url = prov.get("base_url", "")
         url_info = f"  {DIM}{base_url}{RESET}" if base_url else ""
-        typer.echo(f"  {check} {BOLD}{name}{RESET}  {DIM}{masked}{RESET}  ({model}){marker}{url_info}")
+        if ptype == "serper":
+            typer.echo(f"  {check} {BOLD}{name}{RESET}  {DIM}{masked}{RESET}  {DIM}(discovery search){RESET}")
+        else:
+            typer.echo(f"  {check} {BOLD}{name}{RESET}  {DIM}{masked}{RESET}  ({model}){marker}{url_info}")
 
 
 @provider_app.command("add")
@@ -818,6 +855,12 @@ def provider_add_cmd() -> None:
         api_key = _ask("API key", hide=True)
         if not api_key:
             typer.echo(f"  {DIM}API key is required.{RESET}")
+            return
+
+        # Serper is a search API, not an LLM — skip model/tokens
+        if ptype == "serper":
+            config.add_provider("serper", ptype, api_key)
+            typer.echo(f"\n  {GREEN}\u2713{RESET} serper added. Discovery will now use Google search.")
             return
 
         default_model = _ask("Default model", default=suggested_model)
@@ -913,7 +956,7 @@ def _has_enough_context(campaign: dict) -> bool:
     return bool(campaign.get("description") and campaign.get("pitch"))
 
 
-def _read_csv(path: str) -> list[dict]:
+def _read_csv(path: str, require_email: bool = True) -> list[dict]:
     try:
         with open(path, newline="", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
@@ -923,7 +966,9 @@ def _read_csv(path: str) -> list[dict]:
     if not rows:
         typer.echo("Error: CSV is empty.", err=True)
         raise typer.Exit(1)
-    required = {"email", "first_name", "last_name", "company"}
+    required = {"first_name", "last_name", "company"}
+    if require_email:
+        required.add("email")
     missing = required - set(rows[0].keys())
     if missing:
         typer.echo(f"Error: CSV missing columns: {', '.join(missing)}", err=True)
@@ -931,16 +976,21 @@ def _read_csv(path: str) -> list[dict]:
     return rows
 
 
-def _validate_csv(rows: list[dict]) -> list[dict] | None:
+def _validate_csv(rows: list[dict], allow_missing_email: bool = False) -> list[dict] | None:
     """Validate CSV rows for email and website. Returns filtered rows or None to abort."""
     # Check email column — must have at least one valid email
     missing_email = [r for r in rows if not r.get("email", "").strip()]
-    if missing_email:
+    if missing_email and not allow_missing_email:
         typer.echo(
             f"\n  {RED}Error:{RESET} {len(missing_email)} row(s) have no email address. "
             f"Cannot proceed without email addresses."
         )
         return None
+    if missing_email and allow_missing_email:
+        typer.echo(
+            f"\n  {YELLOW}Warning:{RESET} {len(missing_email)} row(s) have no email address. "
+            f"They can be enriched and reviewed, but cannot be drafted or sent yet."
+        )
 
     # Check website column
     has_website_col = "website" in rows[0]
@@ -972,6 +1022,79 @@ def _validate_csv(rows: list[dict]) -> list[dict] | None:
     return rows
 
 
+def _is_enriched(rows: list[dict]) -> bool:
+    return bool(rows and "personalization_facts" in rows[0])
+
+
+def _clamp_workers(workers: int) -> int:
+    """Keep parallelism useful without hammering websites or LLM APIs."""
+    return max(1, min(int(workers or 1), 8))
+
+
+def _enrich_rows(rows: list[dict], max_pages: int = 4, workers: int = 8) -> list[dict]:
+    """Enrich rows with verification, website status, and grounded facts."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    workers = _clamp_workers(workers)
+
+    websites = []
+    seen_websites = set()
+    for row in rows:
+        website = enricher.normalize_url(row.get("website", ""))
+        if website and website not in seen_websites:
+            seen_websites.add(website)
+            websites.append(website)
+
+    website_results: dict[str, dict] = {}
+    if websites:
+        worker_count = max(1, min(workers, len(websites)))
+        typer.echo(f"  Crawling {len(websites)} unique website(s) with {worker_count} worker(s)...")
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            future_to_website = {
+                executor.submit(enricher.enrich_website, website, max_pages): website
+                for website in websites
+            }
+            for future in as_completed(future_to_website):
+                website = future_to_website[future]
+                try:
+                    website_results[website] = future.result()
+                except Exception as e:
+                    website_results[website] = {
+                        "website_status": "fetch_failed",
+                        "company_summary": "",
+                        "personalization_facts": "",
+                        "source_urls": "",
+                        "personalization_score": "0",
+                        "quality_warnings": f"website_fetch_failed{enricher.FACT_SEPARATOR}{type(e).__name__}",
+                        "enrichment_json": "{}",
+                    }
+                score = website_results[website].get("personalization_score", "0")
+                status = website_results[website].get("website_status", "")
+                typer.echo(f"    {website} ... {status}, score {score}")
+
+    enriched = []
+    for idx, row in enumerate(rows, start=1):
+        name = f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
+        label = name or row.get("company", "") or row.get("email", "")
+        typer.echo(f"  [{idx}/{len(rows)}] {label}... ", nl=False)
+        enriched_row = dict(row)
+        email = row.get("email", "")
+        if email.strip():
+            email_result = verifier.verify_email(email)
+            enriched_row["verification_status"] = "valid" if email_result["valid"] else f"invalid: {email_result['reason']}"
+        else:
+            enriched_row["verification_status"] = "missing"
+        website = enricher.normalize_url(row.get("website", ""))
+        enriched_row.update(
+            website_results.get(website) or enricher.enrich_website("", max_pages=max_pages)
+        )
+        score = enriched_row.get("personalization_score", "0")
+        status = enriched_row.get("website_status", "")
+        typer.echo(f"{status}, score {score}")
+        enriched.append(enriched_row)
+    return enriched
+
+
 def _write_results(rows: list[dict], results: list[dict], output: str, fmt: str) -> None:
     if fmt == "json":
         dest = sys.stdout if output == "-" else open(output, "w", encoding="utf-8")
@@ -989,7 +1112,10 @@ def _write_results(rows: list[dict], results: list[dict], output: str, fmt: str)
             typer.echo(f"{'='*60}")
             typer.echo(r["generated_email"])
     else:
-        fieldnames = list(rows[0].keys()) + ["generated_subject", "generated_email"]
+        fieldnames = list(rows[0].keys())
+        for key in ("quality_warnings", "generated_subject", "generated_email"):
+            if key not in fieldnames:
+                fieldnames.append(key)
         dest = sys.stdout if output == "-" else open(output, "w", newline="", encoding="utf-8")
         writer = csv.DictWriter(dest, fieldnames=fieldnames)
         writer.writeheader()
@@ -1011,6 +1137,8 @@ def do_run(
     prompt_template: str | None = None,
     delay: float = 0.5,
     send: bool = False,
+    require_enriched: bool = False,
+    workers: int = 5,
 ) -> None:
     """Core run logic shared by the CLI command and the REPL."""
     _ensure_config()
@@ -1057,6 +1185,7 @@ def do_run(
             return
 
     effective_model = model or provider_config.get("default_model") or generator.DEFAULT_MODEL
+    workers = _clamp_workers(workers)
 
     if provider_config.get("type") == "proxy":
         typer.echo(
@@ -1069,6 +1198,13 @@ def do_run(
     # Validate email and website columns
     rows = _validate_csv(rows)
     if rows is None:
+        return
+
+    if require_enriched and not _is_enriched(rows):
+        typer.echo(
+            f"\n  {RED}Error:{RESET} draft expects a prepared CSV with "
+            f"'personalization_facts'. Run: prepare {input_csv} -o enriched.csv"
+        )
         return
 
     # ── Verify email addresses (format + MX) ──
@@ -1111,33 +1247,18 @@ def do_run(
         typer.echo(f"\n  Campaign: {BOLD}{campaign['title']}{RESET}")
         sys_prompt = SYSTEM_PROMPT
 
-    # ── Crawl websites if column present ──
+    # ── Enrich websites if this is a raw leads file ──
     has_websites = "website" in rows[0]
-    website_cache: dict[str, str | None] = {}
-
-    if has_websites:
-        urls = list({row["website"] for row in rows if row.get("website", "").strip()})
-        if urls:
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-            typer.echo(f"\n  Crawling {len(urls)} unique website(s)...\n")
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                future_to_url = {executor.submit(crawler.crawl_website, url): url for url in urls}
-                for future in as_completed(future_to_url):
-                    url = future_to_url[future]
-                    try:
-                        text = future.result()
-                    except Exception:
-                        text = None
-                    website_cache[url] = text
-                    if text:
-                        typer.echo(f"    {url} ... ok ({len(text)} chars)")
-                    else:
-                        typer.echo(f"    {url} ... skipped (no content)")
+    if has_websites and not _is_enriched(rows):
+        typer.echo(f"\n  Preparing enriched facts from company websites...\n")
+        rows = _enrich_rows(rows, workers=workers)
+    elif _is_enriched(rows):
+        typer.echo(f"\n  Using prepared facts from input CSV; skipping website enrichment.")
 
     typer.echo(f"\n  Processing {len(rows)} contacts with '{effective_model}' ({provider_name})...\n")
     results = []
     sender_name = identity.get("name", "")
-    batch_size = 5
+    batch_size = workers
 
     def _build_prompt(row, website_text):
         if use_flags and prompt_template:
@@ -1148,14 +1269,21 @@ def do_run(
                 f"at {row['company']}. Their email is {row['email']}."
             )
         elif campaign and _has_enough_context(campaign):
-            return build_user_prompt(row, identity, profile, campaign, website_text)
+            return build_user_prompt(
+                row,
+                identity,
+                profile,
+                campaign,
+                website_text,
+                personalization_facts=row.get("personalization_facts", ""),
+            )
         else:
             return build_template_prompt(row, identity, profile)
 
     def _generate_one(row):
         website_text = None
-        if has_websites:
-            website_text = website_cache.get(row.get("website", ""))
+        if has_websites and not row.get("personalization_facts"):
+            website_text = crawler.crawl_website(row.get("website", ""))
         user_prompt = _build_prompt(row, website_text)
         result = generator.generate_with_retry(
             provider_config, sys_prompt, user_prompt, effective_model, max_tokens
@@ -1200,10 +1328,22 @@ def do_run(
             result = batch_results[idx]
             if isinstance(result, Exception):
                 typer.echo(f"  [{idx + 1}/{len(rows)}] {name} ... failed: {result}")
-                results.append({**row, "generated_subject": "", "generated_email": f"ERROR: {result}"})
+                warnings = quality.merge_warnings(row.get("quality_warnings", ""), ["generation_failed"])
+                results.append({**row, "quality_warnings": warnings, "generated_subject": "", "generated_email": f"ERROR: {result}"})
             else:
                 typer.echo(f"  [{idx + 1}/{len(rows)}] {name} ... done")
-                results.append({**row, "generated_subject": result["subject"], "generated_email": result["body"]})
+                draft_warnings = quality.evaluate_draft(
+                    result["subject"],
+                    result["body"],
+                    row.get("personalization_facts", ""),
+                )
+                warnings = quality.merge_warnings(row.get("quality_warnings", ""), draft_warnings)
+                results.append({
+                    **row,
+                    "quality_warnings": warnings,
+                    "generated_subject": result["subject"],
+                    "generated_email": result["body"],
+                })
 
         # Delay between batches, not between individual requests
         if batch_start + batch_size < len(rows):
@@ -1309,6 +1449,138 @@ def do_send(input_csv: str, subject: str = "") -> None:
         return
 
     _do_send_results(rows, subject)
+
+
+def do_prepare(input_csv: str, output: str = "enriched.csv", max_pages: int = 4, workers: int = 8) -> None:
+    """Prepare an enriched lead CSV without generating emails."""
+    rows = _read_csv(input_csv, require_email=False)
+    rows = _validate_csv(rows, allow_missing_email=True)
+    if rows is None:
+        return
+
+    typer.echo(f"\n  Enriching {len(rows)} lead(s)...\n")
+    enriched_rows = _enrich_rows(rows, max_pages=max_pages, workers=workers)
+    enricher.write_csv(enriched_rows, output)
+    typer.echo(f"\n  Enriched leads saved to: {output}")
+
+
+def do_discover(
+    sources_file: str,
+    icp: str = "",
+    output: str = "leads.csv",
+    limit: int = 50,
+    require_contact: bool = False,
+    max_pages: int = 3,
+    workers: int = 8,
+    source_limit: int = 25,
+    guess_role_email: bool = False,
+) -> None:
+    """Discover companies and source-backed contacts from public source URLs.
+
+    NOTE: This feature is experimental. Contact discovery relies on web search
+    and public page scraping which may fail due to rate limits, CAPTCHAs, or
+    site changes. Results should be reviewed before outreach.
+    """
+    sources = discovery.load_sources(sources_file)
+    if not sources:
+        typer.echo(f"  {RED}No source URLs found in {sources_file}.{RESET}")
+        return
+
+    typer.echo(f"\n  {YELLOW}[experimental]{RESET} Lead discovery — results may vary, review before outreach")
+
+    # Check search API availability
+    try:
+        from ddgs import DDGS
+        typer.echo(f"  {GREEN}\u2713{RESET} Searching with DuckDuckGo")
+    except ImportError:
+        typer.echo(f"  {YELLOW}\u26a0{RESET} ddgs package not installed. Run: {BOLD}pip install ddgs{RESET}")
+    serper_key = discovery._get_serper_key()
+    if serper_key:
+        typer.echo(f"  {GREEN}\u2713{RESET} Serper search API configured (fallback)")
+
+    import sys
+
+    def _progress(processed: int, total: int, found: int, elapsed: float) -> None:
+        if processed == 0:
+            eta_str = "calculating..."
+        else:
+            avg_per_company = elapsed / processed
+            remaining = max(total - processed, 0)
+            eta_seconds = int(avg_per_company * remaining)
+            if eta_seconds < 60:
+                eta_str = f"~{eta_seconds}s left"
+            else:
+                eta_str = f"~{eta_seconds // 60}m {eta_seconds % 60}s left"
+        sys.stderr.write(
+            f"\r  Processing {processed}/{total} companies "
+            f"| {found} leads found | {int(elapsed)}s elapsed | {eta_str}   "
+        )
+        sys.stderr.flush()
+
+    typer.echo(f"\n  Discovering leads from {len(sources)} source(s)...\n")
+    rows = discovery.discover_rows(
+        sources,
+        icp=icp,
+        limit=limit,
+        require_contact=require_contact,
+        max_pages=max_pages,
+        workers=workers,
+        source_limit=source_limit,
+        guess_role_email=guess_role_email,
+        progress_callback=_progress,
+    )
+    sys.stderr.write("\r" + " " * 80 + "\r")  # Clear progress line
+    sys.stderr.flush()
+    discovery.write_csv(rows, output)
+
+    with_contact = sum(1 for row in rows if row.get("email"))
+    linkedin_count = sum(1 for row in rows if row.get("contact_type") == "linkedin_profile")
+    linkedin_url_count = sum(
+        1 for row in rows
+        if row.get("contact_type") == "linkedin_profile"
+        and row.get("email", "").startswith("https://")
+    )
+    typer.echo(f"  Found {len(rows)} compan{'y' if len(rows) == 1 else 'ies'} ({with_contact} with contact info).")
+    if linkedin_count:
+        email_part = linkedin_count - linkedin_url_count
+        parts = []
+        if email_part:
+            parts.append(f"{email_part} with verified email")
+        if linkedin_url_count:
+            parts.append(f"{linkedin_url_count} with LinkedIn profile only")
+        typer.echo(f"  {CYAN}\u2139{RESET} {linkedin_count} contact(s) via LinkedIn search ({', '.join(parts)})")
+    typer.echo(f"  Output saved to: {output}")
+
+
+def do_review(input_csv: str) -> None:
+    """Review enrichment and generation warnings in a CSV file."""
+    path = Path(input_csv)
+    if not path.exists():
+        typer.echo(f"  {RED}File not found:{RESET} {input_csv}")
+        return
+
+    rows = enricher.read_csv(input_csv)
+    if not rows:
+        typer.echo(f"  {RED}No rows found in {input_csv}{RESET}")
+        return
+
+    typer.echo(f"\n  Reviewing {len(rows)} row(s)...\n")
+    issue_count = 0
+    for row in rows:
+        warnings = row.get("quality_warnings", "")
+        generated = row.get("generated_email", "")
+        score = row.get("personalization_score", "")
+        if generated and generated.startswith("ERROR:"):
+            warnings = f"{warnings}{enricher.FACT_SEPARATOR if warnings else ''}generation_failed"
+        if warnings:
+            issue_count += 1
+            label = f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
+            label = label or row.get("email", "")
+            typer.echo(f"  {YELLOW}!{RESET} {label}  score={score or 'n/a'}  {warnings}")
+    if issue_count == 0:
+        typer.echo(f"  {GREEN}No quality warnings found.{RESET}")
+    else:
+        typer.echo(f"\n  Rows with warnings: {issue_count}/{len(rows)}")
 
 
 def do_verify(input_csv: str) -> None:
@@ -1421,7 +1693,58 @@ def smtp_show_cmd() -> None:
     typer.echo(f"  TLS:      {'yes' if smtp_config.get('use_tls', True) else 'no'}")
 
 
+@app.command("send")
+def send_cmd(
+    input_csv: str = typer.Argument(help="Path to generated output CSV"),
+    subject: str = typer.Option("", "--subject", help="Override subject for all emails"),
+) -> None:
+    """Send emails from a previously generated CSV."""
+    do_send(input_csv, subject)
+
+
+@app.command("verify")
+def verify_cmd(
+    input_csv: str = typer.Argument(help="Path to input CSV file"),
+) -> None:
+    """Verify email addresses in a CSV."""
+    do_verify(input_csv)
+
+
+@smtp_app.command("setup")
+def smtp_setup_direct() -> None:
+    """Configure SMTP settings."""
+    smtp_setup_cmd()
+
+
+@smtp_app.command("test")
+def smtp_test_direct() -> None:
+    """Test SMTP connection."""
+    smtp_test_cmd()
+
+
+@smtp_app.command("show")
+def smtp_show_direct() -> None:
+    """Show current SMTP config."""
+    smtp_show_cmd()
+
+
 # ── typer run command (for direct CLI usage) ─────────────────────────────────
+
+
+@app.command()
+def discover(
+    sources_file: str = typer.Argument("sources.txt", help="Text file containing public source URLs, one per line"),
+    icp: str = typer.Option("", "--icp", help="Ideal customer profile terms for ranking"),
+    output: str = typer.Option("leads.csv", "-o", "--output", help="Output discovered lead CSV path"),
+    limit: int = typer.Option(10, "--limit", help="Maximum companies to discover"),
+    source_limit: int = typer.Option(25, "--source-limit", help="Maximum candidates to take from each source page"),
+    require_contact: bool = typer.Option(False, "--require-contact", help="Only keep leads with a public contact email"),
+    guess_role_email: bool = typer.Option(False, "--guess-role-email", help="Use low-confidence hello@domain guesses when no public email is found"),
+    max_pages: int = typer.Option(3, "--max-pages", help="Company pages to crawl for facts/contacts"),
+    workers: int = typer.Option(8, "--workers", help="Parallel company crawl workers (max 8)"),
+) -> None:
+    """[Experimental] Discover company leads from public source pages."""
+    do_discover(sources_file, icp, output, limit, require_contact, max_pages, workers, source_limit, guess_role_email)
 
 
 @app.command()
@@ -1434,10 +1757,58 @@ def run(
     system_prompt: Optional[str] = typer.Option(None, "--system-prompt", help="Custom system prompt"),
     prompt_template: Optional[str] = typer.Option(None, "--template", help="Custom prompt template"),
     delay: float = typer.Option(0.5, "--delay"),
+    workers: int = typer.Option(5, "--workers", help="Parallel crawl/LLM workers (max 8)"),
     send: bool = typer.Option(False, "--send", help="Send emails via SMTP after generating"),
 ) -> None:
-    """Generate personalized cold outreach emails from a CSV."""
-    do_run(input_csv, output, output_format, model, max_tokens, system_prompt, prompt_template, delay, send)
+    """Raw CSV: prepare + draft. Prepared CSV: draft again. Sends only with --send."""
+    do_run(input_csv, output, output_format, model, max_tokens, system_prompt, prompt_template, delay, send, workers=workers)
+
+
+@app.command()
+def prepare(
+    input_csv: str = typer.Argument(help="Path to input CSV file"),
+    output: str = typer.Option("enriched.csv", "-o", "--output", help="Output enriched CSV path"),
+    max_pages: int = typer.Option(4, "--max-pages", help="Maximum pages to crawl per website"),
+    workers: int = typer.Option(8, "--workers", help="Parallel website crawl workers"),
+) -> None:
+    """Verify and enrich leads without generating emails."""
+    do_prepare(input_csv, output, max_pages, workers)
+
+
+@app.command()
+def draft(
+    input_csv: str = typer.Argument(help="Path to prepared/enriched CSV file"),
+    output: str = typer.Option("drafts.csv", "-o", "--output", help="Output draft CSV path"),
+    output_format: str = typer.Option("csv", "-f", "--format", help="Output format: csv, json, stdout"),
+    model: Optional[str] = typer.Option(None, "--model", help="Model ID (auto-detects provider)"),
+    max_tokens: Optional[int] = typer.Option(None, "--max-tokens", help="Override max tokens"),
+    system_prompt: Optional[str] = typer.Option(None, "--system-prompt", help="Custom system prompt"),
+    prompt_template: Optional[str] = typer.Option(None, "--template", help="Custom prompt template"),
+    delay: float = typer.Option(0.5, "--delay"),
+    workers: int = typer.Option(5, "--workers", help="Parallel LLM workers (max 8)"),
+) -> None:
+    """Generate emails from prepared facts; does not crawl or send."""
+    do_run(
+        input_csv,
+        output,
+        output_format,
+        model,
+        max_tokens,
+        system_prompt,
+        prompt_template,
+        delay,
+        send=False,
+        require_enriched=True,
+        workers=workers,
+    )
+
+
+@app.command()
+def review(
+    input_csv: str = typer.Argument(help="Path to enriched or drafted CSV file"),
+) -> None:
+    """Review quality warnings in an enriched or drafted CSV."""
+    do_review(input_csv)
 
 
 # ── REPL shell ───────────────────────────────────────────────────────────────
@@ -1445,7 +1816,16 @@ def run(
 SHELL_HELP = f"""\
 {BOLD}Available commands:{RESET}
 
-  {GREEN}run{RESET} <file.csv> [options]     Generate emails from a CSV
+  {GREEN}discover{RESET} [sources.txt]       Find company leads from public source pages
+      --icp <text>                Rank using ideal customer profile terms
+      -o, --output <path>         Output path (default: leads.csv)
+      --limit <number>            Max companies (default: 10)
+      --source-limit <number>     Max candidates per source (default: 25)
+      --require-contact           Only keep rows with public contact email
+      --guess-role-email          Fill low-confidence hello@domain when no public email is found
+      --workers <number>          Parallel company workers, max 8 (default: 8)
+
+  {GREEN}run{RESET} <file.csv> [options]     Raw CSV: prepare + draft. Prepared CSV: draft again.
       -o, --output <path>         Output path (default: output.csv)
       -f, --format <csv|json|stdout>
       --max-tokens <number>
@@ -1453,7 +1833,20 @@ SHELL_HELP = f"""\
       --system-prompt <text>      Custom system prompt
       --template <text>           Custom prompt template
       --delay <seconds>
+      --workers <number>          Parallel crawl/LLM workers, max 8 (default: 5)
       --send                      Send emails via SMTP after generating
+
+  {GREEN}prepare{RESET} <file.csv>           Verify, crawl, and enrich leads
+      -o, --output <path>         Output path (default: enriched.csv)
+      --max-pages <number>        Max pages per website (default: 4)
+      --workers <number>          Parallel website workers (default: 8)
+
+  {GREEN}draft{RESET} <file.csv> [options]   Generate from prepared leads only; no crawl/send
+      -o, --output <path>         Output path (default: drafts.csv)
+      -f, --format <csv|json|stdout>
+      --workers <number>          Parallel LLM workers, max 8 (default: 5)
+
+  {GREEN}review{RESET} <file.csv>            Show quality warnings
 
   {GREEN}send{RESET} <output.csv>             Send emails from a previously generated CSV
       --subject <text>            Email subject line
@@ -1495,6 +1888,7 @@ def _parse_run_args(tokens: list[str]) -> dict:
         "system_prompt": None,
         "prompt_template": None,
         "delay": 0.5,
+        "workers": 5,
         "send": False,
     }
     positional = []
@@ -1515,11 +1909,72 @@ def _parse_run_args(tokens: list[str]) -> dict:
             args["prompt_template"] = tokens[i + 1]; i += 2
         elif tok == "--delay" and i + 1 < len(tokens):
             args["delay"] = float(tokens[i + 1]); i += 2
+        elif tok == "--workers" and i + 1 < len(tokens):
+            args["workers"] = int(tokens[i + 1]); i += 2
         elif tok == "--send":
             args["send"] = True; i += 1
         else:
             positional.append(tok); i += 1
 
+    if not positional:
+        return {}
+    args["input_csv"] = positional[0]
+    return args
+
+
+def _parse_discover_args(tokens: list[str]) -> dict:
+    """Parse discover subcommand arguments from REPL tokens."""
+    args: dict = {
+        "icp": "",
+        "output": "leads.csv",
+        "limit": 10,
+        "source_limit": 25,
+        "require_contact": False,
+        "guess_role_email": False,
+        "max_pages": 3,
+        "workers": 8,
+    }
+    positional = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "--icp" and i + 1 < len(tokens):
+            args["icp"] = tokens[i + 1]; i += 2
+        elif tok in ("-o", "--output") and i + 1 < len(tokens):
+            args["output"] = tokens[i + 1]; i += 2
+        elif tok == "--limit" and i + 1 < len(tokens):
+            args["limit"] = int(tokens[i + 1]); i += 2
+        elif tok == "--source-limit" and i + 1 < len(tokens):
+            args["source_limit"] = int(tokens[i + 1]); i += 2
+        elif tok == "--max-pages" and i + 1 < len(tokens):
+            args["max_pages"] = int(tokens[i + 1]); i += 2
+        elif tok == "--workers" and i + 1 < len(tokens):
+            args["workers"] = int(tokens[i + 1]); i += 2
+        elif tok == "--require-contact":
+            args["require_contact"] = True; i += 1
+        elif tok == "--guess-role-email":
+            args["guess_role_email"] = True; i += 1
+        else:
+            positional.append(tok); i += 1
+    args["sources_file"] = positional[0] if positional else "sources.txt"
+    return args
+
+
+def _parse_prepare_args(tokens: list[str]) -> dict:
+    """Parse prepare subcommand arguments from REPL tokens."""
+    args: dict = {"output": "enriched.csv", "max_pages": 4, "workers": 8}
+    positional = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok in ("-o", "--output") and i + 1 < len(tokens):
+            args["output"] = tokens[i + 1]; i += 2
+        elif tok == "--max-pages" and i + 1 < len(tokens):
+            args["max_pages"] = int(tokens[i + 1]); i += 2
+        elif tok == "--workers" and i + 1 < len(tokens):
+            args["workers"] = int(tokens[i + 1]); i += 2
+        else:
+            positional.append(tok); i += 1
     if not positional:
         return {}
     args["input_csv"] = positional[0]
@@ -1585,6 +2040,10 @@ def _run_shell() -> None:
             elif cmd == "help":
                 typer.echo(SHELL_HELP)
 
+            elif cmd == "discover":
+                args = _parse_discover_args(rest)
+                do_discover(**args)
+
             elif cmd == "run":
                 args = _parse_run_args(rest)
                 if not args:
@@ -1594,6 +2053,33 @@ def _run_shell() -> None:
                         do_run(input_csv=csv_file)
                 else:
                     do_run(**args)
+
+            elif cmd == "prepare":
+                args = _parse_prepare_args(rest)
+                if not args:
+                    csv_file = _select_csv_file()
+                    if csv_file:
+                        do_prepare(input_csv=csv_file)
+                else:
+                    do_prepare(**args)
+
+            elif cmd == "draft":
+                args = _parse_run_args(rest)
+                if not args:
+                    csv_file = _select_csv_file()
+                    if csv_file:
+                        do_run(input_csv=csv_file, output="drafts.csv", require_enriched=True)
+                else:
+                    if args.get("output") == "output.csv":
+                        args["output"] = "drafts.csv"
+                    args["require_enriched"] = True
+                    do_run(**args)
+
+            elif cmd == "review":
+                if not rest:
+                    typer.echo("Usage: review <file.csv>")
+                else:
+                    do_review(rest[0])
 
             elif cmd == "config":
                 sub = rest[0] if rest else None

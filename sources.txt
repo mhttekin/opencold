@@ -1,0 +1,77 @@
+# Public source pages for OpenCold discover.
+# One URL per line. These work best when the page contains outbound company links.
+
+# AI-native / developer-tool companies with many direct outbound links.
+https://ainative.studio/open-source/startups
+https://www.startuphub.ai/
+https://www.launchai.app/
+https://ailists.io/
+https://www.stacklens.info/
+https://launchkittools.com/
+https://www.futurepedia.io/
+https://www.futuretools.io/
+https://theresanaiforthat.com/
+https://www.aixploria.com/en/
+https://www.toolify.ai/
+https://www.toolworthy.ai/
+https://aitrove.ai/
+https://tool0.org/
+https://toolfio.com/
+https://aitoolsexplorer.com/
+https://canondirectory.com/
+https://submitaitools.org/
+https://submititall.xyz/
+https://submitai.pro/
+
+# Commercial open-source company directories.
+https://cossmology.com/
+https://www.ossean.com/
+https://www.ossdirectory.com/
+https://craft.co/open-source-companies
+https://www.opensourcealternative.to/
+https://www.opensourcealternative.co/
+https://openalternative.co/
+https://osssoftware.org/
+
+# Developer-tool and SaaS directories.
+https://stackindex.dev/
+https://www.saaslist.io/
+https://www.ai-directory.io/
+https://www.listyourtool.com/
+https://www.producthunt.com/topics/developer-tools
+https://www.producthunt.com/topics/development
+https://www.producthunt.com/topics/software-engineering
+https://www.producthunt.com/products?parentTopic=development&period=all-time&topic=developer-tools
+https://alternativeto.net/category/developer-tools/
+https://www.g2.com/categories/development
+https://www.getapp.com/it-management-software/
+https://www.capterra.com/development-tools-software/
+https://www.saashub.com/
+https://betalist.com/
+https://www.uneed.best/
+https://microlaunch.net/
+
+# Open/startup directories. These can be noisier, but useful for discovery tests.
+https://openstartuplist.com/
+https://www.startupwho.com/
+https://startuplibrary.net/
+https://www.startupreview.in/
+https://www.buildinpublic.cloud/
+https://thestartup.directory/
+https://www.launchingnext.com/
+https://www.startupranking.com/
+https://www.startupbuffer.com/
+https://www.startupblink.com/startups
+https://www.indiehackers.com/products
+https://www.sideprojectors.com/
+https://www.microsaasdb.com/
+https://tinyalternatives.com/
+
+# CRM / marketing / analytics discovery sources.
+https://www.g2.com/categories/crm
+https://www.g2.com/categories/marketing-automation
+https://www.g2.com/categories/product-analytics
+https://www.g2.com/categories/data-warehouse
+https://www.getapp.com/customer-management-software/crm/
+https://www.capterra.com/customer-relationship-management-software/
+https://www.capterra.com/marketing-automation-software/

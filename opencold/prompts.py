@@ -176,6 +176,7 @@ def build_user_prompt(
     profile: dict,
     campaign: dict,
     website_text: str | None = None,
+    personalization_facts: str | None = None,
 ) -> str:
     """Build a fully personalized user prompt from CSV row, identity, profile, and campaign."""
     recipient = f"{row['first_name']} {row['last_name']}"
@@ -205,20 +206,36 @@ def build_user_prompt(
     if pitch:
         parts.append(f"Key message: {pitch}")
 
-    # Only include website text if it's actually readable
-    clean_website = _sanitize_website_text(website_text) if website_text else None
-    if clean_website:
+    clean_facts = _sanitize_website_text(personalization_facts) if personalization_facts else None
+    if clean_facts:
         parts.append(
-            f"\n--- {recipient_company}'s website content ---\n"
-            f"{clean_website}\n"
+            f"\n--- verified facts about {recipient_company} ---\n"
+            f"{clean_facts}\n"
             f"--- end ---\n"
-            f"\nUse specifics from the website above. Reference actual products, "
-            f"features, or things they do. Connect them to the sender's work."
+            f"\nUse one of the verified facts above for personalization. "
+            f"Do not invent extra claims about {recipient_company}."
         )
     else:
+        # Only include website text if it's actually readable
+        clean_website = _sanitize_website_text(website_text) if website_text else None
+        if clean_website:
+            parts.append(
+                f"\n--- {recipient_company}'s website content ---\n"
+                f"{clean_website}\n"
+                f"--- end ---\n"
+                f"\nUse specifics from the website above. Reference actual products, "
+                f"features, or things they do. Connect them to the sender's work."
+            )
+        else:
+            parts.append(
+                f"\nUse your own knowledge about {recipient_company} to personalize "
+                f"the email. Reference something specific about what they do."
+            )
+
+    if clean_facts:
         parts.append(
-            f"\nUse your own knowledge about {recipient_company} to personalize "
-            f"the email. Reference something specific about what they do."
+            "\nIf the facts are not enough for a highly specific opener, keep the "
+            "email simple instead of making up details."
         )
 
     # Rotate structural approach per recipient

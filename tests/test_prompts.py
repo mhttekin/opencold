@@ -106,6 +106,17 @@ class TestBuildUserPrompt:
         assert "Acme builds rockets" in prompt
         assert "website content" in prompt.lower()
 
+    def test_personalization_facts_take_priority(self):
+        campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
+        prompt = build_user_prompt(
+            self.ROW, self.IDENTITY, self.PROFILE, campaign,
+            website_text="Acme builds vague things for many teams.",
+            personalization_facts="Acme provides invoice automation for finance teams.",
+        )
+        assert "verified facts" in prompt.lower()
+        assert "invoice automation" in prompt
+        assert "vague things" not in prompt
+
     def test_garbled_website_text_excluded(self):
         campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
         prompt = build_user_prompt(

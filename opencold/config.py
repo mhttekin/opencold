@@ -184,7 +184,7 @@ def get_all_api_keys() -> dict:
 
 # ── providers ────────────────────────────────────────────────────────────────
 
-PROVIDER_TYPES = ("anthropic", "openai", "proxy")
+PROVIDER_TYPES = ("anthropic", "openai", "proxy", "serper")
 
 DEFAULT_MODELS = {
     "anthropic": "claude-sonnet-4-6",
@@ -220,8 +220,8 @@ def add_provider(name: str, provider_type: str, api_key: str,
     cfg.setdefault("providers", {})[name] = entry
     # Also write to legacy api_keys for backward compat
     cfg.setdefault("api_keys", {})[name] = api_key
-    # Set as default if it's the first provider
-    if not cfg.get("default_provider"):
+    # Set as default if it's the first LLM provider (not serper)
+    if not cfg.get("default_provider") and provider_type != "serper":
         cfg["default_provider"] = name
     save_config(cfg)
 

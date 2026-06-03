@@ -24,9 +24,16 @@ Thumbs.db
 # Other material
 sample_input.csv
 sample_2.csv
+leads.csv
+test_leads.csv
+web/
 send_sample.csv
 cli_outreach_tool_flowchart.svg
 output.csv
+2_output.csv
+
+# Auto-downloaded binaries
+vendor/
 
 # Claude Code
 .claude/

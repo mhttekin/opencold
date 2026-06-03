@@ -15,6 +15,7 @@ dependencies = [
     "trafilatura>=2.0",
     "beautifulsoup4>=4.12",
     "dnspython>=2.4",
+    "ddgs>=9.0",
 ]
 
 [project.optional-dependencies]
