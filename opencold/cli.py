@@ -1142,6 +1142,20 @@ def do_run(
 ) -> None:
     """Core run logic shared by the CLI command and the REPL."""
     _ensure_config()
+
+    # ── Check enrichment early (before provider resolution) ──
+    rows = _read_csv(input_csv)
+    rows = _validate_csv(rows)
+    if rows is None:
+        return
+
+    if require_enriched and not _is_enriched(rows):
+        typer.echo(
+            f"\n  {RED}Error:{RESET} draft expects a prepared CSV with "
+            f"'personalization_facts'. Run: prepare {input_csv} -o enriched.csv"
+        )
+        return
+
     identity = config.get_identity()
     profile = config.get_profile()
 
@@ -1192,20 +1206,6 @@ def do_run(
             f"  {YELLOW}Note:{RESET} Using proxy provider. Output quality depends on the model. "
             f"For best results, use Claude or GPT-4 class models."
         )
-
-    rows = _read_csv(input_csv)
-
-    # Validate email and website columns
-    rows = _validate_csv(rows)
-    if rows is None:
-        return
-
-    if require_enriched and not _is_enriched(rows):
-        typer.echo(
-            f"\n  {RED}Error:{RESET} draft expects a prepared CSV with "
-            f"'personalization_facts'. Run: prepare {input_csv} -o enriched.csv"
-        )
-        return
 
     # ── Verify email addresses (format + MX) ──
     typer.echo(f"\n  Verifying {len(rows)} email(s)...")
