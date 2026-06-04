@@ -1,0 +1,297 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), "SFMono-Regular", Consolas, monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+/* ── dot field ── */
+
+.dot-field {
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(circle, rgb(0 0 0 / 0.07) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, black 20%, transparent 70%);
+  pointer-events: none;
+  transition: opacity 600ms ease, transform 600ms ease;
+}
+
+.dot-field--fade {
+  opacity: 0.3;
+  transform: scale(1.08);
+}
+
+/* ── drop zone ── */
+
+.drop-zone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  border: 1.5px dashed rgb(212 212 216);
+  border-radius: 16px;
+  transition: border-color 200ms, background 200ms, transform 200ms;
+  cursor: pointer;
+}
+
+.drop-zone:hover,
+.drop-zone--active {
+  border-color: rgb(0 0 0 / 0.5);
+  background: rgb(250 250 250);
+  transform: translateY(-2px);
+}
+
+/* ── csv ghost ── */
+
+.csv-sheet {
+  overflow: hidden;
+  border: 1px solid rgb(228 228 231);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.9);
+}
+
+.csv-header {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: rgb(244 244 245);
+  color: rgb(113 113 122);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.csv-header span {
+  padding: 8px 10px;
+  background: white;
+  animation: col-pulse 4s ease-in-out infinite;
+}
+
+.csv-header span:nth-child(2) {
+  animation-delay: 400ms;
+}
+
+.csv-header span:nth-child(3) {
+  animation-delay: 800ms;
+}
+
+.csv-row {
+  height: 32px;
+  border-top: 1px solid rgb(244 244 245);
+  background:
+    linear-gradient(90deg, rgb(228 228 231) 0 18%, transparent 18% 26%, rgb(228 228 231) 26% 46%, transparent 46% 54%, rgb(228 228 231) 54% 72%, transparent 72%),
+    white;
+  background-position: -120px center;
+  background-repeat: no-repeat;
+  background-size: 120% 8px;
+  animation: row-slide 3s ease-in-out infinite;
+}
+
+.csv-row--two { animation-delay: 240ms; }
+.csv-row--three { animation-delay: 480ms; }
+
+/* ── question animation ── */
+
+.question-enter {
+  animation: slide-in 240ms ease both;
+}
+
+/* ── toggle ── */
+
+.toggle-track {
+  position: relative;
+  display: inline-flex;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  align-items: center;
+  border-radius: 999px;
+  background: rgb(212 212 216);
+  padding: 2px;
+  transition: background 200ms;
+}
+
+.toggle-track--on {
+  background: #0a0a0a;
+}
+
+.toggle-thumb {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: white;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  transform: translateX(0);
+  transition: transform 200ms;
+}
+
+.toggle-track--on .toggle-thumb {
+  transform: translateX(20px);
+}
+
+/* ── config sections ── */
+
+.config-section {
+  border-bottom: 1px solid rgb(244 244 245);
+  padding-bottom: 2.5rem;
+}
+
+.config-section:last-child {
+  border-bottom: none;
+}
+
+.config-section-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.config-step-number {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 8px;
+  background: rgb(244 244 245);
+  color: rgb(82 82 91);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ── result rows ── */
+
+.result-row {
+  display: block;
+  width: 100%;
+  border-top: 1px solid rgb(244 244 245);
+  background: white;
+  text-align: left;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: fade-up 300ms ease forwards;
+  transition: background 160ms;
+}
+
+.result-row:hover {
+  background: rgb(250 250 250);
+}
+
+.result-detail {
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  transition: grid-template-rows 220ms ease;
+}
+
+.result-detail > div {
+  min-height: 0;
+}
+
+.result-row--open .result-detail {
+  grid-template-rows: 1fr;
+}
+
+/* ── stats ── */
+
+.stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding: 14px 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgb(82 82 91);
+}
+
+.stats-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── keyframes ── */
+
+@keyframes col-pulse {
+  0%, 60%, 100% { color: rgb(113 113 122); background: white; }
+  30% { color: black; background: rgb(244 244 245); }
+}
+
+@keyframes row-slide {
+  0%, 20% { background-position: -120px center; opacity: 0.4; }
+  60%, 100% { background-position: 10px center; opacity: 1; }
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes fade-up {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.skeleton {
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+/* ── configure panel entrance ── */
+
+.configure-enter {
+  animation: panel-in 400ms ease both;
+}
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── stepper connector ── */
+
+.stepper-line {
+  border-left: 1.5px dashed rgb(228 228 231);
+}
+
+/* ── accordion body (progressive expand) ── */
+
+.accordion-body {
+  display: grid;
+  transition: grid-template-rows 300ms ease;
+}
+
+/* ── responsive ── */
+
+@media (max-width: 860px) {
+  .drop-zone {
+    min-height: 180px;
+  }
+}

@@ -24,5 +24,8 @@ dev = ["pytest>=8.0"]
 [project.scripts]
 opencold = "opencold.cli:main"
 
+[tool.setuptools.packages.find]
+include = ["opencold*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
