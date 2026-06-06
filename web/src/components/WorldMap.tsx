@@ -117,9 +117,6 @@ export default function WorldMap({
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const drag = useRef<{ x: number; y: number; tx: number; ty: number } | null>(
-    null,
-  );
   const moved = useRef(false);
 
   const clampPan = (tx: number, ty: number, k: number) => ({
@@ -141,29 +138,36 @@ export default function WorldMap({
 
   const reset = () => setView({ k: 1, tx: 0, ty: 0 });
 
+  // Pan via window listeners (no pointer capture) — capturing the pointer on the
+  // SVG would steal the click from the country path, so selection only worked at
+  // base zoom. Listening on window keeps drag working while leaving clicks intact.
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     moved.current = false;
-    if (view.k <= 1) return;
-    drag.current = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty };
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-  };
-
-  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!drag.current || !svgRef.current) return;
-    const rect = svgRef.current.getBoundingClientRect();
+    if (view.k <= 1) return; // nothing to pan at base zoom
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
     const sx = (vbW + 2 * PAD) / rect.width;
     const sy = (vbH + 2 * PAD) / rect.height;
-    const rawDx = e.clientX - drag.current.x;
-    const rawDy = e.clientY - drag.current.y;
-    if (Math.abs(rawDx) > 3 || Math.abs(rawDy) > 3) moved.current = true;
-    setView((v) => ({
-      ...v,
-      ...clampPan(drag.current!.tx + rawDx * sx, drag.current!.ty + rawDy * sy, v.k),
-    }));
-  };
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const baseTx = view.tx;
+    const baseTy = view.ty;
 
-  const onPointerUp = () => {
-    drag.current = null;
+    const onMove = (ev: PointerEvent) => {
+      const rawDx = ev.clientX - startX;
+      const rawDy = ev.clientY - startY;
+      if (Math.abs(rawDx) > 3 || Math.abs(rawDy) > 3) moved.current = true;
+      setView((v) => ({
+        ...v,
+        ...clampPan(baseTx + rawDx * sx, baseTy + rawDy * sy, v.k),
+      }));
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   };
 
   const handleToggle = (name: string) => {
@@ -237,9 +241,6 @@ export default function WorldMap({
           role="group"
           aria-label="World map — select target countries"
           onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerLeave={onPointerUp}
         >
           <g
             transform={`translate(${view.tx} ${view.ty}) scale(${view.k})`}

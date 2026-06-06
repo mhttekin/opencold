@@ -681,7 +681,7 @@ export default function Home() {
 
       {/* ── STAGE: CONFIGURE (discovery) ── */}
       {stage === "configure" && mode === "discovery" && (
-        <section className="configure-enter relative z-10 mx-auto max-w-5xl px-6 pb-20 pt-6 sm:pt-10">
+        <section className="configure-enter relative z-10 mx-auto max-w-6xl px-6 pb-20 pt-6 sm:pt-10">
           {/* top bar — discovery indicator + run button */}
           <div className="mb-8 flex items-center justify-between">
             <div className="flex items-center gap-3">
