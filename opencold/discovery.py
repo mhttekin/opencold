@@ -13,7 +13,7 @@ import subprocess
 import tarfile
 import time
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
@@ -394,6 +394,7 @@ class CandidateCompany:
     website: str
     discovery_source_url: str
     discovery_reason: str
+    discovery_channel: str = ""
 
 
 @dataclass
@@ -410,12 +411,21 @@ def _clean_text(text: str) -> str:
     return SPACE_RE.sub(" ", text or "").strip()
 
 
+# Second-level labels under a 2-letter ccTLD that are public suffixes, not the
+# registrable name (e.g. gov.bd, ac.uk, or.jp). Keeps jbc.gov.bd from collapsing
+# to gov.bd. Triggered only when the final label is a 2-letter ccTLD.
+_SECOND_LEVEL_TLDS = {
+    "co", "com", "net", "org", "gov", "govt", "edu", "ac", "mil",
+    "go", "or", "ne", "gob", "gouv",
+}
+
+
 def _registrable_domain(host: str) -> str:
     host = host.lower().strip(".")
     if host.startswith("www."):
         host = host[4:]
     parts = host.split(".")
-    if len(parts) >= 3 and parts[-2] in {"co", "com", "net", "org"} and len(parts[-1]) == 2:
+    if len(parts) >= 3 and parts[-2] in _SECOND_LEVEL_TLDS and len(parts[-1]) == 2:
         return ".".join(parts[-3:])
     if len(parts) >= 2:
         return ".".join(parts[-2:])
@@ -908,6 +918,147 @@ def web_search(query: str, num: int = 10) -> list[SearchResult]:
         return results
     # 4. DDG HTML scraping — last resort
     return _ddg_html_search(query, num)
+
+
+# ---------------------------------------------------------------------------
+# Company name → website resolution (for CSVs that only have company names)
+# ---------------------------------------------------------------------------
+
+# Aggregator / directory / marketplace domains that are never a company's own
+# site — used to skip false positives when resolving a website from a name.
+WEBSITE_DIRECTORY_DOMAINS = {
+    "amazon.com",
+    "angel.co",
+    "apollo.io",
+    "apps.apple.com",
+    "bbb.org",
+    "bloomberg.com",
+    "builtwith.com",
+    "businesswire.com",
+    "capterra.com",
+    "clearbit.com",
+    "crunchbase.com",
+    "dnb.com",
+    "f6s.com",
+    "g2.com",
+    "getapp.com",
+    "glassdoor.com",
+    "indeed.com",
+    "leadiq.com",
+    "manta.com",
+    "owler.com",
+    "pitchbook.com",
+    "play.google.com",
+    "prnewswire.com",
+    "producthunt.com",
+    "rocketreach.co",
+    "semrush.com",
+    "similarweb.com",
+    "softwareadvice.com",
+    "tracxn.com",
+    "trustpilot.com",
+    "wellfound.com",
+    "wikipedia.org",
+    "wikimedia.org",
+    "ycombinator.com",
+    "yelp.com",
+    "zoominfo.com",
+}
+
+
+def _company_tokens(company: str) -> list[str]:
+    """Lowercase alphanumeric tokens of a company name, legal suffixes stripped."""
+    cleaned = COMPANY_SUFFIXES_RE.sub("", company or "").strip().lower()
+    return [t for t in re.split(r"[^a-z0-9]+", cleaned) if len(t) >= 2]
+
+
+def _domain_matches_company(domain: str, tokens: list[str]) -> bool:
+    """Heuristic: does a registrable domain plausibly belong to this company?"""
+    if not tokens:
+        return False
+    stem = domain.split(".")[0].lower()
+    if not stem:
+        return False
+    compact = "".join(tokens)
+    if stem == compact or compact in stem or stem in compact:
+        return True
+    # A significant single token (>=4 chars) appearing in the domain stem
+    return any(tok in stem for tok in tokens if len(tok) >= 4)
+
+
+def _is_directory_domain(domain: str) -> bool:
+    return domain in WEBSITE_DIRECTORY_DOMAINS or any(
+        domain.endswith("." + d) for d in WEBSITE_DIRECTORY_DOMAINS
+    )
+
+
+def resolve_company_website(
+    company: str,
+    num: int = 8,
+    require_match: bool = False,
+    context: str = "",
+    prefer_cc: str | None = None,
+) -> str | None:
+    """Resolve a company's official website URL from its name via web search.
+
+    Uses the shared search stack (ddgs → Brave → Serper → DDG HTML), then picks
+    the best organic result: a non-blocked, non-directory domain whose name
+    matches the company. Falls back to the first credible organic domain when no
+    name match is found. Returns 'https://domain' or None.
+
+    require_match=True returns only a domain whose stem matches the company name
+    (no fallback). Used for LLM-seeded company discovery, where accepting a
+    non-matching domain (a media/jobs article about the company) would attach the
+    wrong company to the lead — exactly the failure this pivot exists to avoid.
+
+    context (e.g. "landscape United Kingdom") biases the search toward the right
+    namesake. prefer_cc (e.g. "uk") makes a name-matching domain on that ccTLD win
+    outright over a generic-TLD namesake — so "Ground Control" the UK landscaper
+    (groundcontrol.co.uk) beats "Ground Control" the IoT firm (groundcontrol.com).
+    """
+    tokens = _company_tokens(company)
+    if not tokens:
+        return None
+
+    queries = []
+    if context.strip():
+        queries.append(f'"{company}" {context.strip()} official website')
+    queries += [f"{company} official website", f'"{company}"']
+
+    seen: set[str] = set()
+    name_match: str | None = None
+    fallback: str | None = None
+
+    for query in queries:
+        for result in web_search(query, num=num):
+            parsed = urlparse(result.url)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                continue
+            if _is_blocked_host(parsed.netloc):
+                continue
+            domain = normalize_domain(result.url)
+            if not domain or domain in seen:
+                continue
+            seen.add(domain)
+            if _is_blocked_domain(domain) or _is_directory_domain(domain):
+                continue
+            matched = _domain_matches_company(domain, tokens)
+            on_cc = bool(prefer_cc) and (domain.endswith("." + prefer_cc) or domain.rsplit(".", 1)[-1] == prefer_cc)
+            if matched and on_cc:
+                return f"https://{domain}"          # right name AND right country
+            if matched and name_match is None:
+                name_match = f"https://{domain}"
+            if fallback is None:
+                fallback = f"https://{domain}"
+        # Stop early only when we don't need to keep hunting for a ccTLD match.
+        if name_match and not prefer_cc:
+            break
+        if fallback and not require_match and not prefer_cc:
+            break
+
+    if name_match:
+        return name_match
+    return None if require_match else fallback
 
 
 def _unwrap_duckduckgo_url(href: str) -> str:
@@ -1707,19 +1858,38 @@ def _icp_terms(icp: str) -> set[str]:
 
 
 def score_company(company: CandidateCompany, enrichment: dict, icp: str) -> tuple[int, str]:
+    # NOTE: company.discovery_reason is deliberately excluded — for LLM/search
+    # candidates it echoes our own query (e.g. "llm seed: landscape in UK"), so
+    # including it made every lead "match" the ICP (a constant 62). Match against
+    # the company's own name and crawled content only.
     terms = _icp_terms(icp)
     haystack = " ".join([
         company.company,
-        company.discovery_reason,
         enrichment.get("company_summary", ""),
         enrichment.get("personalization_facts", ""),
     ]).lower()
     matched = sorted(term for term in terms if term in haystack)
     base = 35 if enrichment.get("website_status") == "ok" else 15
-    source_bonus = 15 if company.discovery_reason else 0
-    match_bonus = min(len(matched) * 12, 40)
-    score = min(100, base + source_bonus + match_bonus)
+    match_bonus = min(len(matched) * 14, 50)
+    score = min(100, base + match_bonus)
     return score, enricher.FACT_SEPARATOR.join(matched)
+
+
+def _icp_evidence(icp: str, enrichment: dict) -> bool:
+    """True when ICP terms appear in the company's own crawled content.
+
+    Content-only (no company name, no discovery_reason): this is the evidence
+    used to gate leads, so it must reflect what the site actually says — a company
+    literally named 'X Landscapes' should still have to prove it on its pages.
+    """
+    terms = _icp_terms(icp)
+    if not terms:
+        return False
+    content = " ".join([
+        enrichment.get("company_summary", ""),
+        enrichment.get("personalization_facts", ""),
+    ]).lower()
+    return any(term in content for term in terms)
 
 
 def _bad_company_name(company: str) -> bool:
@@ -2177,3 +2347,1001 @@ def write_csv(rows: list[dict], output: str) -> None:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+
+
+# ===========================================================================
+# Company-first discovery: ICP + region -> ranked company list with a durable
+# contact bundle (company email, phone, address, company LinkedIn). Replaces the
+# brittle person-finder as the default. Person discovery is available opt-in.
+# ===========================================================================
+
+_LINKEDIN_COMPANY_RE = re.compile(
+    r"https?://[a-z]{0,3}\.?linkedin\.com/company/[A-Za-z0-9_%.\-]+", re.IGNORECASE
+)
+# Conservative phone matcher — international-ish, avoids matching long ID strings.
+_PHONE_RE = re.compile(r"(?<!\w)(\+?\d[\d\s().\-]{6,16}\d)(?!\w)")
+
+PARTNERSHIP_PATH_HINTS = (
+    "partners", "partner", "partnership", "partnerships",
+    "become-a-partner", "reseller", "resellers", "affiliate", "affiliates",
+)
+
+# Company-level email policy (the inverse of the person-finder): generic inboxes
+# like info@/contact@ are KEPT — they are a legitimate first touch for partnership
+# outreach. Partnership/BD inboxes rank highest.
+COMPANY_EMAIL_PRIORITY = {
+    "partnerships": 95, "partner": 93, "bd": 90, "business-development": 90,
+    "growth": 86, "marketing": 84, "sales": 82, "hello": 70, "contact": 66,
+    "info": 64, "enquiries": 62, "enquiry": 62, "team": 60, "press": 50,
+    "media": 48, "support": 40,
+}
+
+_SOCIAL_HOSTS = (
+    "linkedin.com", "twitter.com", "x.com", "facebook.com",
+    "instagram.com", "youtube.com",
+)
+
+# Region hint maps — keyed by a CANONICAL region name. Freeform user input
+# ("United Kingdom (UK)", "uk", "England") is resolved to a canonical key via
+# _resolve_region_key before lookup, so the signals actually fire regardless of
+# how the region was phrased. Easily extensible.
+_REGION_CCTLD = {
+    "bangladesh": "bd", "india": "in", "pakistan": "pk", "turkey": "tr",
+    "germany": "de", "france": "fr", "united kingdom": "uk", "united states": "us",
+    "nigeria": "ng", "kenya": "ke", "indonesia": "id", "brazil": "br", "mexico": "mx",
+}
+_REGION_PHONE = {
+    "bangladesh": "+880", "india": "+91", "pakistan": "+92", "turkey": "+90",
+    "germany": "+49", "france": "+33", "united kingdom": "+44", "united states": "+1",
+    "nigeria": "+234", "kenya": "+254", "indonesia": "+62", "brazil": "+55", "mexico": "+52",
+}
+_REGION_CITIES = {
+    "bangladesh": ["dhaka", "chattogram", "chittagong", "khulna", "sylhet", "rajshahi"],
+    "united kingdom": [
+        "london", "manchester", "birmingham", "leeds", "glasgow", "edinburgh",
+        "bristol", "liverpool", "sheffield", "surrey", "england", "scotland", "wales",
+    ],
+    "united states": ["new york", "san francisco", "los angeles", "chicago", "boston", "austin", "seattle"],
+    "germany": ["berlin", "munich", "hamburg", "frankfurt", "cologne"],
+    "france": ["paris", "lyon", "marseille", "toulouse"],
+    "india": ["mumbai", "delhi", "bengaluru", "bangalore", "hyderabad", "chennai", "pune"],
+}
+
+# Freeform aliases -> canonical region key. Short aliases (<=3 chars) are matched
+# on word boundaries; longer ones as substrings (longest first).
+_REGION_ALIASES = {
+    "united kingdom": "united kingdom", "great britain": "united kingdom",
+    "britain": "united kingdom", "england": "united kingdom", "scotland": "united kingdom",
+    "wales": "united kingdom", "uk": "united kingdom", "gb": "united kingdom",
+    "united states": "united states", "america": "united states", "usa": "united states",
+    "us": "united states",
+    "bangladesh": "bangladesh", "india": "india", "pakistan": "pakistan",
+    "turkey": "turkey", "türkiye": "turkey", "turkiye": "turkey",
+    "germany": "germany", "deutschland": "germany", "france": "france",
+    "nigeria": "nigeria", "kenya": "kenya", "indonesia": "indonesia",
+    "brazil": "brazil", "brasil": "brazil", "mexico": "mexico", "méxico": "mexico",
+}
+
+
+def _resolve_region_key(region: str) -> str | None:
+    """Map a freeform region string to a canonical key (longest alias wins)."""
+    r = (region or "").lower()
+    for alias in sorted(_REGION_ALIASES, key=len, reverse=True):
+        if len(alias) <= 3:
+            if re.search(r"\b" + re.escape(alias) + r"\b", r):
+                return _REGION_ALIASES[alias]
+        elif alias in r:
+            return _REGION_ALIASES[alias]
+    return None
+
+_SIZE_BAND_RE = re.compile(r"(\d[\d,\.]*)\s*\+?\s*(?:employees|staff|people|team members)", re.IGNORECASE)
+_SME_HINT_RE = re.compile(
+    r"\b(family[- ]owned|family business|since \d{4}|founded in \d{4}|small team|boutique)\b",
+    re.IGNORECASE,
+)
+
+
+# ---------------------------------------------------------------------------
+# Front-end: candidate companies from LLM seed + search (sources optional)
+# ---------------------------------------------------------------------------
+
+def _resolve_llm_provider() -> dict | None:
+    """Resolve an LLM provider config for discovery seeding, or None if unavailable.
+
+    Mirrors the resolution order used by the email run path: default provider ->
+    its config -> any usable LLM provider -> legacy anthropic key. Returns None
+    when nothing is set up so callers degrade gracefully to search-only discovery.
+    """
+    try:
+        from opencold import config, generator as _gen
+    except Exception:
+        return None
+    try:
+        providers = config.get_providers()
+        name = config.get_default_provider_name()
+        prov = providers.get(name) if name else None
+        if prov and prov.get("type") in ("anthropic", "openai", "proxy") and prov.get("api_key"):
+            return prov
+        for candidate in providers.values():
+            if candidate.get("type") in ("anthropic", "openai", "proxy") and candidate.get("api_key"):
+                return candidate
+        legacy = config.get_api_key("anthropic")
+        if legacy:
+            return {"type": "anthropic", "api_key": legacy, "default_model": _gen.DEFAULT_MODEL}
+    except Exception:
+        return None
+    return None
+
+
+_SEED_SYSTEM = (
+    "You are a B2B market researcher. You output ONLY compact JSON, no prose, no "
+    "markdown code fences. You never invent fake companies; if unsure, return fewer."
+)
+
+
+def _build_seed_prompt(icp: str, region: str, count: int) -> str:
+    return (
+        f"Target profile: {icp}\n"
+        f"Region/country: {region}\n\n"
+        f"Return up to {count} real, currently-operating companies that match the "
+        f"target profile and are based in or serve that region. Prefer local small "
+        f"and mid-size companies over global multinationals.\n"
+        f"Also list authoritative local indexes where many more such companies are "
+        f"registered (industry regulator, licensing body, trade association, chamber "
+        f"of commerce) — these are used as extra search hints.\n\n"
+        f'Output JSON exactly: {{"companies": ["Company Name", ...], '
+        f'"local_directories": ["regulator/association name or url", ...]}}'
+    )
+
+
+def _parse_json_object(text: str) -> dict:
+    """Best-effort parse of a JSON object from an LLM response (tolerates fences/prose)."""
+    if not text:
+        return {}
+    cleaned = re.sub(r"```(?:json)?", "", text).replace("```", "").strip()
+    try:
+        data = json.loads(cleaned)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start != -1 and end > start:
+        try:
+            data = json.loads(cleaned[start:end + 1])
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            return {}
+    return {}
+
+
+def seed_companies_via_llm(
+    icp: str, region: str, count: int = 30, provider_config: dict | None = None
+) -> dict:
+    """Ask an LLM for known companies + local directories for (ICP, region).
+
+    Returns {"companies": [...], "local_directories": [...]}. On any failure or
+    when no provider is available, returns empty lists so discovery degrades to
+    search-only.
+    """
+    prov = provider_config or _resolve_llm_provider()
+    if not prov:
+        return {"companies": [], "local_directories": []}
+    try:
+        from opencold import generator as _gen
+        raw = _gen.complete(prov, _SEED_SYSTEM, _build_seed_prompt(icp, region, count), max_tokens=1024)
+    except Exception:
+        return {"companies": [], "local_directories": []}
+    data = _parse_json_object(raw)
+    companies = [c.strip() for c in data.get("companies", []) if isinstance(c, str) and c.strip()]
+    directories = [d.strip() for d in data.get("local_directories", []) if isinstance(d, str) and d.strip()]
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for c in companies:
+        key = c.lower()
+        if key not in seen:
+            seen.add(key)
+            uniq.append(c)
+    return {"companies": uniq[:count], "local_directories": directories[:10]}
+
+
+def region_query_templates(icp: str, region: str) -> list[str]:
+    icp = (icp or "").strip()
+    region = (region or "").strip()
+    templates = [
+        f"{icp} companies in {region}",
+        f"list of {icp} in {region}",
+        f"top {icp} {region}",
+        f"{icp} {region} contact email",
+        f"{icp} association {region} members",
+    ]
+    return [q for q in templates if q.strip()]
+
+
+def _candidate_from_result(result: SearchResult, reason: str) -> CandidateCompany | None:
+    parsed = urlparse(result.url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    if _is_blocked_host(parsed.netloc):
+        return None
+    domain = normalize_domain(result.url)
+    if not domain or _is_blocked_domain(domain) or _is_directory_domain(domain):
+        return None
+    return CandidateCompany(
+        company=_company_from_domain(domain),
+        website=f"https://{domain}",
+        discovery_source_url=result.url,
+        discovery_reason=reason,
+    )
+
+
+def discover_companies_by_query(
+    icp: str, region: str, limit: int = 50, extra_queries: list[str] | None = None
+) -> list[CandidateCompany]:
+    queries = region_query_templates(icp, region) + list(extra_queries or [])
+    candidates: dict[str, CandidateCompany] = {}
+    for query in queries:
+        for result in web_search(query, num=10):
+            cand = _candidate_from_result(result, f"search: {query}")
+            if not cand:
+                continue
+            candidates.setdefault(normalize_domain(cand.website), cand)
+            if len(candidates) >= limit:
+                return list(candidates.values())
+    return list(candidates.values())
+
+
+def discover_company_candidates(
+    icp: str,
+    region: str,
+    sources: list[str] | None = None,
+    limit: int = 50,
+    workers: int = 8,
+    use_llm: bool = True,
+    seed_count: int = 30,
+) -> list[CandidateCompany]:
+    """Collect candidate companies from LLM seeding (A), search harvest (B), and
+    an optional manual sources file (C). Deduped by registrable domain; first
+    channel to surface a domain wins and tags it."""
+    candidates: dict[str, CandidateCompany] = {}
+
+    def _add(cand: CandidateCompany, channel: str) -> None:
+        domain = normalize_domain(cand.website)
+        if not domain or domain in candidates:
+            return
+        cand.discovery_channel = channel
+        candidates[domain] = cand
+
+    extra_queries: list[str] = []
+
+    # Channel A: LLM seed (names -> websites) — only when a provider is configured.
+    if use_llm:
+        prov = _resolve_llm_provider()
+        if prov:
+            seed = seed_companies_via_llm(icp, region, count=seed_count, provider_config=prov)
+            extra_queries = [f"{d} {region}" for d in seed.get("local_directories", [])]
+            names = seed.get("companies", [])
+            if names:
+                # Disambiguate namesakes at the source: search with ICP+region
+                # context and prefer the target country's ccTLD.
+                context = f"{icp} {region}".strip()
+                prefer_cc = _REGION_CCTLD.get(_resolve_region_key(region) or "")
+                worker_n = max(1, min(_clamp_workers(workers), len(names)))
+                with ThreadPoolExecutor(max_workers=worker_n) as executor:
+                    future_to_name = {
+                        executor.submit(
+                            resolve_company_website, n,
+                            require_match=True, context=context, prefer_cc=prefer_cc,
+                        ): n
+                        for n in names
+                    }
+                    for future in as_completed(future_to_name):
+                        name = future_to_name[future]
+                        try:
+                            url = future.result()
+                        except Exception:
+                            url = None
+                        if not url:
+                            continue
+                        _add(CandidateCompany(
+                            company=name,
+                            website=url,
+                            discovery_source_url=url,
+                            discovery_reason=f"llm seed: {icp} in {region}",
+                        ), "llm")
+
+    # Channel B: search harvest (always runs).
+    for cand in discover_companies_by_query(icp, region, limit=limit, extra_queries=extra_queries):
+        _add(cand, "search")
+
+    # Channel C: optional manual sources (back-compat power-user channel).
+    if sources:
+        for cand in discover_company_pool(sources, limit=limit, workers=workers):
+            _add(cand, "sources")
+
+    return list(candidates.values())[:max(limit, 1)]
+
+
+# ---------------------------------------------------------------------------
+# Back-end: structured-data-first contact extraction
+# ---------------------------------------------------------------------------
+
+@dataclass
+class CompanyContacts:
+    emails: list = field(default_factory=list)   # list[tuple[email, source_url]]
+    phones: list = field(default_factory=list)
+    socials: list = field(default_factory=list)
+    address: str = ""
+    linkedin_company_url: str = ""
+    partnership_url: str = ""
+    company_name: str = ""
+
+
+_CONTACT_PATHS = ("", "/contact", "/contact-us", "/about", "/about-us", "/imprint", "/legal", "/company")
+
+
+def _clean_phone(raw: str) -> str:
+    cleaned = re.sub(r"[^\d+]", "", (raw or "").strip())
+    digits = re.sub(r"\D", "", cleaned)
+    if len(digits) < 7 or len(digits) > 15:
+        return ""
+    return cleaned
+
+
+def _register_social(contacts: CompanyContacts, url: str) -> None:
+    if not url or not isinstance(url, str):
+        return
+    low = url.lower()
+    if "linkedin.com/company/" in low:
+        match = _LINKEDIN_COMPANY_RE.search(url)
+        clean = (match.group(0) if match else url).split("?")[0]
+        if not contacts.linkedin_company_url:
+            contacts.linkedin_company_url = clean
+        if clean not in contacts.socials:
+            contacts.socials.append(clean)
+        return
+    for host in _SOCIAL_HOSTS:
+        if host in low:
+            clean = url.split("?")[0]
+            if clean not in contacts.socials:
+                contacts.socials.append(clean)
+            break
+
+
+def _extract_jsonld_org(soup: BeautifulSoup) -> dict:
+    """Pull contact fields from JSON-LD Organization/LocalBusiness blocks."""
+    out = {"email": "", "telephone": "", "address": "", "sameAs": [], "name": ""}
+    for tag in soup.find_all("script", attrs={"type": "application/ld+json"}):
+        try:
+            data = json.loads(tag.string or "")
+        except Exception:
+            continue
+        items = data if isinstance(data, list) else [data]
+        flat = []
+        for item in items:
+            if isinstance(item, dict) and isinstance(item.get("@graph"), list):
+                flat.extend(item["@graph"])
+            else:
+                flat.append(item)
+        for item in flat:
+            if not isinstance(item, dict):
+                continue
+            if not out["name"] and isinstance(item.get("name"), str):
+                out["name"] = item["name"].strip()
+            if not out["email"]:
+                email = item.get("email", "")
+                if isinstance(email, str) and "@" in email:
+                    out["email"] = email.replace("mailto:", "").strip()
+            if not out["telephone"]:
+                tel = item.get("telephone", "")
+                if isinstance(tel, str) and tel.strip():
+                    out["telephone"] = tel.strip()
+            same_as = item.get("sameAs", [])
+            if isinstance(same_as, str):
+                same_as = [same_as]
+            if isinstance(same_as, list):
+                out["sameAs"].extend([s for s in same_as if isinstance(s, str)])
+            if not out["address"]:
+                addr = item.get("address")
+                if isinstance(addr, dict):
+                    parts = [str(addr.get(k, "")) for k in
+                             ("streetAddress", "addressLocality", "addressRegion", "postalCode", "addressCountry")]
+                    out["address"] = ", ".join(p for p in parts if p and p != "None").strip(", ")
+                elif isinstance(addr, str) and addr.strip():
+                    out["address"] = addr.strip()
+    return out
+
+
+def extract_company_contacts(website: str, max_pages: int = 5) -> CompanyContacts:
+    """Extract a durable company contact bundle, structured-data first.
+
+    Parses JSON-LD Organization/LocalBusiness (email/telephone/address/sameAs),
+    mailto:/tel: anchors, and footer social links across a few high-value pages.
+    Regex email/phone extraction is used only as a fallback when nothing
+    structured is found.
+    """
+    contacts = CompanyContacts()
+    base = enricher.normalize_url(website)
+    if not base:
+        return contacts
+    parsed = urlparse(base)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    domain = normalize_domain(website)
+    seen_emails: set[str] = set()
+    seen_phones: set[str] = set()
+    home_text = ""
+
+    for path in _CONTACT_PATHS[:max_pages]:
+        url = origin if not path else urljoin(origin, path)
+        html = enricher._fetch_html(url)
+        if not html:
+            continue
+        soup = BeautifulSoup(html, "html.parser")
+        if not path:
+            home_text = soup.get_text(" ", strip=True)
+
+        org = _extract_jsonld_org(soup)
+        if org["name"] and not contacts.company_name:
+            contacts.company_name = org["name"]
+        if org["email"] and org["email"].lower() not in seen_emails:
+            seen_emails.add(org["email"].lower())
+            contacts.emails.append((org["email"].lower(), url))
+        if org["telephone"]:
+            tel = _clean_phone(org["telephone"])
+            if tel and tel not in seen_phones:
+                seen_phones.add(tel)
+                contacts.phones.append(tel)
+        if org["address"] and not contacts.address:
+            contacts.address = org["address"]
+        for same in org["sameAs"]:
+            _register_social(contacts, same)
+
+        for anchor in soup.find_all("a", href=True):
+            href = anchor["href"].strip()
+            low = href.lower()
+            if low.startswith("mailto:"):
+                email = href[7:].split("?")[0].strip().lower()
+                if "@" in email and email not in seen_emails:
+                    seen_emails.add(email)
+                    contacts.emails.append((email, url))
+            elif low.startswith("tel:"):
+                tel = _clean_phone(href[4:])
+                if tel and tel not in seen_phones:
+                    seen_phones.add(tel)
+                    contacts.phones.append(tel)
+            else:
+                _register_social(contacts, urljoin(url, href))
+                if not contacts.partnership_url and any(
+                    f"/{hint}" in low or low.rstrip("/").endswith(hint)
+                    for hint in PARTNERSHIP_PATH_HINTS
+                ):
+                    full = urljoin(url, href).split("#")[0]
+                    if normalize_domain(full) == domain:
+                        contacts.partnership_url = full
+
+        # Regex email fallback only when nothing on-domain found yet.
+        if not contacts.emails:
+            for email in EMAIL_RE.findall(soup.get_text(" ", strip=True)):
+                el = email.lower()
+                if "@" in el and normalize_domain(el.split("@", 1)[1]) == domain and el not in seen_emails:
+                    seen_emails.add(el)
+                    contacts.emails.append((el, url))
+
+    # Phone regex fallback from the home page text.
+    if not contacts.phones and home_text:
+        match = _PHONE_RE.search(home_text)
+        if match:
+            tel = _clean_phone(match.group(1))
+            if tel:
+                contacts.phones.append(tel)
+
+    return contacts
+
+
+def pick_company_email(emails: list, domain: str) -> tuple[str, str, str]:
+    """Choose the best company email. Returns (email, email_type, source_url).
+
+    Company policy keeps generic inboxes (info@/contact@) — legitimate first
+    touch for partnership outreach — and ranks partnership/BD inboxes highest. A
+    named-person email outranks all role inboxes. On-domain emails are preferred.
+    """
+    best: tuple[int, str, str, str] | None = None
+    for email, url in emails:
+        if "@" not in email:
+            continue
+        local, email_host = email.split("@", 1)
+        local = local.lower()
+        on_domain = normalize_domain(email_host) == domain
+        if local in COMPANY_EMAIL_PRIORITY or local in ROLE_PREFIXES:
+            rank = COMPANY_EMAIL_PRIORITY.get(local, 45)
+            etype = "role_inbox"
+        elif PERSON_LOCAL_RE.match(local):
+            rank = 98 if any(sep in local for sep in (".", "_", "-")) else 92
+            etype = "person_email"
+        else:
+            rank, etype = 55, "company_email"
+        if not on_domain:
+            # Penalize off-domain emails enough that any on-domain inbox wins, but
+            # a sole freemail address (common for local SMEs) is still returned.
+            rank -= 35
+        if best is None or rank > best[0]:
+            best = (rank, email, etype, url)
+    if not best:
+        return "", "", ""
+    return best[1], best[2], best[3]
+
+
+def find_company_linkedin(company: str, contacts: CompanyContacts, domain: str) -> str:
+    if contacts.linkedin_company_url:
+        return contacts.linkedin_company_url
+    try:
+        for result in web_search(f'"{company}" site:linkedin.com/company', num=5):
+            match = _LINKEDIN_COMPANY_RE.search(result.url)
+            if match:
+                return match.group(0).split("?")[0]
+    except Exception:
+        pass
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# Value-add signals: region fit + coarse size tier
+# ---------------------------------------------------------------------------
+
+def region_fit(contacts: CompanyContacts, website: str, region: str, pages_text: str = "") -> tuple[int, str]:
+    """Score how strongly a company is anchored in the target region (0-100).
+
+    Cheap deterministic signals: ccTLD, phone country code, address/text mentions
+    of the region or its major cities. Lets genuine locals outrank a multinational's
+    localized page.
+    """
+    if not (region or "").strip():
+        return 0, ""
+    region_key = _resolve_region_key(region)
+    score = 0
+    reasons: list[str] = []
+    domain = normalize_domain(website)
+    tld = domain.rsplit(".", 1)[-1] if "." in domain else ""
+    target_cc = _REGION_CCTLD.get(region_key) if region_key else None
+    target_code = _REGION_PHONE.get(region_key) if region_key else None
+    phones_joined = "".join(contacts.phones).replace(" ", "")
+
+    if target_cc and (domain.endswith("." + target_cc) or tld == target_cc):
+        score += 40
+        reasons.append(f"cctld:.{target_cc}")
+    if target_code and target_code in phones_joined:
+        score += 35
+        reasons.append(f"phone:{target_code}")
+    haystack = (contacts.address + " " + pages_text).lower()
+    tokens = [region_key or region.lower()] + (_REGION_CITIES.get(region_key, []) if region_key else [])
+    if any(tok and tok in haystack for tok in tokens):
+        score += 25
+        reasons.append("addr_region_match")
+
+    # Conflict: a clearly different known country (a wrong-country namesake).
+    # Only checked against regions we have signals for, to avoid false flags.
+    conflict = ""
+    if target_cc:
+        for cc in set(_REGION_CCTLD.values()):
+            if cc != target_cc and (tld == cc or domain.endswith("." + cc)):
+                conflict = f".{cc}"
+                break
+    if not conflict and target_code and score == 0:
+        for code in set(_REGION_PHONE.values()):
+            if code != target_code and phones_joined.startswith(code):
+                conflict = code
+                break
+    if conflict:
+        reasons.append(f"region_conflict:{conflict}")
+
+    return min(score, 100), enricher.FACT_SEPARATOR.join(reasons)
+
+
+def size_tier(pages_text: str, contacts: CompanyContacts) -> str:
+    """Coarse company-size band (micro|sme|mid|enterprise) from cheap signals.
+
+    Best-effort — emitted as a filter column, not a hard gate."""
+    text = pages_text or ""
+    match = _SIZE_BAND_RE.search(text)
+    if match:
+        try:
+            n = int(re.sub(r"\D", "", match.group(1)))
+            if n >= 1000:
+                return "enterprise"
+            if n >= 200:
+                return "mid"
+            if n >= 20:
+                return "sme"
+            return "micro"
+        except ValueError:
+            pass
+    if _SME_HINT_RE.search(text):
+        return "sme"
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# Verification: LLM judge (grounded) + deterministic gate
+# ---------------------------------------------------------------------------
+
+def _country_matches(region: str, country: str) -> bool:
+    """True when a detected country resolves to the same canonical region."""
+    if not country:
+        return False
+    rk = _resolve_region_key(region)
+    ck = _resolve_region_key(country)
+    return bool(rk and ck and rk == ck)
+
+
+_JUDGE_SYSTEM = (
+    "You verify whether companies match a target profile and region, using ONLY "
+    "the provided website summary as evidence. You output compact JSON, no prose, "
+    "no markdown fences. If a summary does not clearly establish a company's "
+    "industry or country, you answer \"unknown\" — you never guess from the name."
+)
+
+
+def _build_judge_prompt(items: list[dict], icp: str, region: str) -> str:
+    lines = [
+        f"Target industry/profile: {icp}",
+        f"Target region: {region}",
+        "",
+        "For each company, judge from its OWN website summary whether it matches the "
+        "target industry AND is based in or serves the target region.",
+        'Reply JSON: {"results":[{"i":0,"match":"yes|no|unknown","industry":"...",'
+        '"country":"...","evidence":"<short quote from the summary>"}]}',
+        "Rules: base every field ONLY on the summary text. If the summary is too "
+        "thin to tell, use \"unknown\" (do not guess). Quote real words from the "
+        "summary as evidence.",
+        "",
+        "Companies:",
+    ]
+    for it in items:
+        summary = (it.get("summary") or "")[:500].replace("\n", " ")
+        lines.append(f'[{it["i"]}] name="{it["name"]}" site={it["domain"]} summary="{summary}"')
+    return "\n".join(lines)
+
+
+def judge_companies(rows: list[dict], icp: str, region: str, provider_config: dict) -> dict:
+    """Single batched LLM verdict per company, grounded in crawled summaries.
+
+    Returns {row_index: {"match": yes|no|unknown, "industry", "country", "evidence"}}.
+    On any failure returns {} so the caller falls back to deterministic signals.
+    """
+    items = []
+    for idx, row in enumerate(rows):
+        summary = " ".join([
+            row.get("company_summary", ""), row.get("personalization_facts", ""),
+        ]).strip()
+        items.append({
+            "i": idx,
+            "name": row.get("company", ""),
+            "domain": normalize_domain(row.get("website", "")),
+            "summary": summary,
+        })
+    if not items:
+        return {}
+    try:
+        from opencold import generator as _gen
+        raw = _gen.complete(provider_config, _JUDGE_SYSTEM, _build_judge_prompt(items, icp, region), max_tokens=1500)
+    except Exception:
+        return {}
+    data = _parse_json_object(raw)
+    out: dict = {}
+    for res in data.get("results", []):
+        if isinstance(res, dict) and isinstance(res.get("i"), int):
+            out[res["i"]] = {
+                "match": str(res.get("match", "unknown")).lower().strip(),
+                "industry": str(res.get("industry", "")),
+                "country": str(res.get("country", "")),
+                "evidence": str(res.get("evidence", "")),
+            }
+    return out
+
+
+def _classify_company(row: dict, icp_evidence: bool, region_conflict: bool, llm: dict | None) -> tuple[str, str]:
+    """Combine deterministic evidence with the (optional) LLM verdict.
+
+    Authority split: deterministic signals own REGION (ccTLD/phone are hard facts
+    the model can't override); the LLM owns INDUSTRY semantics. The model deferring
+    ("unknown") never rejects — we fall back to deterministic. Disagreements land in
+    'review', not silently trusted. Returns (confidence, reason).
+    """
+    region_fit_score = int(row.get("region_fit") or 0)
+    llm = llm or {}
+    llm_match = llm.get("match", "unknown")
+
+    if region_conflict:
+        return "rejected", "region_conflict"
+    if llm_match == "no":
+        detail = llm.get("industry") or llm.get("country") or "different company"
+        return "rejected", f"llm_mismatch:{detail}"
+
+    industry_ok = icp_evidence or llm_match == "yes"
+    region_ok = region_fit_score > 0 or _country_matches(row.get("country", ""), llm.get("country", ""))
+
+    if industry_ok and region_ok:
+        suffix = "+llm" if llm_match == "yes" else ""
+        return "verified", f"icp+region_confirmed{suffix}"
+    if not industry_ok:
+        return "review", "icp_unconfirmed"
+    return "review", "region_unconfirmed"
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator + CSV writer
+# ---------------------------------------------------------------------------
+
+COMPANY_CSV_FIELDS = [
+    "email", "name", "company", "website",
+    "match_confidence", "verification",
+    "country", "region_fit", "company_email", "email_type", "phone", "address",
+    "linkedin_company_url", "partnership_channel", "size_tier",
+    "icp_score", "matched_terms",
+    "website_status", "company_summary", "personalization_facts", "source_urls",
+    "personalization_score",
+    "discovery_channel", "discovery_source_url", "discovered_at",
+    "lead_score", "lead_score_reasons", "quality_warnings",
+]
+COMPANY_PEOPLE_FIELDS = ["contact_name", "contact_role", "contact_linkedin", "contact_stale_warning"]
+
+# Banner drawn in the CSV between verified Top-N and the review pile below.
+WALL_BANNER = "═════ REVIEW BELOW — ICP/region NOT verified ═════"
+
+
+def _now_iso() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _score_company_lead(
+    row: dict,
+    region_fit_score: int,
+    email_type: str,
+    region_targeted: bool = False,
+    region_conflict: bool = False,
+) -> tuple[int, str]:
+    score = 30
+    reasons: list[str] = []
+    if row.get("website_status") == "ok":
+        score += 10
+        reasons.append("site_ok")
+    else:
+        score -= 15
+        reasons.append("site_failed")
+    score += min(int(row.get("icp_score") or 0) // 4, 20)
+    if row.get("matched_terms"):
+        reasons.append("icp_match")
+    score += min(int(row.get("personalization_score") or 0) // 6, 15)
+    if email_type == "person_email":
+        score += 18
+        reasons.append("person_email")
+    elif email_type == "role_inbox":
+        score += 12
+        reasons.append("role_inbox")
+    elif email_type == "company_email":
+        score += 8
+        reasons.append("company_email")
+    if row.get("phone"):
+        score += 5
+        reasons.append("phone")
+    if row.get("linkedin_company_url"):
+        score += 6
+        reasons.append("linkedin_company")
+    if row.get("partnership_channel"):
+        score += 8
+        reasons.append("partnership_channel")
+    score += min(region_fit_score // 5, 18)
+    if region_fit_score >= 40:
+        reasons.append("region_fit")
+    # For a region-targeted search, sink wrong-country namesakes and softly
+    # de-rank companies we couldn't confirm are in-region.
+    if region_conflict:
+        score -= 30
+        reasons.append("region_conflict")
+    elif region_targeted and region_fit_score == 0:
+        score -= 15
+        reasons.append("region_unconfirmed")
+    if B2B_SIGNAL_RE.search(" ".join([row.get("company_summary", ""), row.get("personalization_facts", "")])):
+        score += 6
+        reasons.append("b2b_signal")
+    return max(0, min(score, 100)), enricher.FACT_SEPARATOR.join(reasons)
+
+
+def build_company_row(
+    company: CandidateCompany,
+    icp: str,
+    region: str,
+    max_pages: int = 4,
+    find_people: bool = False,
+) -> dict | None:
+    domain = normalize_domain(company.website)
+    pages = crawl_company_pages(company.website, max_pages=max_pages)
+    pages = _merge_pages(pages, search_company_pages(company))
+    facts = enricher.extract_facts(pages)
+    enrichment = {
+        "website_status": "ok" if pages else "fetch_failed",
+        "company_summary": enricher.summarize_facts(facts),
+        "personalization_facts": enricher.facts_to_text(facts),
+        "source_urls": enricher.source_urls(facts),
+        "personalization_score": str(enricher.personalization_score(facts)),
+        "quality_warnings": enricher.FACT_SEPARATOR.join(enricher.quality_warnings(facts, pages)),
+    }
+    pages_text = " ".join(f"{p.title} {p.description} {p.text}" for p in pages)
+
+    contacts = extract_company_contacts(company.website, max_pages=max_pages)
+    name = company.company
+    if contacts.company_name and (not name or name == _company_from_domain(domain)):
+        name = contacts.company_name
+
+    email, email_type, _email_src = pick_company_email(contacts.emails, domain)
+    linkedin = find_company_linkedin(name, contacts, domain)
+    rfit, rfit_reasons = region_fit(contacts, company.website, region, pages_text)
+    region_conflict = "region_conflict" in rfit_reasons
+    tier = size_tier(pages_text, contacts)
+
+    if contacts.partnership_url:
+        partnership = f"page:{contacts.partnership_url}"
+    elif email and email.split("@", 1)[0].lower() in ("partnerships", "partner", "bd"):
+        partnership = f"email:{email}"
+    else:
+        partnership = ""
+
+    icp_score, matched_terms = score_company(company, enrichment, icp)
+    if rfit_reasons:
+        matched_terms = (matched_terms + (enricher.FACT_SEPARATOR if matched_terms else "") + rfit_reasons)
+
+    row = {
+        "email": email,
+        "name": "",
+        "company": name,
+        "website": company.website,
+        "country": region,
+        "region_fit": str(rfit),
+        "company_email": email,
+        "email_type": email_type,
+        "phone": contacts.phones[0] if contacts.phones else "",
+        "address": contacts.address,
+        "linkedin_company_url": linkedin,
+        "partnership_channel": partnership,
+        "size_tier": tier,
+        "icp_score": str(icp_score),
+        "matched_terms": matched_terms,
+        "discovery_channel": getattr(company, "discovery_channel", "") or "",
+        "discovery_source_url": company.discovery_source_url,
+        "discovered_at": _now_iso(),
+        **enrichment,
+    }
+    lead_score, lead_reasons = _score_company_lead(
+        row, rfit, email_type,
+        region_targeted=bool(region), region_conflict=region_conflict,
+    )
+    row["lead_score"] = str(lead_score)
+    row["lead_score_reasons"] = lead_reasons
+    # Carried for verification/classification; underscore keys are not written to
+    # CSV (DictWriter uses fixed fieldnames + extrasaction="ignore").
+    row["_icp_evidence"] = _icp_evidence(icp, enrichment)
+    row["_region_conflict"] = region_conflict
+
+    if find_people:
+        people = search_linkedin_contacts(name, domain)
+        best = people[0] if people else None
+        row["contact_name"] = best.name if best else ""
+        row["contact_role"] = best.role if best else ""
+        row["contact_linkedin"] = best.source_url if best else ""
+        row["contact_stale_warning"] = "person_company_mapping_may_be_stale" if best else ""
+    return row
+
+
+def discover_company_rows(
+    icp: str,
+    region: str,
+    sources: list[str] | None = None,
+    limit: int = 30,
+    workers: int = 8,
+    max_pages: int = 4,
+    use_llm: bool = True,
+    seed_count: int = 30,
+    find_people: bool = False,
+    progress_callback: object = None,
+) -> list[dict]:
+    """Discover companies for (ICP, region) with a durable contact bundle.
+
+    Builds a candidate pool, then verifies each lead against ICP + region using
+    deterministic evidence and (when a provider is configured) a single batched
+    LLM judge. Returns verified leads first (up to `limit`) followed by the
+    review/rejected pile, each row tagged with match_confidence/verification.
+
+    Args:
+        progress_callback: Optional callable(processed, total, found, elapsed_seconds).
+    """
+    # Crawl more than `limit` so rejected namesakes can be replaced by verified
+    # ones — but cap the pool so latency stays bounded.
+    pool = min(max(limit * 2, limit + 8), 40)
+    candidates = discover_company_candidates(
+        icp, region, sources=sources, limit=pool,
+        workers=workers, use_llm=use_llm, seed_count=seed_count,
+    )
+    # Dedupe by domain up front (channels already dedupe, but be safe).
+    seen: set[str] = set()
+    deduped: list[CandidateCompany] = []
+    for cand in candidates:
+        domain = normalize_domain(cand.website)
+        if domain and domain not in seen:
+            seen.add(domain)
+            deduped.append(cand)
+    candidates = deduped[:pool]
+
+    rows: list[dict] = []
+    workers = _clamp_workers(workers)
+    start = time.monotonic()
+    processed = 0
+    total = len(candidates)
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        future_to_company = {
+            executor.submit(build_company_row, company, icp, region, max_pages, find_people): company
+            for company in candidates
+        }
+        for future in as_completed(future_to_company):
+            processed += 1
+            try:
+                row = future.result()
+            except Exception:
+                row = None
+            if row is not None:
+                rows.append(row)
+            if progress_callback is not None:
+                try:
+                    progress_callback(processed, total, len(rows), time.monotonic() - start)
+                except Exception:
+                    pass
+
+    # Single batched LLM judge over all built rows, if a provider is available.
+    verdicts: dict = {}
+    if use_llm and rows:
+        prov = _resolve_llm_provider()
+        if prov:
+            verdicts = judge_companies(rows, icp, region, prov)
+
+    # Classify each row, then rank within its confidence band by lead score.
+    for idx, row in enumerate(rows):
+        confidence, why = _classify_company(
+            row, bool(row.get("_icp_evidence")), bool(row.get("_region_conflict")), verdicts.get(idx),
+        )
+        row["match_confidence"] = confidence
+        row["verification"] = why
+
+    def _rank(row: dict) -> int:
+        return int(row.get("lead_score", "0"))
+
+    verified = sorted((r for r in rows if r["match_confidence"] == "verified"), key=_rank, reverse=True)
+    review = sorted((r for r in rows if r["match_confidence"] == "review"), key=_rank, reverse=True)
+    rejected = sorted((r for r in rows if r["match_confidence"] == "rejected"), key=_rank, reverse=True)
+
+    # Verified fill the Top-N; the review/rejected pile (capped) goes below the wall.
+    return verified[:limit] + (review + rejected)[:limit]
+
+
+def write_company_csv(rows: list[dict], output: str) -> None:
+    """Write company leads; draws a visual wall between verified and the rest.
+
+    Verified rows are written first, then a blank gap row and a banner divider,
+    then the review/rejected rows — so opened in a spreadsheet the genuinely
+    verified Top-N sit clearly above the pile that needs review.
+    """
+    fieldnames = list(COMPANY_CSV_FIELDS)
+    if rows and any("contact_name" in r for r in rows):
+        fieldnames += COMPANY_PEOPLE_FIELDS
+    has_verified = any(r.get("match_confidence") == "verified" for r in rows)
+    with open(output, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        wall_drawn = False
+        for row in rows:
+            if (not wall_drawn and has_verified
+                    and row.get("match_confidence") not in ("verified", "", None)):
+                writer.writerow({})  # blank gap row
+                writer.writerow({"company": WALL_BANNER})
+                wall_drawn = True
+            writer.writerow(row)

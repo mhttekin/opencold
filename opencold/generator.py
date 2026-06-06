@@ -269,6 +269,31 @@ def generate_email(
     return {"subject": _clean_subject(subject), "body": _clean_output(body)}
 
 
+def complete(
+    provider_config: dict,
+    system_prompt: str,
+    user_prompt: str,
+    model: str | None = None,
+    max_tokens: int | None = None,
+) -> str:
+    """Return a raw model completion (no email subject/body splitting or cleanup).
+
+    Used for non-email LLM tasks like company seeding during discovery. Routes by
+    provider type exactly like generate_email() but returns the raw string.
+    """
+    provider_type = provider_config.get("type", "anthropic")
+    api_key = provider_config["api_key"]
+    effective_model = model or provider_config.get("default_model") or DEFAULT_MODEL
+    effective_max_tokens = max_tokens or provider_config.get("max_tokens") or DEFAULT_MAX_TOKENS
+
+    if provider_type == "anthropic":
+        return _generate_anthropic(api_key, system_prompt, user_prompt, effective_model, effective_max_tokens)
+    if provider_type in ("openai", "proxy"):
+        base_url = provider_config.get("base_url") if provider_type == "proxy" else None
+        return _generate_openai(api_key, system_prompt, user_prompt, effective_model, effective_max_tokens, base_url)
+    raise ValueError(f"Unknown provider type: {provider_type}")
+
+
 def generate_with_retry(
     provider_config: dict,
     system_prompt: str,

@@ -179,7 +179,7 @@ def build_user_prompt(
     personalization_facts: str | None = None,
 ) -> str:
     """Build a fully personalized user prompt from CSV row, identity, profile, and campaign."""
-    recipient = f"{row['first_name']} {row['last_name']}"
+    recipient = row.get("name") or f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
     recipient_company = row["company"]
     recipient_email = row["email"]
 
@@ -258,7 +258,7 @@ def build_user_prompt(
 
 def build_template_prompt(row: dict, identity: dict, profile: dict) -> str:
     """Build a simpler prompt when we don't have enough context — produces a template."""
-    recipient = f"{row['first_name']} {row['last_name']}"
+    recipient = row.get("name") or f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
     recipient_company = row["company"]
 
     sender_name = identity.get("name", "[Your Name]")

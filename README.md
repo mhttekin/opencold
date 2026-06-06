@@ -37,14 +37,57 @@ Input CSV needs: `email`, `first_name`, `last_name`, `company`, and optionally `
 > Discovery relies on web scraping and search engines which may fail due to rate
 > limits or CAPTCHAs. Can take several minutes. Always review results before outreach.
 
+### Companies mode (default)
+
+Give an ideal customer profile and a region; OpenCold builds a ranked **company
+list** with a durable contact bundle — company email (partnership/BD inbox
+preferred), phone, address, and the **company** LinkedIn page — plus a region-fit
+score and a coarse size tier.
+
 ```
-discover sources.txt --icp "developer tools" -o leads.csv
+discover --icp "insurance companies" --region "Bangladesh" -o leads.csv
 ```
 
-`sources.txt` is one URL per line — ecosystem pages, partner pages, directories, etc.
-Finds companies, scores ICP fit, and discovers contacts via public emails and LinkedIn
-search. Only includes verified emails; falls back to LinkedIn profile URLs when
-verification fails. Filters out generic inboxes (`support@`, `contact@`, `info@`).
+Candidate companies are discovered at runtime (no curated source file needed):
+
+- **LLM seeding** — if an LLM provider is configured, Claude names known companies
+  for the (ICP, region) and points at authoritative local indexes (regulators,
+  associations). Skipped automatically when no provider is set up.
+- **Search harvest** — region + ICP queries through the search stack, with
+  directories/aggregators filtered out.
+- **Sources file** *(optional)* — pass a `sources.txt` as an extra channel.
+
+Output columns include `company`, `website`, `company_email`, `email_type`,
+`phone`, `address`, `linkedin_company_url`, `partnership_channel`, `region_fit`,
+and `size_tier`. Rows without an email are kept (still useful via phone/LinkedIn);
+use `--require-contact` to drop them.
+
+**Verification & the wall.** Each lead is checked against the ICP and region using
+the company's own crawled content (not just its name), so wrong-industry / wrong-country
+namesakes don't slip in. Two signals drive a `match_confidence` (verified / review /
+rejected) and a `verification` reason:
+
+- Deterministic: ICP terms present in the crawled text; ccTLD / phone code / city for region.
+- LLM judge (only if a provider is configured): one batched call reads the crawled
+  summaries and rules each company match `yes/no/unknown`, grounded in a quoted phrase.
+  It owns *industry* judgement; deterministic signals own *region* (hard facts). When the
+  model is unsure (`unknown`) it defers to the deterministic check — it never rejects on
+  ignorance. With no provider, discovery runs deterministic-only.
+
+The CSV lists **verified** leads first (your real Top-N), then a blank gap and a
+`REVIEW BELOW` banner, then the review/rejected pile so you can scan and salvage.
+
+Add `--find-people` to also search a named contact per company. **Note:** person→
+company mappings come from public search and can be stale — verify before outreach.
+
+### People mode (legacy)
+
+```
+discover sources.txt --mode people --icp "developer tools" -o leads.csv
+```
+
+`sources.txt` is one URL per line — ecosystem pages, partner pages, directories.
+Finds a contact per company via public emails and LinkedIn search.
 
 ## SMTP
 

@@ -2,18 +2,20 @@
 
 import {
   ArrowRight,
+  ArrowUp,
   Check,
   ChevronDown,
   Clipboard,
   Download,
-  FileText,
+  FileSpreadsheet,
   Mail,
   Play,
   Send,
   Star,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useDropzone } from "react-dropzone";
 
 /* ── types ── */
 
@@ -121,8 +123,8 @@ function Counter({ value }: { value: number }) {
 
 export default function Home() {
   const [stage, setStage] = useState<Stage>("drop");
-  const [isDragging, setIsDragging] = useState(false);
   const [fileName, setFileName] = useState("");
+  const [dropHint, setDropHint] = useState<string | null>(null);
 
   // configure — left: campaign (progressive expand)
   const [campaignTitle, setCampaignTitle] = useState("");
@@ -162,8 +164,6 @@ export default function Home() {
   const [openRow, setOpenRow] = useState<number | null>(0);
   const [smtpOpen, setSmtpOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const hasCampaign = campaignTitle.trim().length > 0;
   const hasProfile = profileName.trim().length > 0;
@@ -207,7 +207,7 @@ export default function Home() {
           className="text-[15px] font-semibold tracking-tight"
           onClick={() => setStage("drop")}
         >
-          opencold
+          OpenCold
         </button>
         <a
           href="https://github.com/mhttekin/opencold"
@@ -231,74 +231,19 @@ export default function Home() {
 
       {/* ── STAGE: DROP ── */}
       {stage === "drop" && (
-        <section className="relative z-10 mx-auto flex min-h-[calc(100vh-80px)] max-w-2xl flex-col items-center justify-center px-6">
-          <h1 className="text-center text-[clamp(2rem,5vw,3.2rem)] font-semibold leading-[1.1] tracking-tight">
-            Cold outreach,
-            <br />
-            grounded in research.
-          </h1>
-          <p className="mt-4 max-w-md text-center text-[15px] leading-relaxed text-zinc-500">
-            Drop a CSV of companies. OpenCold reads their websites, finds the
-            right contacts, and writes emails that reference real facts.
-          </p>
-
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDragging(true);
-            }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setIsDragging(false);
-              startConfigure(e.dataTransfer.files[0]?.name || "companies.csv");
-            }}
-            onClick={() => fileRef.current?.click()}
-            className={`drop-zone mt-10 w-full max-w-lg ${isDragging ? "drop-zone--active" : ""}`}
-          >
-            <div className="flex flex-col items-center px-6 text-center">
-              <div className="mb-4 grid size-11 place-items-center rounded-full bg-zinc-900 text-white">
-                <FileText size={20} />
-              </div>
-              <p className="text-lg font-medium">Drop your CSV here</p>
-              <p className="mt-1.5 text-sm text-zinc-400">or click to browse</p>
-            </div>
-            <input
-              ref={fileRef}
-              className="hidden"
-              type="file"
-              accept=".csv,text/csv"
-              onChange={(e) =>
-                startConfigure(e.target.files?.[0]?.name || "companies.csv")
-              }
-            />
-          </div>
-
-          {/* csv ghost */}
-          <div className="mt-8 w-full max-w-sm opacity-40" aria-hidden="true">
-            <div className="csv-sheet">
-              <div className="csv-header">
-                <span>Name</span>
-                <span>Company</span>
-                <span>Website</span>
-              </div>
-              <div className="csv-row csv-row--one" />
-              <div className="csv-row csv-row--two" />
-              <div className="csv-row csv-row--three" />
-            </div>
-          </div>
-
-          <div className="mt-4 flex gap-2">
-            {["Name", "Company", "Website URL"].map((label) => (
-              <span
-                key={label}
-                className="rounded-full border border-zinc-200 px-3 py-1 text-[11px] font-medium text-zinc-400"
-              >
-                {label}
-              </span>
-            ))}
-          </div>
-        </section>
+        <DropHero
+          onFile={(file) => {
+            console.log("Parsed file:", file);
+            setDropHint(`Reading ${file.name}…`);
+            // TODO: hand off file to processing pipeline
+            window.setTimeout(() => {
+              setDropHint(null);
+              startConfigure(file.name);
+            }, 1200);
+          }}
+          hint={dropHint}
+          onHintClear={() => setDropHint(null)}
+        />
       )}
 
       {/* ── STAGE: CONFIGURE ── */}
@@ -980,6 +925,125 @@ function SidebarToggle({
         <span className="toggle-thumb" />
       </span>
     </button>
+  );
+}
+
+function DropHero({
+  onFile,
+  hint,
+  onHintClear,
+}: {
+  onFile: (file: File) => void;
+  hint: string | null;
+  onHintClear: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const errorTimer = useRef<ReturnType<typeof setTimeout>>(null);
+
+  const onDrop = useCallback(
+    (accepted: File[], rejected: { file: File }[]) => {
+      if (rejected.length > 0) {
+        setError("Only .csv files are accepted");
+        if (errorTimer.current) clearTimeout(errorTimer.current);
+        errorTimer.current = setTimeout(() => {
+          setError(null);
+          onHintClear();
+        }, 3500);
+        return;
+      }
+      if (accepted.length > 0) {
+        setError(null);
+        onFile(accepted[0]);
+      }
+    },
+    [onFile, onHintClear],
+  );
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { "text/csv": [".csv"] },
+    multiple: false,
+    noClick: false,
+  });
+
+  return (
+    <section className="relative z-10 mx-auto grid min-h-[calc(100vh-80px)] w-full max-w-6xl items-center gap-12 px-6 py-12 sm:px-10 lg:grid-cols-[1.25fr_1fr] lg:gap-16">
+      {/* ── LEFT: copy + hint ── */}
+      <div>
+        <h1 className="whitespace-nowrap text-left text-[clamp(2rem,4.5vw,3.5rem)] font-normal leading-[1.08] tracking-tight">
+          Cold outreach,
+          <br />
+          grounded in research.
+        </h1>
+
+        <p className="mt-6 max-w-md text-left text-base leading-relaxed text-zinc-500">
+          Drop a CSV of companies. OpenCold reads each website, finds the right
+          contact, and writes emails that reference real facts.
+        </p>
+
+        {/* required columns — hint */}
+        <div className="mt-7 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-zinc-400">
+            Required columns
+          </span>
+          {["Name", "Company"].map((c) => (
+            <span
+              key={c}
+              className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-600"
+            >
+              {c}
+            </span>
+          ))}
+          <span className="text-xs text-zinc-400">
+            — website found automatically
+          </span>
+        </div>
+      </div>
+
+      {/* ── RIGHT: drop zone ── */}
+      <div className="w-full">
+        <div
+          {...getRootProps()}
+          className={`dropzone ${isDragActive ? "dropzone--active" : ""}`}
+        >
+          <input {...getInputProps()} />
+
+          <div className="dropzone-icon">
+            <FileSpreadsheet size={22} strokeWidth={1.75} />
+          </div>
+
+          <p className="mt-4 text-base font-semibold">
+            {isDragActive ? "Drop to start" : "Drop your CSV here"}
+          </p>
+          <p className="mt-1 text-sm">
+            {error ? (
+              <span className="font-medium text-red-500">{error}</span>
+            ) : hint ? (
+              <span className="font-medium text-zinc-500">{hint}</span>
+            ) : (
+              <span className="text-zinc-400">or click to browse</span>
+            )}
+          </p>
+
+          {/* upward pull arrow — appears while dragging */}
+          <div className="dropzone-pull">
+            <ArrowUp size={18} strokeWidth={1.75} />
+          </div>
+        </div>
+
+        {/* CSV ghost preview — shows the expected shape of the file */}
+        <div className="csv-sheet mt-6">
+          <div className="csv-header">
+            <span>Name</span>
+            <span>Company</span>
+            <span>Email</span>
+          </div>
+          <div className="csv-row" />
+          <div className="csv-row csv-row--two" />
+          <div className="csv-row csv-row--three" />
+        </div>
+      </div>
+    </section>
   );
 }
 

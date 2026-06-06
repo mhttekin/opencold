@@ -492,7 +492,7 @@ class _ReplCompleter(Completer):
         if first == "discover":
             current_word = words[-1] if not text.endswith(" ") else ""
             if current_word.startswith("-"):
-                for flag in ["--icp", "--output", "--limit", "--source-limit", "--require-contact", "--guess-role-email", "--max-pages", "--workers"]:
+                for flag in ["--icp", "--region", "--mode", "--output", "--limit", "--source-limit", "--require-contact", "--guess-role-email", "--find-people", "--count", "--max-pages", "--workers"]:
                     if flag.startswith(current_word) and flag != current_word:
                         yield Completion(flag, start_position=-len(current_word))
                 return
@@ -956,6 +956,26 @@ def _has_enough_context(campaign: dict) -> bool:
     return bool(campaign.get("description") and campaign.get("pitch"))
 
 
+def _display_name(row: dict) -> str:
+    """A row's recipient name — 'name' column, or legacy first/last combined."""
+    name = (row.get("name") or "").strip()
+    if name:
+        return name
+    first = (row.get("first_name") or "").strip()
+    last = (row.get("last_name") or "").strip()
+    return f"{first} {last}".strip()
+
+
+def _normalize_name_columns(rows: list[dict]) -> list[dict]:
+    """Ensure every row has a 'name' key (combining legacy first/last if needed)."""
+    for row in rows:
+        if not (row.get("name") or "").strip():
+            combined = _display_name(row)
+            if combined:
+                row["name"] = combined
+    return rows
+
+
 def _read_csv(path: str, require_email: bool = True) -> list[dict]:
     try:
         with open(path, newline="", encoding="utf-8") as f:
@@ -966,14 +986,31 @@ def _read_csv(path: str, require_email: bool = True) -> list[dict]:
     if not rows:
         typer.echo("Error: CSV is empty.", err=True)
         raise typer.Exit(1)
-    required = {"first_name", "last_name", "company"}
+    columns = set(rows[0].keys())
+
+    def _is_wall_row(r: dict) -> bool:
+        # Discovery's visual-wall rows: a banner (company starts with ═) or a
+        # fully blank gap row. Drop them so a company CSV feeds straight into run.
+        if (r.get("company") or "").lstrip().startswith("═"):
+            return True
+        return not any((v or "").strip() for v in r.values())
+
+    rows = [r for r in rows if not _is_wall_row(r)]
+    if not rows:
+        typer.echo("Error: CSV has no usable rows.", err=True)
+        raise typer.Exit(1)
+    # Accept a single 'name' column (preferred) or legacy first_name/last_name.
+    if "name" not in columns and "first_name" not in columns:
+        typer.echo("Error: CSV missing a 'name' column.", err=True)
+        raise typer.Exit(1)
+    required = {"company"}
     if require_email:
         required.add("email")
-    missing = required - set(rows[0].keys())
+    missing = required - columns
     if missing:
         typer.echo(f"Error: CSV missing columns: {', '.join(missing)}", err=True)
         raise typer.Exit(1)
-    return rows
+    return _normalize_name_columns(rows)
 
 
 def _validate_csv(rows: list[dict], allow_missing_email: bool = False) -> list[dict] | None:
@@ -1031,6 +1068,73 @@ def _clamp_workers(workers: int) -> int:
     return max(1, min(int(workers or 1), 8))
 
 
+def _resolve_missing_websites(rows: list[dict], workers: int = 8) -> list[dict]:
+    """Fill in missing 'website' values by searching for the company name.
+
+    Uses discovery.resolve_company_website (ddgs → Brave → Serper → DDG HTML),
+    so it works with zero configuration and free backends. Rows that already
+    have a website are left untouched. Companies are de-duplicated so each name
+    is searched only once. Returns the same rows with 'website' populated where
+    a confident match was found.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    has_col = bool(rows) and "website" in rows[0]
+    targets = [
+        r for r in rows
+        if r.get("company", "").strip()
+        and not (r.get("website", "").strip() if has_col else "")
+    ]
+    if not targets:
+        return rows
+
+    # Ensure every row carries a 'website' key so the column stays consistent
+    # for validation and CSV output downstream.
+    for r in rows:
+        r.setdefault("website", "")
+
+    by_company: dict[str, list[dict]] = {}
+    for r in targets:
+        by_company.setdefault(r["company"].strip(), []).append(r)
+
+    workers = _clamp_workers(workers)
+    worker_count = max(1, min(workers, len(by_company)))
+    typer.echo(
+        f"\n  {len(targets)} row(s) missing a website — searching by company name "
+        f"with {worker_count} worker(s)..."
+    )
+
+    resolved: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        future_to_company = {
+            executor.submit(discovery.resolve_company_website, company): company
+            for company in by_company
+        }
+        for future in as_completed(future_to_company):
+            company = future_to_company[future]
+            try:
+                url = future.result()
+            except Exception:
+                url = None
+            if url:
+                resolved[company] = url
+
+    found = 0
+    for company, company_rows in by_company.items():
+        url = resolved.get(company)
+        if url:
+            found += 1
+            for r in company_rows:
+                r["website"] = url
+            typer.echo(f"    {GREEN}✓{RESET} {company} → {url}")
+        else:
+            typer.echo(f"    {YELLOW}✗{RESET} {company} {DIM}— no website found{RESET}")
+
+    plural = "y" if len(by_company) == 1 else "ies"
+    typer.echo(f"  Resolved {found}/{len(by_company)} compan{plural} from name.")
+    return rows
+
+
 def _enrich_rows(rows: list[dict], max_pages: int = 4, workers: int = 8) -> list[dict]:
     """Enrich rows with verification, website status, and grounded facts."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1074,7 +1178,7 @@ def _enrich_rows(rows: list[dict], max_pages: int = 4, workers: int = 8) -> list
 
     enriched = []
     for idx, row in enumerate(rows, start=1):
-        name = f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
+        name = _display_name(row)
         label = name or row.get("company", "") or row.get("email", "")
         typer.echo(f"  [{idx}/{len(rows)}] {label}... ", nl=False)
         enriched_row = dict(row)
@@ -1104,7 +1208,7 @@ def _write_results(rows: list[dict], results: list[dict], output: str, fmt: str)
             dest.close()
     elif fmt == "stdout":
         for r in results:
-            name = f"{r['first_name']} {r['last_name']}"
+            name = _display_name(r)
             typer.echo(f"\n{'='*60}")
             typer.echo(f"To: {name} <{r['email']}> @ {r['company']}")
             if r.get("generated_subject"):
@@ -1145,6 +1249,10 @@ def do_run(
 
     # ── Check enrichment early (before provider resolution) ──
     rows = _read_csv(input_csv)
+    # Fill in any missing company websites from their names (free web search)
+    # before validation so name-only leads aren't dropped.
+    if not _is_enriched(rows):
+        rows = _resolve_missing_websites(rows, workers=workers)
     rows = _validate_csv(rows)
     if rows is None:
         return
@@ -1222,7 +1330,7 @@ def do_run(
     if invalid:
         typer.echo(f"  {RED}{len(invalid)} invalid email(s):{RESET}")
         for row, reason in invalid:
-            name = f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
+            name = _display_name(row)
             typer.echo(f"    {RED}✗{RESET} {row['email']} — {reason}")
         valid_rows = [r for r in rows if r not in [inv[0] for inv in invalid]]
         if not valid_rows:
@@ -1265,7 +1373,7 @@ def do_run(
             return prompt_template.format(**row)
         elif use_flags:
             return (
-                f"Write a cold outreach email to {row['first_name']} {row['last_name']} "
+                f"Write a cold outreach email to {_display_name(row)} "
                 f"at {row['company']}. Their email is {row['email']}."
             )
         elif campaign and _has_enough_context(campaign):
@@ -1303,7 +1411,7 @@ def do_run(
         # Show what we're processing
         for idx in batch_indices:
             row = rows[idx]
-            name = f"{row['first_name']} {row['last_name']}"
+            name = _display_name(row)
             typer.echo(f"  [{idx + 1}/{len(rows)}] {name} ({row['company']})... ", nl=False)
             typer.echo("sending")
 
@@ -1324,7 +1432,7 @@ def do_run(
         # Collect results in order
         for idx in batch_indices:
             row = rows[idx]
-            name = f"{row['first_name']} {row['last_name']}"
+            name = _display_name(row)
             result = batch_results[idx]
             if isinstance(result, Exception):
                 typer.echo(f"  [{idx + 1}/{len(rows)}] {name} ... failed: {result}")
@@ -1407,7 +1515,7 @@ def _do_send_results(results: list[dict], subject: str = "") -> None:
     failed = 0
     for r in sendable:
         to_email = r["email"]
-        to_name = f"{r.get('first_name', '')} {r.get('last_name', '')}".strip()
+        to_name = _display_name(r)
         body = r["generated_email"]
         email_subject = subject or r.get("generated_subject", "")
         if not email_subject:
@@ -1445,7 +1553,7 @@ def do_send(input_csv: str, subject: str = "") -> None:
     missing = required - set(rows[0].keys())
     if missing:
         typer.echo(f"  {RED}Missing columns:{RESET} {', '.join(missing)}")
-        typer.echo(f"  Expected a CSV with at least: email, first_name, last_name, generated_email")
+        typer.echo(f"  Expected a CSV with at least: email, name, generated_email")
         return
 
     _do_send_results(rows, subject)
@@ -1454,6 +1562,8 @@ def do_send(input_csv: str, subject: str = "") -> None:
 def do_prepare(input_csv: str, output: str = "enriched.csv", max_pages: int = 4, workers: int = 8) -> None:
     """Prepare an enriched lead CSV without generating emails."""
     rows = _read_csv(input_csv, require_email=False)
+    # Fill in any missing company websites from their names (free web search).
+    rows = _resolve_missing_websites(rows, workers=workers)
     rows = _validate_csv(rows, allow_missing_email=True)
     if rows is None:
         return
@@ -1464,58 +1574,81 @@ def do_prepare(input_csv: str, output: str = "enriched.csv", max_pages: int = 4,
     typer.echo(f"\n  Enriched leads saved to: {output}")
 
 
+def _print_discover_progress(processed: int, total: int, found: int, elapsed: float) -> None:
+    """Single-line discovery progress to stderr (shared by both modes)."""
+    if processed == 0:
+        eta_str = "calculating..."
+    else:
+        avg = elapsed / processed
+        eta = int(avg * max(total - processed, 0))
+        eta_str = f"~{eta}s left" if eta < 60 else f"~{eta // 60}m {eta % 60}s left"
+    sys.stderr.write(
+        f"\r  Processing {processed}/{total} companies "
+        f"| {found} found | {int(elapsed)}s elapsed | {eta_str}   "
+    )
+    sys.stderr.flush()
+
+
 def do_discover(
-    sources_file: str,
+    sources_file: str = "",
     icp: str = "",
     output: str = "leads.csv",
-    limit: int = 50,
+    limit: int = 10,
     require_contact: bool = False,
     max_pages: int = 3,
     workers: int = 8,
     source_limit: int = 25,
     guess_role_email: bool = False,
+    region: str = "",
+    mode: str = "companies",
+    find_people: bool = False,
+    seed_count: int = 30,
 ) -> None:
-    """Discover companies and source-backed contacts from public source URLs.
+    """Discover leads (experimental — review before outreach).
 
-    NOTE: This feature is experimental. Contact discovery relies on web search
-    and public page scraping which may fail due to rate limits, CAPTCHAs, or
-    site changes. Results should be reviewed before outreach.
+    Default 'companies' mode: given --icp and --region, finds a ranked company
+    list with a durable contact bundle (company email, phone, address, company
+    LinkedIn). Legacy 'people' mode finds a named contact per company from a
+    sources file (results can be stale).
     """
-    sources = discovery.load_sources(sources_file)
+    if mode == "people":
+        _do_discover_people(
+            sources_file, icp, output, limit, require_contact,
+            max_pages, workers, source_limit, guess_role_email,
+        )
+        return
+    _do_discover_companies(
+        icp, region, output, limit, max_pages, workers,
+        sources_file, find_people, seed_count, require_contact,
+    )
+
+
+def _do_discover_people(
+    sources_file: str,
+    icp: str,
+    output: str,
+    limit: int,
+    require_contact: bool,
+    max_pages: int,
+    workers: int,
+    source_limit: int,
+    guess_role_email: bool,
+) -> None:
+    """Legacy person-per-company discovery from a sources file."""
+    sources = discovery.load_sources(sources_file or "sources.txt")
     if not sources:
-        typer.echo(f"  {RED}No source URLs found in {sources_file}.{RESET}")
+        typer.echo(f"  {RED}No source URLs found in {sources_file or 'sources.txt'}.{RESET}")
         return
 
-    typer.echo(f"\n  {YELLOW}[experimental]{RESET} Lead discovery — results may vary, review before outreach")
-
-    # Check search API availability
+    typer.echo(f"\n  {YELLOW}[experimental]{RESET} People discovery (legacy) — results may vary")
+    typer.echo(f"  {YELLOW}⚠ Person→company data can be stale; verify before outreach.{RESET}")
     try:
         from ddgs import DDGS
-        typer.echo(f"  {GREEN}\u2713{RESET} Searching with DuckDuckGo")
+        typer.echo(f"  {GREEN}✓{RESET} Searching with DuckDuckGo")
     except ImportError:
-        typer.echo(f"  {YELLOW}\u26a0{RESET} ddgs package not installed. Run: {BOLD}pip install ddgs{RESET}")
-    serper_key = discovery._get_serper_key()
-    if serper_key:
-        typer.echo(f"  {GREEN}\u2713{RESET} Serper search API configured (fallback)")
-
-    import sys
-
-    def _progress(processed: int, total: int, found: int, elapsed: float) -> None:
-        if processed == 0:
-            eta_str = "calculating..."
-        else:
-            avg_per_company = elapsed / processed
-            remaining = max(total - processed, 0)
-            eta_seconds = int(avg_per_company * remaining)
-            if eta_seconds < 60:
-                eta_str = f"~{eta_seconds}s left"
-            else:
-                eta_str = f"~{eta_seconds // 60}m {eta_seconds % 60}s left"
-        sys.stderr.write(
-            f"\r  Processing {processed}/{total} companies "
-            f"| {found} leads found | {int(elapsed)}s elapsed | {eta_str}   "
-        )
-        sys.stderr.flush()
+        typer.echo(f"  {YELLOW}⚠{RESET} ddgs package not installed. Run: {BOLD}pip install ddgs{RESET}")
+    if discovery._get_serper_key():
+        typer.echo(f"  {GREEN}✓{RESET} Serper search API configured (fallback)")
 
     typer.echo(f"\n  Discovering leads from {len(sources)} source(s)...\n")
     rows = discovery.discover_rows(
@@ -1527,28 +1660,81 @@ def do_discover(
         workers=workers,
         source_limit=source_limit,
         guess_role_email=guess_role_email,
-        progress_callback=_progress,
+        progress_callback=_print_discover_progress,
     )
-    sys.stderr.write("\r" + " " * 80 + "\r")  # Clear progress line
+    sys.stderr.write("\r" + " " * 80 + "\r")
     sys.stderr.flush()
     discovery.write_csv(rows, output)
 
     with_contact = sum(1 for row in rows if row.get("email"))
     linkedin_count = sum(1 for row in rows if row.get("contact_type") == "linkedin_profile")
-    linkedin_url_count = sum(
-        1 for row in rows
-        if row.get("contact_type") == "linkedin_profile"
-        and row.get("email", "").startswith("https://")
-    )
     typer.echo(f"  Found {len(rows)} compan{'y' if len(rows) == 1 else 'ies'} ({with_contact} with contact info).")
     if linkedin_count:
-        email_part = linkedin_count - linkedin_url_count
-        parts = []
-        if email_part:
-            parts.append(f"{email_part} with verified email")
-        if linkedin_url_count:
-            parts.append(f"{linkedin_url_count} with LinkedIn profile only")
-        typer.echo(f"  {CYAN}\u2139{RESET} {linkedin_count} contact(s) via LinkedIn search ({', '.join(parts)})")
+        typer.echo(f"  {CYAN}ℹ{RESET} {linkedin_count} contact(s) via LinkedIn search")
+    typer.echo(f"  Output saved to: {output}")
+
+
+def _do_discover_companies(
+    icp: str,
+    region: str,
+    output: str,
+    limit: int,
+    max_pages: int,
+    workers: int,
+    sources_file: str,
+    find_people: bool,
+    seed_count: int,
+    require_contact: bool,
+) -> None:
+    """Company-first discovery: ICP + region -> ranked companies + contact bundle."""
+    typer.echo(f"\n  {YELLOW}[experimental]{RESET} Company discovery — review before outreach")
+    if not icp or not region:
+        typer.echo(f"  {RED}Error:{RESET} companies mode needs --icp and --region.")
+        typer.echo(f'  e.g. discover --icp "insurance companies" --region "Bangladesh"')
+        return
+
+    try:
+        from ddgs import DDGS
+        typer.echo(f"  {GREEN}✓{RESET} Searching with DuckDuckGo")
+    except ImportError:
+        typer.echo(f"  {YELLOW}⚠{RESET} ddgs package not installed. Run: {BOLD}pip install ddgs{RESET}")
+    if discovery._get_serper_key():
+        typer.echo(f"  {GREEN}✓{RESET} Serper search API configured (fallback)")
+    if discovery._resolve_llm_provider():
+        typer.echo(f"  {GREEN}✓{RESET} LLM company seeding enabled")
+    else:
+        typer.echo(f"  {CYAN}ℹ{RESET} No LLM provider — using search-only discovery")
+    if find_people:
+        typer.echo(f"  {YELLOW}⚠ Person→company data can be stale; verify before outreach.{RESET}")
+
+    sources = (discovery.load_sources(sources_file) or None) if sources_file else None
+    typer.echo(f"\n  Discovering '{icp}' companies in '{region}'...\n")
+    rows = discovery.discover_company_rows(
+        icp=icp,
+        region=region,
+        sources=sources,
+        limit=limit,
+        workers=workers,
+        max_pages=max_pages,
+        use_llm=True,
+        seed_count=seed_count,
+        find_people=find_people,
+        progress_callback=_print_discover_progress,
+    )
+    sys.stderr.write("\r" + " " * 80 + "\r")
+    sys.stderr.flush()
+
+    if require_contact:
+        rows = [r for r in rows if r.get("email")]
+
+    discovery.write_company_csv(rows, output)
+    with_email = sum(1 for r in rows if r.get("email"))
+    with_phone = sum(1 for r in rows if r.get("phone"))
+    with_li = sum(1 for r in rows if r.get("linkedin_company_url"))
+    typer.echo(
+        f"  Found {len(rows)} compan{'y' if len(rows) == 1 else 'ies'} "
+        f"({with_email} email, {with_phone} phone, {with_li} LinkedIn)."
+    )
     typer.echo(f"  Output saved to: {output}")
 
 
@@ -1574,7 +1760,7 @@ def do_review(input_csv: str) -> None:
             warnings = f"{warnings}{enricher.FACT_SEPARATOR if warnings else ''}generation_failed"
         if warnings:
             issue_count += 1
-            label = f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
+            label = _display_name(row)
             label = label or row.get("email", "")
             typer.echo(f"  {YELLOW}!{RESET} {label}  score={score or 'n/a'}  {warnings}")
     if issue_count == 0:
@@ -1609,7 +1795,7 @@ def do_verify(input_csv: str) -> None:
     for row in rows:
         email = row["email"].strip()
         result = verifier.verify_email(email)
-        name = f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
+        name = _display_name(row)
         label = f"{name} <{email}>" if name else email
         if result["valid"]:
             typer.echo(f"  {GREEN}✓{RESET} {label}")
@@ -1733,18 +1919,26 @@ def smtp_show_direct() -> None:
 
 @app.command()
 def discover(
-    sources_file: str = typer.Argument("sources.txt", help="Text file containing public source URLs, one per line"),
-    icp: str = typer.Option("", "--icp", help="Ideal customer profile terms for ranking"),
+    sources_file: str = typer.Argument("", help="Optional source URLs file (people mode, or extra channel in companies mode)"),
+    icp: str = typer.Option("", "--icp", help="Ideal customer profile / what the target companies do"),
+    region: str = typer.Option("", "--region", help="Country or region to target (companies mode)"),
+    mode: str = typer.Option("companies", "--mode", help="'companies' (ICP+region) or 'people' (legacy sources)"),
     output: str = typer.Option("leads.csv", "-o", "--output", help="Output discovered lead CSV path"),
     limit: int = typer.Option(10, "--limit", help="Maximum companies to discover"),
-    source_limit: int = typer.Option(25, "--source-limit", help="Maximum candidates to take from each source page"),
-    require_contact: bool = typer.Option(False, "--require-contact", help="Only keep leads with a public contact email"),
-    guess_role_email: bool = typer.Option(False, "--guess-role-email", help="Use low-confidence hello@domain guesses when no public email is found"),
+    source_limit: int = typer.Option(25, "--source-limit", help="[people] Max candidates per source page"),
+    require_contact: bool = typer.Option(False, "--require-contact", help="Only keep companies with an email"),
+    guess_role_email: bool = typer.Option(False, "--guess-role-email", help="[people] Low-confidence hello@domain guesses"),
+    find_people: bool = typer.Option(False, "--find-people", help="Also search a named contact per company (may be stale)"),
+    count: int = typer.Option(30, "--count", help="[companies] Max companies for LLM seeding"),
     max_pages: int = typer.Option(3, "--max-pages", help="Company pages to crawl for facts/contacts"),
     workers: int = typer.Option(8, "--workers", help="Parallel company crawl workers (max 8)"),
 ) -> None:
-    """[Experimental] Discover company leads from public source pages."""
-    do_discover(sources_file, icp, output, limit, require_contact, max_pages, workers, source_limit, guess_role_email)
+    """[Experimental] Discover companies (ICP + region) with a contact bundle, or people (legacy)."""
+    do_discover(
+        sources_file, icp, output, limit, require_contact, max_pages, workers,
+        source_limit, guess_role_email,
+        region=region, mode=mode, find_people=find_people, seed_count=count,
+    )
 
 
 @app.command()
@@ -1816,14 +2010,17 @@ def review(
 SHELL_HELP = f"""\
 {BOLD}Available commands:{RESET}
 
-  {GREEN}discover{RESET} [sources.txt]       Find company leads from public source pages
-      --icp <text>                Rank using ideal customer profile terms
+  {GREEN}discover{RESET}                       Find companies by ICP + region (with contact bundle)
+      --icp <text>                What the target companies do (prompted if omitted)
+      --region <text>             Country / region to target (prompted if omitted)
+      --mode <companies|people>   companies (default) or legacy people-from-sources
+      --find-people               Also search a named contact per company (may be stale)
+      --count <number>            Max companies for LLM seeding (default: 30)
+      --require-contact           Only keep companies that have an email
       -o, --output <path>         Output path (default: leads.csv)
       --limit <number>            Max companies (default: 10)
-      --source-limit <number>     Max candidates per source (default: 25)
-      --require-contact           Only keep rows with public contact email
-      --guess-role-email          Fill low-confidence hello@domain when no public email is found
       --workers <number>          Parallel company workers, max 8 (default: 8)
+      {DIM}people mode adds: [sources.txt] --source-limit --guess-role-email{RESET}
 
   {GREEN}run{RESET} <file.csv> [options]     Raw CSV: prepare + draft. Prepared CSV: draft again.
       -o, --output <path>         Output path (default: output.csv)
@@ -1926,11 +2123,15 @@ def _parse_discover_args(tokens: list[str]) -> dict:
     """Parse discover subcommand arguments from REPL tokens."""
     args: dict = {
         "icp": "",
+        "region": "",
+        "mode": "companies",
         "output": "leads.csv",
         "limit": 10,
         "source_limit": 25,
         "require_contact": False,
         "guess_role_email": False,
+        "find_people": False,
+        "seed_count": 30,
         "max_pages": 3,
         "workers": 8,
     }
@@ -1940,12 +2141,18 @@ def _parse_discover_args(tokens: list[str]) -> dict:
         tok = tokens[i]
         if tok == "--icp" and i + 1 < len(tokens):
             args["icp"] = tokens[i + 1]; i += 2
+        elif tok == "--region" and i + 1 < len(tokens):
+            args["region"] = tokens[i + 1]; i += 2
+        elif tok == "--mode" and i + 1 < len(tokens):
+            args["mode"] = tokens[i + 1]; i += 2
         elif tok in ("-o", "--output") and i + 1 < len(tokens):
             args["output"] = tokens[i + 1]; i += 2
         elif tok == "--limit" and i + 1 < len(tokens):
             args["limit"] = int(tokens[i + 1]); i += 2
         elif tok == "--source-limit" and i + 1 < len(tokens):
             args["source_limit"] = int(tokens[i + 1]); i += 2
+        elif tok == "--count" and i + 1 < len(tokens):
+            args["seed_count"] = int(tokens[i + 1]); i += 2
         elif tok == "--max-pages" and i + 1 < len(tokens):
             args["max_pages"] = int(tokens[i + 1]); i += 2
         elif tok == "--workers" and i + 1 < len(tokens):
@@ -1954,9 +2161,11 @@ def _parse_discover_args(tokens: list[str]) -> dict:
             args["require_contact"] = True; i += 1
         elif tok == "--guess-role-email":
             args["guess_role_email"] = True; i += 1
+        elif tok == "--find-people":
+            args["find_people"] = True; i += 1
         else:
             positional.append(tok); i += 1
-    args["sources_file"] = positional[0] if positional else "sources.txt"
+    args["sources_file"] = positional[0] if positional else ""
     return args
 
 
@@ -2042,6 +2251,14 @@ def _run_shell() -> None:
 
             elif cmd == "discover":
                 args = _parse_discover_args(rest)
+                if args.get("mode") == "companies" and (not args.get("icp") or not args.get("region")):
+                    if not args.get("icp"):
+                        args["icp"] = _ask("What do the target companies do? (ICP)")
+                    if not args.get("region"):
+                        args["region"] = _ask("Which country or region?")
+                    if not args.get("icp") or not args.get("region"):
+                        typer.echo(f"  {DIM}ICP and region are required for companies mode.{RESET}")
+                        continue
                 do_discover(**args)
 
             elif cmd == "run":
