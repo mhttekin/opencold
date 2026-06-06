@@ -248,6 +248,7 @@ export default function Home() {
   const [dOptionsOpen, setDOptionsOpen] = useState(false);
 
   // discovery options
+  const [targetCount, setTargetCount] = useState(25);
   const [findPeople, setFindPeople] = useState(false);
   const [requireContact, setRequireContact] = useState(false);
 
@@ -681,7 +682,7 @@ export default function Home() {
 
       {/* ── STAGE: CONFIGURE (discovery) ── */}
       {stage === "configure" && mode === "discovery" && (
-        <section className="configure-enter relative z-10 mx-auto max-w-6xl px-6 pb-20 pt-6 sm:pt-10">
+        <section className="configure-enter relative z-10 mx-auto max-w-5xl px-6 pb-20 pt-6 sm:pt-10">
           {/* top bar — discovery indicator + run button */}
           <div className="mb-8 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -861,6 +862,32 @@ export default function Home() {
                 </div>
               </Accordion>
 
+              {/* companies-to-discover slider */}
+              <div className="rounded-xl border border-zinc-100 bg-zinc-50/50 p-5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                    Companies to discover
+                  </h3>
+                  <span className="text-sm font-semibold text-zinc-900">
+                    {targetCount}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={5}
+                  max={100}
+                  step={5}
+                  value={targetCount}
+                  onChange={(e) => setTargetCount(Number(e.target.value))}
+                  aria-label="Companies to discover"
+                  className="range-slider mt-4 w-full accent-zinc-900"
+                />
+                <div className="mt-1 flex justify-between text-[10px] text-zinc-400">
+                  <span>5</span>
+                  <span>100</span>
+                </div>
+              </div>
+
               {/* run summary */}
               <div className="rounded-xl border border-zinc-100 bg-zinc-50/50 p-5">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
@@ -876,6 +903,10 @@ export default function Home() {
                   <div className="flex justify-between">
                     <dt className="text-zinc-400">Countries</dt>
                     <dd className="font-medium">{countries.length || "—"}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-zinc-400">Target</dt>
+                    <dd className="font-medium">{targetCount} companies</dd>
                   </div>
                   <div className="flex justify-between">
                     <dt className="text-zinc-400">Provider</dt>

@@ -348,6 +348,17 @@ textarea {
   transition: grid-template-rows 300ms ease;
 }
 
+/* ── range slider (discovery: companies to discover) ── */
+
+.range-slider {
+  cursor: pointer;
+  height: 18px;
+}
+
+.range-slider:focus-visible {
+  outline: none;
+}
+
 /* ── world map (discovery country picker) ── */
 
 .worldmap-frame {
