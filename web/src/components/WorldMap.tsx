@@ -2,8 +2,8 @@
 
 import { geoNaturalEarth1, geoPath } from "d3-geo";
 import type { FeatureCollection, Geometry } from "geojson";
-import { X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Maximize, Minus, Plus, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import { feature } from "topojson-client";
 import type { Topology } from "topojson-specification";
 
@@ -11,14 +11,23 @@ import topology from "@/data/countries-110m.json";
 
 /* ── geometry ── */
 
-const WIDTH = 800;
-const HEIGHT = 412;
+const WIDTH = 980; // base unit — the SVG scales responsively to its container
+const PAD = 10; // viewBox breathing room so coastlines aren't clipped
+const ZOOM_STEP = 1.5;
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 8;
 
 type CountryShape = { name: string; d: string };
 
 type CountryProps = { name: string };
 
-function useWorldShapes(): CountryShape[] {
+type WorldGeometry = {
+  shapes: CountryShape[];
+  vbW: number;
+  vbH: number;
+};
+
+function useWorldGeometry(): WorldGeometry {
   return useMemo(() => {
     const fc = feature(
       topology as unknown as Topology,
@@ -28,19 +37,31 @@ function useWorldShapes(): CountryShape[] {
     const features = fc.features.filter(
       (f) => f.properties.name !== "Antarctica",
     );
+    const collection = { type: "FeatureCollection", features } as FeatureCollection;
 
-    const projection = geoNaturalEarth1().fitExtent(
-      [
-        [8, 8],
-        [WIDTH - 8, HEIGHT - 8],
-      ],
-      { type: "FeatureCollection", features } as FeatureCollection,
+    // Fit to width, measure the rendered landmass bounds, then re-fit tightly
+    // into a normalized [0,0]-origin box. This crops the ocean letterboxing so
+    // the map fills the frame, and keeps the zoom/pan maths simple.
+    const [[x0, y0], [x1, y1]] = geoPath(
+      geoNaturalEarth1().fitWidth(WIDTH, collection),
+    ).bounds(collection);
+    const vbW = x1 - x0;
+    const vbH = y1 - y0;
+
+    const path = geoPath(
+      geoNaturalEarth1().fitExtent(
+        [
+          [0, 0],
+          [vbW, vbH],
+        ],
+        collection,
+      ),
     );
-    const path = geoPath(projection);
-
-    return features
+    const shapes = features
       .map((f) => ({ name: f.properties.name, d: path(f) ?? "" }))
       .filter((c) => c.d.length > 0);
+
+    return { shapes, vbW, vbH };
   }, []);
 }
 
@@ -76,6 +97,9 @@ function displayName(name: string): string {
   return SHORT_LABELS[name] ?? name;
 }
 
+const clamp = (v: number, lo: number, hi: number) =>
+  Math.max(lo, Math.min(hi, v));
+
 /* ── component ── */
 
 export default function WorldMap({
@@ -87,9 +111,72 @@ export default function WorldMap({
   onToggle: (name: string) => void;
   onClear: () => void;
 }) {
-  const shapes = useWorldShapes();
+  const { shapes, vbW, vbH } = useWorldGeometry();
   const [hovered, setHovered] = useState<string | null>(null);
+  const [view, setView] = useState({ k: 1, tx: 0, ty: 0 });
   const selectedSet = useMemo(() => new Set(selected), [selected]);
+
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const drag = useRef<{ x: number; y: number; tx: number; ty: number } | null>(
+    null,
+  );
+  const moved = useRef(false);
+
+  const clampPan = (tx: number, ty: number, k: number) => ({
+    tx: clamp(tx, vbW * (1 - k), 0),
+    ty: clamp(ty, vbH * (1 - k), 0),
+  });
+
+  const zoomBy = (factor: number) =>
+    setView((v) => {
+      const newK = clamp(v.k * factor, ZOOM_MIN, ZOOM_MAX);
+      if (newK === v.k) return v;
+      // keep the map centre fixed while zooming
+      const px = vbW / 2;
+      const py = vbH / 2;
+      const tx = px - (px - v.tx) * (newK / v.k);
+      const ty = py - (py - v.ty) * (newK / v.k);
+      return { k: newK, ...clampPan(tx, ty, newK) };
+    });
+
+  const reset = () => setView({ k: 1, tx: 0, ty: 0 });
+
+  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    moved.current = false;
+    if (view.k <= 1) return;
+    drag.current = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!drag.current || !svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const sx = (vbW + 2 * PAD) / rect.width;
+    const sy = (vbH + 2 * PAD) / rect.height;
+    const rawDx = e.clientX - drag.current.x;
+    const rawDy = e.clientY - drag.current.y;
+    if (Math.abs(rawDx) > 3 || Math.abs(rawDy) > 3) moved.current = true;
+    setView((v) => ({
+      ...v,
+      ...clampPan(drag.current!.tx + rawDx * sx, drag.current!.ty + rawDy * sy, v.k),
+    }));
+  };
+
+  const onPointerUp = () => {
+    drag.current = null;
+  };
+
+  const handleToggle = (name: string) => {
+    // a pan gesture that ends on a country shouldn't also select it
+    if (moved.current) {
+      moved.current = false;
+      return;
+    }
+    onToggle(name);
+  };
+
+  const zoomed = view.k > 1;
+  const canReset = view.k !== 1 || view.tx !== 0 || view.ty !== 0;
 
   return (
     <div className="space-y-4">
@@ -110,35 +197,77 @@ export default function WorldMap({
           )}
         </div>
 
+        {/* zoom controls */}
+        <div className="worldmap-controls">
+          <button
+            type="button"
+            onClick={() => zoomBy(ZOOM_STEP)}
+            disabled={view.k >= ZOOM_MAX}
+            aria-label="Zoom in"
+            className="worldmap-ctrl"
+          >
+            <Plus size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={() => zoomBy(1 / ZOOM_STEP)}
+            disabled={view.k <= ZOOM_MIN}
+            aria-label="Zoom out"
+            className="worldmap-ctrl"
+          >
+            <Minus size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={reset}
+            disabled={!canReset}
+            aria-label="Reset view"
+            className="worldmap-ctrl"
+          >
+            <Maximize size={14} />
+          </button>
+        </div>
+
         <svg
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          className="block h-auto w-full"
+          ref={svgRef}
+          viewBox={`${-PAD} ${-PAD} ${vbW + 2 * PAD} ${vbH + 2 * PAD}`}
+          className={`block h-auto w-full touch-none select-none ${
+            zoomed ? "cursor-grab active:cursor-grabbing" : ""
+          }`}
           role="group"
           aria-label="World map — select target countries"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerLeave={onPointerUp}
         >
-          {shapes.map((c) => {
-            const isSel = selectedSet.has(c.name);
-            return (
-              <path
-                key={c.name}
-                d={c.d}
-                className={`worldmap-country ${isSel ? "worldmap-country--on" : ""}`}
-                onClick={() => onToggle(c.name)}
-                onMouseEnter={() => setHovered(c.name)}
-                onMouseLeave={() => setHovered(null)}
-                tabIndex={0}
-                role="button"
-                aria-pressed={isSel}
-                aria-label={displayName(c.name)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onToggle(c.name);
-                  }
-                }}
-              />
-            );
-          })}
+          <g
+            transform={`translate(${view.tx} ${view.ty}) scale(${view.k})`}
+          >
+            {shapes.map((c) => {
+              const isSel = selectedSet.has(c.name);
+              return (
+                <path
+                  key={c.name}
+                  d={c.d}
+                  className={`worldmap-country ${isSel ? "worldmap-country--on" : ""}`}
+                  onClick={() => handleToggle(c.name)}
+                  onMouseEnter={() => setHovered(c.name)}
+                  onMouseLeave={() => setHovered(null)}
+                  tabIndex={0}
+                  role="button"
+                  aria-pressed={isSel}
+                  aria-label={displayName(c.name)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onToggle(c.name);
+                    }
+                  }}
+                />
+              );
+            })}
+          </g>
         </svg>
       </div>
 
