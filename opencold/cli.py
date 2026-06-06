@@ -492,7 +492,7 @@ class _ReplCompleter(Completer):
         if first == "discover":
             current_word = words[-1] if not text.endswith(" ") else ""
             if current_word.startswith("-"):
-                for flag in ["--icp", "--region", "--mode", "--output", "--limit", "--source-limit", "--require-contact", "--guess-role-email", "--find-people", "--count", "--max-pages", "--workers", "--no-llm", "--no-wiki"]:
+                for flag in ["--icp", "--region", "--mode", "--output", "--limit", "--source-limit", "--require-contact", "--guess-role-email", "--find-people", "--count", "--max-pages", "--workers", "--no-llm", "--no-wiki", "--no-translate"]:
                     if flag.startswith(current_word) and flag != current_word:
                         yield Completion(flag, start_position=-len(current_word))
                 return
@@ -1605,6 +1605,7 @@ def do_discover(
     seed_count: int = 30,
     use_llm: bool = True,
     use_wiki: bool = True,
+    use_translation: bool = True,
 ) -> None:
     """Discover leads (experimental — review before outreach).
 
@@ -1626,6 +1627,7 @@ def do_discover(
     _do_discover_companies(
         icp, region, output, limit, max_pages, workers,
         sources_file, find_people, seed_count, require_contact, use_llm, use_wiki,
+        use_translation,
     )
 
 
@@ -1693,6 +1695,7 @@ def _do_discover_companies(
     require_contact: bool,
     use_llm: bool = True,
     use_wiki: bool = True,
+    use_translation: bool = True,
 ) -> None:
     """Company-first discovery: ICP + region -> ranked companies + contact bundle."""
     typer.echo(f"\n  {YELLOW}[experimental]{RESET} Company discovery — review before outreach")
@@ -1718,6 +1721,11 @@ def _do_discover_companies(
         typer.echo(f"  {GREEN}✓{RESET} Wikipedia list channel enabled")
     else:
         typer.echo(f"  {CYAN}ℹ{RESET} --no-wiki: Wikipedia list channel disabled")
+    target_lang = discovery._region_language(region) if use_translation else None
+    if target_lang:
+        typer.echo(f"  {GREEN}✓{RESET} Local-language search enabled ({region} → {target_lang})")
+    elif not use_translation:
+        typer.echo(f"  {CYAN}ℹ{RESET} --no-translate: English-only search/matching")
     if find_people:
         typer.echo(f"  {YELLOW}⚠ Person→company data can be stale; verify before outreach.{RESET}")
 
@@ -1732,6 +1740,7 @@ def _do_discover_companies(
         max_pages=max_pages,
         use_llm=use_llm,
         use_wiki=use_wiki,
+        use_translation=use_translation,
         seed_count=seed_count,
         find_people=find_people,
         progress_callback=_print_discover_progress,
@@ -1949,13 +1958,14 @@ def discover(
     workers: int = typer.Option(8, "--workers", help="Parallel company crawl workers (max 8)"),
     no_llm: bool = typer.Option(False, "--no-llm", help="[companies] Deterministic only — no LLM seeding or referee"),
     no_wiki: bool = typer.Option(False, "--no-wiki", help="[companies] Disable the Wikipedia list channel"),
+    no_translate: bool = typer.Option(False, "--no-translate", help="[companies] Disable local-language search/translation"),
 ) -> None:
     """[Experimental] Discover companies (ICP + region) with a contact bundle, or people (legacy)."""
     do_discover(
         sources_file, icp, output, limit, require_contact, max_pages, workers,
         source_limit, guess_role_email,
         region=region, mode=mode, find_people=find_people, seed_count=count,
-        use_llm=not no_llm, use_wiki=not no_wiki,
+        use_llm=not no_llm, use_wiki=not no_wiki, use_translation=not no_translate,
     )
 
 
@@ -2036,6 +2046,7 @@ SHELL_HELP = f"""\
       --count <number>            Max companies for LLM seeding (default: 30)
       --no-llm                    Deterministic only — no LLM seeding or referee
       --no-wiki                   Disable the Wikipedia list channel
+      --no-translate              Disable local-language search/translation
       --require-contact           Only keep companies that have an email
       -o, --output <path>         Output path (default: leads.csv)
       --limit <number>            Max companies (default: 10)
@@ -2156,6 +2167,7 @@ def _parse_discover_args(tokens: list[str]) -> dict:
         "workers": 8,
         "use_llm": True,
         "use_wiki": True,
+        "use_translation": True,
     }
     positional = []
     i = 0
@@ -2189,6 +2201,8 @@ def _parse_discover_args(tokens: list[str]) -> dict:
             args["use_llm"] = False; i += 1
         elif tok == "--no-wiki":
             args["use_wiki"] = False; i += 1
+        elif tok == "--no-translate":
+            args["use_translation"] = False; i += 1
         else:
             positional.append(tok); i += 1
     args["sources_file"] = positional[0] if positional else ""

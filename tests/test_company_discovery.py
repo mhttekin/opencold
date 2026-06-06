@@ -487,3 +487,79 @@ class TestWikipediaChannel:
                 "insurance companies", "Bangladesh", use_llm=False, use_wiki=False,
             )
         wiki.assert_not_called()
+
+
+class TestTranslation:
+    def test_region_language_maps_local_languages_only(self):
+        assert discovery._region_language("Türkiye") == "tr"
+        assert discovery._region_language("turkey") == "tr"
+        assert discovery._region_language("Germany") == "de"
+        # English-business regions stay English (None) -> translation no-ops.
+        assert discovery._region_language("United Kingdom") is None
+        assert discovery._region_language("USA") is None
+
+    def test_native_queries_appended_for_translatable_region(self):
+        captured = []
+
+        def fake_search(query, num=10):
+            captured.append(query)
+            return []
+
+        def fake_translate(text, target, source="auto"):
+            return f"{text} ::{target}"
+
+        with patch("opencold.translator.translate", side_effect=fake_translate), \
+             patch("opencold.discovery.web_search", side_effect=fake_search):
+            discovery.discover_companies_by_query("timber", "Turkey", limit=50, target_lang="tr")
+
+        assert "timber companies in Turkey" in captured       # English kept
+        assert any(q.endswith("::tr") for q in captured)       # native added
+
+    def test_no_native_queries_without_target_lang(self):
+        captured = []
+
+        def fake_search(query, num=10):
+            captured.append(query)
+            return []
+
+        with patch("opencold.translator.translate", side_effect=AssertionError("must not translate")), \
+             patch("opencold.discovery.web_search", side_effect=fake_search):
+            discovery.discover_companies_by_query("timber", "Turkey", limit=50, target_lang=None)
+
+        assert captured == discovery.region_query_templates("timber", "Turkey")
+
+    def test_native_terms_evidence_home_language_site(self):
+        enrichment = {"company_summary": "kaliteli kereste tedariki", "personalization_facts": ""}
+        # English ICP misses a Turkish-only site...
+        assert not discovery._icp_evidence("timber", enrichment)
+        # ...but the native term rescues it without translating the page.
+        assert discovery._icp_evidence("timber", enrichment, {"kereste"})
+
+    def test_translate_icp_terms_keeps_unicode_tokens(self):
+        def fake_translate(text, target, source="auto"):
+            return "orman ürünleri" if text == "timber" else text
+
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            terms = discovery._translate_icp_terms("timber", "tr")
+        assert "orman" in terms and "ürünleri" in terms
+
+    def test_localize_translates_facts_on_english_miss(self):
+        enrichment = {
+            "company_summary": "kaliteli kereste ve tomruk tedariki",
+            "personalization_facts": "kaliteli kereste ve tomruk tedariki",
+        }
+
+        def fake_translate(text, target, source="auto"):
+            return "quality timber and log supply"
+
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            out = discovery._localize_enrichment(enrichment, "timber", "tr", set())
+        assert "timber" in out["company_summary"].lower()
+        assert discovery._icp_evidence("timber", out)
+
+    def test_localize_is_noop_when_evidence_present(self):
+        enrichment = {"company_summary": "premium timber supplier", "personalization_facts": ""}
+        with patch("opencold.translator.translate") as tr:
+            out = discovery._localize_enrichment(enrichment, "timber", "tr", set())
+        tr.assert_not_called()      # already-English sites cost no translation
+        assert out == enrichment

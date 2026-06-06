@@ -55,8 +55,9 @@ Candidate companies are discovered at runtime (no curated source file needed):
   associations). Skipped automatically when no provider is set up.
 - **Wikipedia lists** — harvests company names from "List of …" pages when one
   exists. Deterministic, no LLM.
-- **Search harvest** — region + ICP queries through the search stack, with
-  directories/aggregators filtered out.
+- **Search harvest** — region + ICP queries through the search stack, also in the
+  region's local language for non-English markets, with directories/aggregators
+  filtered out. Disable translation with `--no-translate`.
 - **Sources file** *(optional)* — pass a `sources.txt` as an extra channel.
 
 Output columns include `company`, `website`, `company_email`, `email_type`,

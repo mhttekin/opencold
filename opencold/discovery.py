@@ -15,12 +15,14 @@ import time
 import urllib.request
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from itertools import zip_longest
 from pathlib import Path
 from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
 from opencold import enricher
+from opencold import translator
 
 
 BLOCKED_DOMAINS = {
@@ -1891,12 +1893,16 @@ def _icp_match(terms: set[str], text: str) -> list[str]:
     return sorted(matched)
 
 
-def score_company(company: CandidateCompany, enrichment: dict, icp: str) -> tuple[int, str]:
+def score_company(
+    company: CandidateCompany, enrichment: dict, icp: str, extra_terms: set[str] | None = None
+) -> tuple[int, str]:
     # NOTE: company.discovery_reason is deliberately excluded — for LLM/search
     # candidates it echoes our own query (e.g. "llm seed: landscape in UK"), so
     # including it made every lead "match" the ICP (a constant 62). Match against
     # the company's own name and crawled content only.
-    terms = _icp_terms(icp)
+    # extra_terms: native-language ICP terms (e.g. "kereste" for "timber") so a
+    # home-language site matches without us translating its text first.
+    terms = _icp_terms(icp) | (extra_terms or set())
     haystack = " ".join([
         company.company,
         enrichment.get("company_summary", ""),
@@ -1909,14 +1915,17 @@ def score_company(company: CandidateCompany, enrichment: dict, icp: str) -> tupl
     return score, enricher.FACT_SEPARATOR.join(matched)
 
 
-def _icp_evidence(icp: str, enrichment: dict) -> bool:
+def _icp_evidence(icp: str, enrichment: dict, extra_terms: set[str] | None = None) -> bool:
     """True when ICP terms appear in the company's own crawled content.
 
     Content-only (no company name, no discovery_reason): this is the evidence
     used to gate leads, so it must reflect what the site actually says — a company
     literally named 'X Landscapes' should still have to prove it on its pages.
+
+    extra_terms adds native-language ICP terms, so a home-language site that says
+    "kereste" counts as evidence for an English "timber" ICP.
     """
-    terms = _icp_terms(icp)
+    terms = _icp_terms(icp) | (extra_terms or set())
     if not terms:
         return False
     content = " ".join([
@@ -1924,6 +1933,45 @@ def _icp_evidence(icp: str, enrichment: dict) -> bool:
         enrichment.get("personalization_facts", ""),
     ])
     return bool(_icp_match(terms, content))
+
+
+def _translate_icp_terms(icp: str, target_lang: str) -> set[str]:
+    """Native-language ICP terms for matching home-language sites: translate each
+    English ICP token (e.g. "timber" -> "kereste") and keep the result tokens.
+    Best-effort and cached; returns an empty set if translation is unavailable."""
+    out: set[str] = set()
+    for term in _icp_terms(icp):
+        translated = translator.translate(term, target_lang, source="en")
+        if not translated or translated.lower() == term:
+            continue
+        # Unicode-aware: keep native tokens intact (e.g. "ürünleri"). The matcher's
+        # literal-substring branch (`t in low`) handles non-ASCII terms directly.
+        for token in re.findall(r"\w[\w\-]{2,}", translated.lower(), re.UNICODE):
+            out.add(token)
+    return out
+
+
+def _localize_enrichment(
+    enrichment: dict, icp: str, target_lang: str, extra_terms: set[str] | None
+) -> dict:
+    """Translate-on-miss: when neither English nor native ICP terms are evidenced
+    (likely a home-language site the English path missed), translate this company's
+    distilled facts into English in place, so downstream matching, the LLM judge,
+    and the CSV all read English. Facts are short and cached, so volume stays low."""
+    if _icp_evidence(icp, enrichment, extra_terms):
+        return enrichment
+    summary = enrichment.get("company_summary", "")
+    facts = enrichment.get("personalization_facts", "")
+    if not summary and not facts:
+        return enrichment
+    localized = dict(enrichment)
+    if summary:
+        localized["company_summary"] = translator.translate(summary, "en", source="auto")
+    if facts:
+        parts = facts.split(enricher.FACT_SEPARATOR)
+        translated = translator.translate_many(parts, "en", source="auto")
+        localized["personalization_facts"] = enricher.FACT_SEPARATOR.join(translated)
+    return localized
 
 
 def _bad_company_name(company: str) -> bool:
@@ -2468,6 +2516,21 @@ def _resolve_region_key(region: str) -> str | None:
             return _REGION_ALIASES[alias]
     return None
 
+
+# Region -> primary business language (ISO code) for translation. Regions where
+# English is the de-facto business web language are deliberately omitted, so
+# translation no-ops there (None) and behaviour is unchanged: united kingdom,
+# united states, india, pakistan, bangladesh, nigeria, kenya.
+_REGION_LANG = {
+    "turkey": "tr", "germany": "de", "france": "fr",
+    "brazil": "pt", "mexico": "es", "indonesia": "id",
+}
+
+
+def _region_language(region: str) -> str | None:
+    """Local language to translate into for `region`, or None to stay English."""
+    return _REGION_LANG.get(_resolve_region_key(region) or "")
+
 _SIZE_BAND_RE = re.compile(r"(\d[\d,\.]*)\s*\+?\s*(?:employees|staff|people|team members)", re.IGNORECASE)
 _SME_HINT_RE = re.compile(
     r"\b(family[- ]owned|family business|since \d{4}|founded in \d{4}|small team|boutique)\b",
@@ -2611,9 +2674,20 @@ def _candidate_from_result(result: SearchResult, reason: str) -> CandidateCompan
 
 
 def discover_companies_by_query(
-    icp: str, region: str, limit: int = 50, extra_queries: list[str] | None = None
+    icp: str, region: str, limit: int = 50, extra_queries: list[str] | None = None,
+    target_lang: str | None = None,
 ) -> list[CandidateCompany]:
-    queries = region_query_templates(icp, region) + list(extra_queries or [])
+    base = region_query_templates(icp, region)
+    if target_lang:
+        # Native-language queries ("Türkiye'deki kereste firmaları") surface real
+        # local SMEs that English queries bury under English directory spam (and
+        # avoid "timber turkey" pulling US turkey-hunting noise). Interleave
+        # native-first so the local channel isn't starved by the English pool cap.
+        native = [q for q in translator.translate_many(base, target_lang, source="en") if q and q.strip()]
+        queries = [q for pair in zip_longest(native, base) for q in pair if q]
+    else:
+        queries = list(base)
+    queries += list(extra_queries or [])
     candidates: dict[str, CandidateCompany] = {}
     for query in queries:
         for result in web_search(query, num=10):
@@ -2902,6 +2976,7 @@ def discover_company_candidates(
     use_llm: bool = True,
     seed_count: int = 30,
     use_wiki: bool = True,
+    use_translation: bool = True,
 ) -> list[CandidateCompany]:
     """Collect candidate companies from LLM seeding (A), Wikipedia lists (A2),
     search harvest (B), and an optional manual sources file (C). Deduped by
@@ -2911,6 +2986,7 @@ def discover_company_candidates(
     so every request is served by search harvest at minimum, with LLM/Wikipedia
     layering curated names on top."""
     candidates: dict[str, CandidateCompany] = {}
+    target_lang = _region_language(region) if use_translation else None
 
     def _add(cand: CandidateCompany, channel: str) -> None:
         domain = normalize_domain(cand.website)
@@ -2944,7 +3020,9 @@ def discover_company_candidates(
             ), "wikipedia")
 
     # Channel B: search harvest (always runs).
-    for cand in discover_companies_by_query(icp, region, limit=limit, extra_queries=extra_queries):
+    for cand in discover_companies_by_query(
+        icp, region, limit=limit, extra_queries=extra_queries, target_lang=target_lang
+    ):
         _add(cand, "search")
 
     # Channel C: optional manual sources (back-compat power-user channel).
@@ -3446,6 +3524,8 @@ def build_company_row(
     region: str,
     max_pages: int = 4,
     find_people: bool = False,
+    target_lang: str | None = None,
+    extra_terms: set[str] | None = None,
 ) -> dict | None:
     domain = normalize_domain(company.website)
     pages = crawl_company_pages(company.website, max_pages=max_pages)
@@ -3459,6 +3539,10 @@ def build_company_row(
         "personalization_score": str(enricher.personalization_score(facts)),
         "quality_warnings": enricher.FACT_SEPARATOR.join(enricher.quality_warnings(facts, pages)),
     }
+    # Translate a home-language site's facts into English when the English/native
+    # ICP terms find no evidence, so matching, the judge, and the CSV read English.
+    if target_lang:
+        enrichment = _localize_enrichment(enrichment, icp, target_lang, extra_terms)
     pages_text = " ".join(f"{p.title} {p.description} {p.text}" for p in pages)
 
     contacts = extract_company_contacts(company.website, max_pages=max_pages)
@@ -3479,7 +3563,7 @@ def build_company_row(
     else:
         partnership = ""
 
-    icp_score, matched_terms = score_company(company, enrichment, icp)
+    icp_score, matched_terms = score_company(company, enrichment, icp, extra_terms)
     if rfit_reasons:
         matched_terms = (matched_terms + (enricher.FACT_SEPARATOR if matched_terms else "") + rfit_reasons)
 
@@ -3512,7 +3596,7 @@ def build_company_row(
     row["lead_score_reasons"] = lead_reasons
     # Carried for verification/classification; underscore keys are not written to
     # CSV (DictWriter uses fixed fieldnames + extrasaction="ignore").
-    row["_icp_evidence"] = _icp_evidence(icp, enrichment)
+    row["_icp_evidence"] = _icp_evidence(icp, enrichment, extra_terms)
     row["_region_conflict"] = region_conflict
 
     if find_people:
@@ -3537,6 +3621,7 @@ def discover_company_rows(
     find_people: bool = False,
     progress_callback: object = None,
     use_wiki: bool = True,
+    use_translation: bool = True,
 ) -> list[dict]:
     """Discover companies for (ICP, region) with a durable contact bundle.
 
@@ -3551,9 +3636,14 @@ def discover_company_rows(
     # Crawl more than `limit` so rejected namesakes can be replaced by verified
     # ones — but cap the pool so latency stays bounded.
     pool = min(max(limit * 2, limit + 8), 40)
+    # Resolve the target language once, and translate the ICP terms once, so the
+    # native-language matcher terms are reused across every company (not per row).
+    target_lang = _region_language(region) if use_translation else None
+    extra_terms = _translate_icp_terms(icp, target_lang) if target_lang else set()
     candidates = discover_company_candidates(
         icp, region, sources=sources, limit=pool,
         workers=workers, use_llm=use_llm, seed_count=seed_count, use_wiki=use_wiki,
+        use_translation=use_translation,
     )
     # Dedupe by domain up front (channels already dedupe, but be safe).
     seen: set[str] = set()
@@ -3573,7 +3663,10 @@ def discover_company_rows(
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         future_to_company = {
-            executor.submit(build_company_row, company, icp, region, max_pages, find_people): company
+            executor.submit(
+                build_company_row, company, icp, region, max_pages, find_people,
+                target_lang, extra_terms,
+            ): company
             for company in candidates
         }
         for future in as_completed(future_to_company):
