@@ -2,7 +2,7 @@
 
 import { geoNaturalEarth1, geoPath } from "d3-geo";
 import type { FeatureCollection, Geometry } from "geojson";
-import { Maximize, Minus, Plus, X } from "lucide-react";
+import { Check, Maximize, Minus, Plus, Search, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { feature } from "topojson-client";
 import type { Topology } from "topojson-specification";
@@ -68,19 +68,13 @@ function useWorldGeometry(): WorldGeometry {
 /* ── suggested quick-picks (regions the backend has strong signals for) ── */
 
 const SUGGESTED: { name: string; label: string }[] = [
-  { name: "United States of America", label: "United States" },
-  { name: "United Kingdom", label: "United Kingdom" },
+  { name: "United States of America", label: "USA" },
+  { name: "United Kingdom", label: "UK" },
   { name: "Germany", label: "Germany" },
   { name: "France", label: "France" },
   { name: "India", label: "India" },
-  { name: "Bangladesh", label: "Bangladesh" },
-  { name: "Pakistan", label: "Pakistan" },
-  { name: "Turkey", label: "Turkey" },
-  { name: "Indonesia", label: "Indonesia" },
-  { name: "Nigeria", label: "Nigeria" },
-  { name: "Kenya", label: "Kenya" },
   { name: "Brazil", label: "Brazil" },
-  { name: "Mexico", label: "Mexico" },
+  { name: "Nigeria", label: "Nigeria" },
 ];
 
 const SHORT_LABELS: Record<string, string> = {
@@ -114,7 +108,31 @@ export default function WorldMap({
   const { shapes, vbW, vbH } = useWorldGeometry();
   const [hovered, setHovered] = useState<string | null>(null);
   const [view, setView] = useState({ k: 1, tx: 0, ty: 0 });
+  const [query, setQuery] = useState("");
   const selectedSet = useMemo(() => new Set(selected), [selected]);
+
+  const allNames = useMemo(
+    () =>
+      shapes
+        .map((s) => s.name)
+        .sort((a, b) => displayName(a).localeCompare(displayName(b))),
+    [shapes],
+  );
+
+  // type-ahead: prefix matches first ("nige" → Niger, Nigeria), then substring
+  const q = query.trim().toLowerCase();
+  const matches = useMemo(() => {
+    if (!q) return [];
+    const starts: string[] = [];
+    const contains: string[] = [];
+    for (const name of allNames) {
+      const dn = displayName(name).toLowerCase();
+      if (dn.startsWith(q) || name.toLowerCase().startsWith(q)) starts.push(name);
+      else if (dn.includes(q) || name.toLowerCase().includes(q))
+        contains.push(name);
+    }
+    return [...starts, ...contains].slice(0, 8);
+  }, [q, allNames]);
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   const moved = useRef(false);
@@ -272,19 +290,19 @@ export default function WorldMap({
         </svg>
       </div>
 
-      {/* suggested quick-picks */}
+      {/* suggested quick-picks — single line */}
       <div>
         <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-400">
           Suggested
         </p>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-nowrap gap-1.5 overflow-x-auto pb-0.5">
           {SUGGESTED.map((s) => {
             const isSel = selectedSet.has(s.name);
             return (
               <button
                 key={s.name}
                 onClick={() => onToggle(s.name)}
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition active:scale-[0.97] ${
+                className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium transition active:scale-[0.97] ${
                   isSel
                     ? "border-zinc-900 bg-zinc-900 text-white"
                     : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
@@ -294,6 +312,69 @@ export default function WorldMap({
               </button>
             );
           })}
+        </div>
+      </div>
+
+      {/* type-ahead search over all countries */}
+      <div>
+        <div className="relative">
+          <Search
+            size={14}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
+          />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search any country…"
+            className="h-10 w-full rounded-lg border border-zinc-200 bg-white pl-9 pr-9 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-300 focus:border-zinc-900"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+              className="absolute right-2.5 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded-full text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-900"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+
+        {/* matches accordion */}
+        <div
+          className="accordion-body mt-1"
+          style={{ gridTemplateRows: q.length > 0 ? "1fr" : "0fr" }}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="space-y-0.5 rounded-lg border border-zinc-100 bg-zinc-50/60 p-1">
+              {matches.length > 0 ? (
+                matches.map((name) => {
+                  const isSel = selectedSet.has(name);
+                  return (
+                    <button
+                      key={name}
+                      onClick={() => onToggle(name)}
+                      className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition ${
+                        isSel ? "bg-white shadow-sm" : "hover:bg-white/70"
+                      }`}
+                    >
+                      <span
+                        className={`font-medium ${isSel ? "text-zinc-900" : "text-zinc-600"}`}
+                      >
+                        {displayName(name)}
+                      </span>
+                      {isSel && (
+                        <Check size={12} className="ml-auto text-zinc-900" />
+                      )}
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="px-2.5 py-1.5 text-xs text-zinc-400">
+                  No countries match “{query.trim()}”
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
