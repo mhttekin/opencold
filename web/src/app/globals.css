@@ -348,3 +348,59 @@ textarea {
   transition: grid-template-rows 300ms ease;
 }
 
+/* ── world map (discovery country picker) ── */
+
+.worldmap-frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgb(228 228 231);
+  background:
+    radial-gradient(ellipse 90% 80% at 50% 0%, rgb(250 250 250) 0%, rgb(244 244 245) 100%);
+  padding: 10px;
+}
+
+.worldmap-label {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgb(228 228 231);
+  background: rgb(255 255 255 / 0.85);
+  backdrop-filter: blur(4px);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.worldmap-country {
+  fill: rgb(228 228 231);
+  stroke: white;
+  stroke-width: 0.5;
+  cursor: pointer;
+  outline: none;
+  transition: fill 140ms ease;
+}
+
+.worldmap-country:hover {
+  fill: rgb(161 161 170);
+}
+
+.worldmap-country:focus-visible {
+  fill: rgb(161 161 170);
+  stroke: #0a0a0a;
+  stroke-width: 0.9;
+}
+
+.worldmap-country--on {
+  fill: #0a0a0a;
+}
+
+.worldmap-country--on:hover {
+  fill: rgb(39 39 42);
+}
+
