@@ -2626,6 +2626,273 @@ def discover_companies_by_query(
     return list(candidates.values())
 
 
+# ---------------------------------------------------------------------------
+# Channel A2: Wikipedia "List of <industry> in <region>" name harvest (no LLM)
+# ---------------------------------------------------------------------------
+#
+# Wikipedia curates real, region-scoped company names ("List of insurance
+# companies in Bangladesh" -> ~67 insurers) that raw search harvest misses and
+# the directory filter actively discards (wikipedia.org is in
+# WEBSITE_DIRECTORY_DOMAINS). We mine the page for NAMES only and resolve each to
+# its own website via the shared resolver — never treating a wiki URL as a site.
+# Purely additive: it augments search harvest and no-ops when no list exists.
+
+WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
+_WIKI_UA = "opencold/0.1 (company discovery channel)"
+
+# Section headings whose entries are not active target companies.
+_WIKI_SKIP_SECTIONS = (
+    "defunct", "former", "closed", "merged", "dissolved", "renamed",
+    "regulator", "regulators", "association", "associations", "see also",
+    "references", "external links", "further reading", "notes", "bibliography",
+)
+
+# Names that are clearly not operating companies (regulators/indexes/meta).
+_WIKI_NAME_BLOCKLIST_RE = re.compile(
+    r"\b(authority|regulator|ministry|commission|federation|institute|academy|"
+    r"index|list of|category|wikipedia|template|portal|see also)\b",
+    re.IGNORECASE,
+)
+
+
+def _wiki_api_get(params: dict) -> dict:
+    """GET the MediaWiki API as JSON. Returns {} on failure (best-effort).
+
+    Retries once: Wikipedia occasionally times out / rate-limits, and a silent
+    empty would drop the whole channel for the request (search harvest still
+    covers it, but a cheap retry recovers most transient misses)."""
+    url = WIKIPEDIA_API + "?" + urllib.parse.urlencode({**params, "format": "json"})
+    req = urllib.request.Request(url, headers={"User-Agent": _WIKI_UA})
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(req, timeout=SEARCH_TIMEOUT + 5) as resp:
+                return json.loads(resp.read().decode())
+        except Exception:
+            if attempt == 0:
+                time.sleep(0.5)
+    return {}
+
+
+def _clean_wiki_name(raw: str) -> str:
+    """Reduce a wikitext fragment to a bare company name.
+
+    Resolves [[target|text]] to text, strips refs/comments/templates/HTML and
+    bold/italic markup, then cuts at a description separator (spaced dash or an
+    opening paren) so 'Acme Ltd – the best (est. 1990)' -> 'Acme Ltd'. Keeps
+    intra-name hyphens like 'Bradley-Hole' (only spaced dashes split)."""
+    s = raw or ""
+    s = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]|]+)\]\]", r"\1", s)      # [[a|b]] -> b
+    s = re.sub(r"<ref[^>]*?/>", "", s)
+    s = re.sub(r"<ref.*?</ref>", "", s, flags=re.DOTALL | re.IGNORECASE)
+    s = re.sub(r"<!--.*?-->", "", s, flags=re.DOTALL)
+    s = re.sub(r"\{\{.*?\}\}", "", s, flags=re.DOTALL)
+    s = re.sub(r"<[^>]+>", "", s)
+    s = s.replace("'''", "").replace("''", "")
+    s = re.split(r"\s+[-–—]\s+|\s*\(", s, maxsplit=1)[0]  # cut description
+    s = re.sub(r"[\[\]{}|*#]", "", s)
+    return _clean_text(s).strip(" .,-–—\t")
+
+
+def _wikitable_first_cells(block: str) -> list[str]:
+    """First data cell of each row in a {| ... |} wikitable block."""
+    cells: list[str] = []
+    for row in re.split(r"\n\s*\|-+", block):
+        for line in row.splitlines():
+            s = line.strip()
+            if not s or s.startswith(("{|", "|}", "|+")):
+                continue
+            if s.startswith("!"):        # header row — no data cell
+                break
+            if s.startswith("|"):
+                cell = s[1:]
+                if "||" in cell:         # inline row: keep the first cell
+                    cell = cell.split("||", 1)[0]
+                if "|" in cell:          # strip a "style=...|" cell attribute
+                    left, right = cell.split("|", 1)
+                    if "=" in left and len(left) < 60:
+                        cell = right
+                cells.append(cell)
+                break
+    return cells
+
+
+def _parse_wikitext_names(wikitext: str, max_names: int = 80) -> list[str]:
+    """Candidate company names from a 'List of ...' page's wikitext.
+
+    Handles the layouts these pages actually use: [[wikilinks]], bullet lists
+    (incl. {{columns-list}}/{{div col}}), and the first column of {| wikitables.
+    Section-aware: entries under Defunct/Regulators/See also/References/etc. are
+    skipped. Heuristic by design — downstream ICP+region verification drops junk."""
+    if not wikitext:
+        return []
+    names: list[str] = []
+    seen: set[str] = set()
+
+    def _emit(raw: str) -> None:
+        name = _clean_wiki_name(raw)
+        if not (2 <= len(name) <= 80) or _WIKI_NAME_BLOCKLIST_RE.search(name):
+            return
+        if not _company_tokens(name):
+            return
+        key = name.lower()
+        if key not in seen:
+            seen.add(key)
+            names.append(name)
+
+    skip = False
+    in_table = False
+    table_lines: list[str] = []
+    for line in wikitext.splitlines():
+        s = line.strip()
+        heading = re.match(r"^=+\s*(.+?)\s*=+\s*$", s)
+        if heading:
+            skip = any(sec in heading.group(1).lower() for sec in _WIKI_SKIP_SECTIONS)
+            continue
+        if skip:
+            continue
+        if s.startswith("{|"):
+            in_table, table_lines = True, [line]
+            continue
+        if in_table:
+            table_lines.append(line)
+            if s.startswith("|}"):
+                for cell in _wikitable_first_cells("\n".join(table_lines)):
+                    _emit(cell)
+                in_table, table_lines = False, []
+            continue
+        bullet = re.match(r"^\*+\s*(.+)$", s)
+        if bullet:
+            _emit(bullet.group(1))
+        elif s.startswith("[[") and "]]" in s:
+            _emit(s)
+        if len(names) >= max_names:
+            break
+    return names[:max_names]
+
+
+def wikipedia_list_titles(icp: str, region: str, limit: int = 3) -> list[str]:
+    """Best-matching Wikipedia 'List of ...' page titles for (ICP, region).
+
+    Search returns the *closest* list pages even when none is on-topic (e.g. a
+    landscape query surfaces 'List of airlines of the United Kingdom'), so each
+    title must independently mention the ICP (morphology-aware) AND the region —
+    otherwise we silently no-op rather than harvest a wrong-industry list."""
+    icp, region = (icp or "").strip(), (region or "").strip()
+    if not icp or not region:
+        return []
+    icp_terms = _icp_terms(icp)
+    region_key = _resolve_region_key(region)
+
+    def _relevant(title: str) -> bool:
+        low = title.lower()
+        has_icp = bool(_icp_match(icp_terms, title)) if icp_terms else True
+        has_region = region.lower() in low or bool(region_key and region_key in low)
+        return has_icp and has_region
+
+    titles: list[str] = []
+    seen: set[str] = set()
+    for q in (f"list of {icp} in {region}", f"list of {icp} of {region}"):
+        data = _wiki_api_get({
+            "action": "query", "list": "search", "srsearch": q,
+            "srlimit": 5, "srnamespace": 0,
+        })
+        for hit in data.get("query", {}).get("search", []):
+            title = hit.get("title", "")
+            if title.lower().startswith("list of") and title not in seen and _relevant(title):
+                seen.add(title)
+                titles.append(title)
+        if titles:
+            break
+    return titles[:limit]
+
+
+def wikipedia_category_members(icp: str, region: str) -> list[tuple[str, str]]:
+    """(name, category_url) members of a likely Wikipedia category (clean supplement)."""
+    icp, region = (icp or "").strip(), (region or "").strip()
+    if not icp or not region:
+        return []
+    industry = re.sub(r"\bcompan(y|ies)\b", "", icp, flags=re.IGNORECASE).strip() or icp
+    industry = industry[:1].upper() + industry[1:]
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for cat in (f"Category:{industry} companies of {region}",
+                f"Category:{industry} companies in {region}"):
+        data = _wiki_api_get({
+            "action": "query", "list": "categorymembers", "cmtitle": cat,
+            "cmlimit": 60, "cmtype": "page", "cmnamespace": 0,
+        })
+        cat_url = "https://en.wikipedia.org/wiki/" + quote_plus(cat.replace(" ", "_"))
+        for m in data.get("query", {}).get("categorymembers", []):
+            name = _clean_wiki_name(m.get("title", ""))
+            if not (2 <= len(name) <= 80) or _WIKI_NAME_BLOCKLIST_RE.search(name):
+                continue
+            if not _company_tokens(name) or name.lower() in seen:
+                continue
+            seen.add(name.lower())
+            out.append((name, cat_url))
+        if out:
+            break
+    return out
+
+
+def wikipedia_company_names(icp: str, region: str, max_names: int = 60) -> list[tuple[str, str]]:
+    """(name, source_url) candidate companies mined from Wikipedia, no LLM.
+
+    Best-effort and deterministic: returns [] on any failure or when no relevant
+    page exists, so the search-harvest channel always carries the request."""
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    def _push(name: str, src: str) -> None:
+        key = name.lower()
+        if key not in seen:
+            seen.add(key)
+            out.append((name, src))
+
+    for title in wikipedia_list_titles(icp, region):
+        data = _wiki_api_get({"action": "parse", "page": title, "prop": "wikitext", "redirects": 1})
+        wikitext = (data.get("parse", {}).get("wikitext", {}) or {}).get("*", "")
+        src = "https://en.wikipedia.org/wiki/" + quote_plus(title.replace(" ", "_"))
+        for name in _parse_wikitext_names(wikitext, max_names=max_names):
+            _push(name, src)
+        if len(out) >= max_names:
+            return out[:max_names]
+
+    for name, cat_url in wikipedia_category_members(icp, region):
+        _push(name, cat_url)
+        if len(out) >= max_names:
+            break
+    return out[:max_names]
+
+
+def _resolve_names(names: list[str], icp: str, region: str, workers: int) -> list[tuple[str, str]]:
+    """Resolve company names to (name, website) via search, in parallel.
+
+    Shared by the LLM seed and Wikipedia channels: disambiguates namesakes with
+    ICP+region context and prefers the target country's ccTLD."""
+    if not names:
+        return []
+    context = f"{icp} {region}".strip()
+    prefer_cc = _REGION_CCTLD.get(_resolve_region_key(region) or "")
+    worker_n = max(1, min(_clamp_workers(workers), len(names)))
+    resolved: list[tuple[str, str]] = []
+    with ThreadPoolExecutor(max_workers=worker_n) as executor:
+        future_to_name = {
+            executor.submit(resolve_company_website, n, require_match=True,
+                            context=context, prefer_cc=prefer_cc): n
+            for n in names
+        }
+        for future in as_completed(future_to_name):
+            name = future_to_name[future]
+            try:
+                url = future.result()
+            except Exception:
+                url = None
+            if url:
+                resolved.append((name, url))
+    return resolved
+
+
 def discover_company_candidates(
     icp: str,
     region: str,
@@ -2634,10 +2901,15 @@ def discover_company_candidates(
     workers: int = 8,
     use_llm: bool = True,
     seed_count: int = 30,
+    use_wiki: bool = True,
 ) -> list[CandidateCompany]:
-    """Collect candidate companies from LLM seeding (A), search harvest (B), and
-    an optional manual sources file (C). Deduped by registrable domain; first
-    channel to surface a domain wins and tags it."""
+    """Collect candidate companies from LLM seeding (A), Wikipedia lists (A2),
+    search harvest (B), and an optional manual sources file (C). Deduped by
+    registrable domain; first channel to surface a domain wins and tags it.
+
+    A2 and B are additive and always run (subject to use_wiki); they collaborate
+    so every request is served by search harvest at minimum, with LLM/Wikipedia
+    layering curated names on top."""
     candidates: dict[str, CandidateCompany] = {}
 
     def _add(cand: CandidateCompany, channel: str) -> None:
@@ -2655,35 +2927,21 @@ def discover_company_candidates(
         if prov:
             seed = seed_companies_via_llm(icp, region, count=seed_count, provider_config=prov)
             extra_queries = [f"{d} {region}" for d in seed.get("local_directories", [])]
-            names = seed.get("companies", [])
-            if names:
-                # Disambiguate namesakes at the source: search with ICP+region
-                # context and prefer the target country's ccTLD.
-                context = f"{icp} {region}".strip()
-                prefer_cc = _REGION_CCTLD.get(_resolve_region_key(region) or "")
-                worker_n = max(1, min(_clamp_workers(workers), len(names)))
-                with ThreadPoolExecutor(max_workers=worker_n) as executor:
-                    future_to_name = {
-                        executor.submit(
-                            resolve_company_website, n,
-                            require_match=True, context=context, prefer_cc=prefer_cc,
-                        ): n
-                        for n in names
-                    }
-                    for future in as_completed(future_to_name):
-                        name = future_to_name[future]
-                        try:
-                            url = future.result()
-                        except Exception:
-                            url = None
-                        if not url:
-                            continue
-                        _add(CandidateCompany(
-                            company=name,
-                            website=url,
-                            discovery_source_url=url,
-                            discovery_reason=f"llm seed: {icp} in {region}",
-                        ), "llm")
+            for name, url in _resolve_names(seed.get("companies", []), icp, region, workers):
+                _add(CandidateCompany(
+                    company=name, website=url, discovery_source_url=url,
+                    discovery_reason=f"llm seed: {icp} in {region}",
+                ), "llm")
+
+    # Channel A2: Wikipedia "List of ..." names (deterministic, no LLM). Additive.
+    if use_wiki:
+        wiki = wikipedia_company_names(icp, region, max_names=seed_count)
+        wiki_src = {name: src for name, src in wiki}
+        for name, url in _resolve_names([name for name, _ in wiki], icp, region, workers):
+            _add(CandidateCompany(
+                company=name, website=url, discovery_source_url=wiki_src.get(name, url),
+                discovery_reason=f"wikipedia list: {icp} in {region}",
+            ), "wikipedia")
 
     # Channel B: search harvest (always runs).
     for cand in discover_companies_by_query(icp, region, limit=limit, extra_queries=extra_queries):
@@ -3278,6 +3536,7 @@ def discover_company_rows(
     seed_count: int = 30,
     find_people: bool = False,
     progress_callback: object = None,
+    use_wiki: bool = True,
 ) -> list[dict]:
     """Discover companies for (ICP, region) with a durable contact bundle.
 
@@ -3294,7 +3553,7 @@ def discover_company_rows(
     pool = min(max(limit * 2, limit + 8), 40)
     candidates = discover_company_candidates(
         icp, region, sources=sources, limit=pool,
-        workers=workers, use_llm=use_llm, seed_count=seed_count,
+        workers=workers, use_llm=use_llm, seed_count=seed_count, use_wiki=use_wiki,
     )
     # Dedupe by domain up front (channels already dedupe, but be safe).
     seen: set[str] = set()

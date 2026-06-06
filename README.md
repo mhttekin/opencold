@@ -53,6 +53,8 @@ Candidate companies are discovered at runtime (no curated source file needed):
 - **LLM seeding** — if an LLM provider is configured, Claude names known companies
   for the (ICP, region) and points at authoritative local indexes (regulators,
   associations). Skipped automatically when no provider is set up.
+- **Wikipedia lists** — harvests company names from "List of …" pages when one
+  exists. Deterministic, no LLM.
 - **Search harvest** — region + ICP queries through the search stack, with
   directories/aggregators filtered out.
 - **Sources file** *(optional)* — pass a `sources.txt` as an extra channel.
