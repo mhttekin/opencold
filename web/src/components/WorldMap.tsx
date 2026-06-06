@@ -77,6 +77,31 @@ const SUGGESTED: { name: string; label: string }[] = [
   { name: "Nigeria", label: "Nigeria" },
 ];
 
+/* ── business hubs the 110m map omits ── */
+
+// Natural Earth's low-poly map drops several small but business-critical
+// states (Singapore, Hong Kong, Bahrain, …). The map can't draw them, but they
+// should still be reachable from search. These names get merged into the
+// type-ahead list and selected as plain region strings — there's just no shape
+// to highlight on the map.
+const EXTRA_COUNTRIES = [
+  "Singapore",
+  "Hong Kong",
+  "Bahrain",
+  "Malta",
+  "Mauritius",
+  "Monaco",
+  "Liechtenstein",
+  "Macau",
+  "Andorra",
+  "San Marino",
+  "Maldives",
+  "Seychelles",
+  "Barbados",
+  "Bermuda",
+  "Cayman Islands",
+];
+
 const SHORT_LABELS: Record<string, string> = {
   "United States of America": "United States",
   "Dem. Rep. Congo": "DR Congo",
@@ -111,12 +136,18 @@ export default function WorldMap({
   const [query, setQuery] = useState("");
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
+  // Hubs the map can't render — only those not already present as a shape.
+  const offMap = useMemo(() => {
+    const onMap = new Set(shapes.map((s) => s.name));
+    return EXTRA_COUNTRIES.filter((n) => !onMap.has(n));
+  }, [shapes]);
+
   const allNames = useMemo(
     () =>
-      shapes
-        .map((s) => s.name)
-        .sort((a, b) => displayName(a).localeCompare(displayName(b))),
-    [shapes],
+      [...shapes.map((s) => s.name), ...offMap].sort((a, b) =>
+        displayName(a).localeCompare(displayName(b)),
+      ),
+    [shapes, offMap],
   );
 
   // type-ahead: prefix matches first ("nige" → Niger, Nigeria), then substring
@@ -133,6 +164,34 @@ export default function WorldMap({
     }
     return [...starts, ...contains].slice(0, 8);
   }, [q, allNames]);
+
+  // Keyboard navigation over the suggestion list. When nothing matches, the
+  // single "add custom region" row is the lone navigable option (index 0).
+  const [activeIndex, setActiveIndex] = useState(0);
+  const optionCount = matches.length > 0 ? matches.length : q ? 1 : 0;
+
+  const addCustomRegion = () => {
+    const name = query.trim();
+    if (!name) return;
+    onToggle(name);
+    setQuery("");
+    setActiveIndex(0);
+  };
+
+  const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (optionCount === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.min(i + 1, optionCount - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (matches.length > 0) onToggle(matches[Math.min(activeIndex, matches.length - 1)]);
+      else addCustomRegion();
+    }
+  };
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   const moved = useRef(false);
@@ -324,7 +383,11 @@ export default function WorldMap({
           />
           <input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActiveIndex(0);
+            }}
+            onKeyDown={onSearchKeyDown}
             placeholder="Search any country…"
             className="h-10 w-full rounded-lg border border-zinc-200 bg-white pl-9 pr-9 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-300 focus:border-zinc-900"
           />
@@ -347,14 +410,20 @@ export default function WorldMap({
           <div className="min-h-0 overflow-hidden">
             <div className="space-y-0.5 rounded-lg border border-zinc-100 bg-zinc-50/60 p-1">
               {matches.length > 0 ? (
-                matches.map((name) => {
+                matches.map((name, idx) => {
                   const isSel = selectedSet.has(name);
+                  const isActive = idx === activeIndex;
                   return (
                     <button
                       key={name}
                       onClick={() => onToggle(name)}
+                      onMouseEnter={() => setActiveIndex(idx)}
                       className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition ${
-                        isSel ? "bg-white shadow-sm" : "hover:bg-white/70"
+                        isSel
+                          ? "bg-white shadow-sm"
+                          : isActive
+                            ? "bg-white shadow-xs"
+                            : "hover:bg-white/70"
                       }`}
                     >
                       <span
@@ -369,9 +438,20 @@ export default function WorldMap({
                   );
                 })
               ) : (
-                <p className="px-2.5 py-1.5 text-xs text-zinc-400">
-                  No countries match “{query.trim()}”
-                </p>
+                // No country matches — let the user target the raw string as a
+                // custom region rather than dead-ending.
+                <button
+                  onClick={addCustomRegion}
+                  className="flex w-full items-center gap-2 rounded-md bg-white/70 px-2.5 py-1.5 text-left text-xs transition"
+                >
+                  <Plus size={12} className="shrink-0 text-zinc-400" />
+                  <span className="text-zinc-600">
+                    Add{" "}
+                    <span className="font-medium text-zinc-900">
+                      “{query.trim()}”
+                    </span>
+                  </span>
+                </button>
               )}
             </div>
           </div>
