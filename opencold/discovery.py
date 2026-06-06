@@ -1857,6 +1857,40 @@ def _icp_terms(icp: str) -> set[str]:
     }
 
 
+# Common inflectional suffixes, longest-first so "landscapers" -> "ers" (not "er"+"s").
+_STEM_SUFFIXES = ("ings", "ing", "ers", "er", "ed", "es", "s")
+
+
+def _stem(word: str) -> str:
+    """Light inflectional stemmer so morphological variants of an ICP term collapse
+    to one form: landscape / landscaping / landscaper / landscapes / landscaped ->
+    'landscap'. Deliberately conservative — only strips a common suffix when ≥4 stem
+    characters remain (guards short words like 'caring'->'car'), then normalises a
+    trailing 'e'. Not a full Porter stemmer; predictability beats coverage here."""
+    w = word.lower()
+    for suf in _STEM_SUFFIXES:
+        if w.endswith(suf) and len(w) - len(suf) >= 4:
+            w = w[: -len(suf)]
+            break
+    if len(w) >= 5 and w.endswith("e"):
+        w = w[:-1]
+    return w
+
+
+def _icp_match(terms: set[str], text: str) -> list[str]:
+    """ICP terms evidenced in `text`. Additive over the old literal-substring test:
+    a term matches if its stem equals a whole-word stem in the text (morphology:
+    'landscape' ~ 'landscaping') OR the literal term is a substring (back-compat for
+    hyphenated/compound terms like 'tech' in 'fintech'). Returns the original term
+    spellings, sorted, so callers can display them as before."""
+    if not terms or not text:
+        return []
+    low = text.lower()
+    word_stems = {_stem(tok) for tok in re.findall(r"[a-z0-9]+", low)}
+    matched = [t for t in terms if _stem(t) in word_stems or t in low]
+    return sorted(matched)
+
+
 def score_company(company: CandidateCompany, enrichment: dict, icp: str) -> tuple[int, str]:
     # NOTE: company.discovery_reason is deliberately excluded — for LLM/search
     # candidates it echoes our own query (e.g. "llm seed: landscape in UK"), so
@@ -1868,7 +1902,7 @@ def score_company(company: CandidateCompany, enrichment: dict, icp: str) -> tupl
         enrichment.get("company_summary", ""),
         enrichment.get("personalization_facts", ""),
     ]).lower()
-    matched = sorted(term for term in terms if term in haystack)
+    matched = _icp_match(terms, haystack)
     base = 35 if enrichment.get("website_status") == "ok" else 15
     match_bonus = min(len(matched) * 14, 50)
     score = min(100, base + match_bonus)
@@ -1888,8 +1922,8 @@ def _icp_evidence(icp: str, enrichment: dict) -> bool:
     content = " ".join([
         enrichment.get("company_summary", ""),
         enrichment.get("personalization_facts", ""),
-    ]).lower()
-    return any(term in content for term in terms)
+    ])
+    return bool(_icp_match(terms, content))
 
 
 def _bad_company_name(company: str) -> bool:

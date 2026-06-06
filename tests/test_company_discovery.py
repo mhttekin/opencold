@@ -262,6 +262,27 @@ class TestIcpEvidence:
         assert discovery.score_company(cand, land, "landscape")[0] > discovery.score_company(cand, iot, "landscape")[0]
 
 
+class TestMorphology:
+    def test_stem_collapses_inflections(self):
+        stems = {discovery._stem(w) for w in ["landscape", "landscaping", "landscaper", "landscapes", "landscaped"]}
+        assert stems == {"landscap"}
+
+    def test_evidence_matches_morphological_variant(self):
+        # The recall fix: 'landscape' must be evidenced by content that only says 'landscaping'.
+        assert discovery._icp_evidence("landscape companies", {"company_summary": "expert design and landscaping", "personalization_facts": ""})
+        assert discovery._icp_evidence("plumbing", {"company_summary": "experienced plumber and heating", "personalization_facts": ""})
+
+    def test_no_evidence_for_unrelated_or_short_collisions(self):
+        # Unrelated industry stays out; conservative stemmer avoids care->car / marine~marina.
+        assert not discovery._icp_evidence("landscape companies", {"company_summary": "satellite IoT tracking devices", "personalization_facts": ""})
+        assert not discovery._icp_match({"marine"}, "luxury marina apartments")
+        assert not discovery._icp_match({"care"}, "a caring local team")
+
+    def test_substring_backcompat_preserved(self):
+        # Old literal-substring matches still hold (compound words).
+        assert discovery._icp_match({"tech"}, "a fintech and biotech platform") == ["tech"]
+
+
 class TestResolutionContext:
     def test_prefer_cc_picks_country_domain(self):
         # Two same-name domains: the UK ccTLD one must win for a UK search.
