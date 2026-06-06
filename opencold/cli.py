@@ -492,7 +492,7 @@ class _ReplCompleter(Completer):
         if first == "discover":
             current_word = words[-1] if not text.endswith(" ") else ""
             if current_word.startswith("-"):
-                for flag in ["--icp", "--region", "--mode", "--output", "--limit", "--source-limit", "--require-contact", "--guess-role-email", "--find-people", "--count", "--max-pages", "--workers"]:
+                for flag in ["--icp", "--region", "--mode", "--output", "--limit", "--source-limit", "--require-contact", "--guess-role-email", "--find-people", "--count", "--max-pages", "--workers", "--no-llm"]:
                     if flag.startswith(current_word) and flag != current_word:
                         yield Completion(flag, start_position=-len(current_word))
                 return
@@ -1603,6 +1603,7 @@ def do_discover(
     mode: str = "companies",
     find_people: bool = False,
     seed_count: int = 30,
+    use_llm: bool = True,
 ) -> None:
     """Discover leads (experimental — review before outreach).
 
@@ -1610,6 +1611,10 @@ def do_discover(
     list with a durable contact bundle (company email, phone, address, company
     LinkedIn). Legacy 'people' mode finds a named contact per company from a
     sources file (results can be stale).
+
+    use_llm=False (CLI --no-llm) runs companies mode fully deterministic: no LLM
+    seeding and no LLM referee (search-only candidates + deterministic ICP/region
+    verification).
     """
     if mode == "people":
         _do_discover_people(
@@ -1619,7 +1624,7 @@ def do_discover(
         return
     _do_discover_companies(
         icp, region, output, limit, max_pages, workers,
-        sources_file, find_people, seed_count, require_contact,
+        sources_file, find_people, seed_count, require_contact, use_llm,
     )
 
 
@@ -1685,6 +1690,7 @@ def _do_discover_companies(
     find_people: bool,
     seed_count: int,
     require_contact: bool,
+    use_llm: bool = True,
 ) -> None:
     """Company-first discovery: ICP + region -> ranked companies + contact bundle."""
     typer.echo(f"\n  {YELLOW}[experimental]{RESET} Company discovery — review before outreach")
@@ -1700,8 +1706,10 @@ def _do_discover_companies(
         typer.echo(f"  {YELLOW}⚠{RESET} ddgs package not installed. Run: {BOLD}pip install ddgs{RESET}")
     if discovery._get_serper_key():
         typer.echo(f"  {GREEN}✓{RESET} Serper search API configured (fallback)")
-    if discovery._resolve_llm_provider():
-        typer.echo(f"  {GREEN}✓{RESET} LLM company seeding enabled")
+    if not use_llm:
+        typer.echo(f"  {CYAN}ℹ{RESET} --no-llm: deterministic only (no LLM seeding, no LLM referee)")
+    elif discovery._resolve_llm_provider():
+        typer.echo(f"  {GREEN}✓{RESET} LLM company seeding + referee enabled")
     else:
         typer.echo(f"  {CYAN}ℹ{RESET} No LLM provider — using search-only discovery")
     if find_people:
@@ -1716,7 +1724,7 @@ def _do_discover_companies(
         limit=limit,
         workers=workers,
         max_pages=max_pages,
-        use_llm=True,
+        use_llm=use_llm,
         seed_count=seed_count,
         find_people=find_people,
         progress_callback=_print_discover_progress,
@@ -1932,12 +1940,14 @@ def discover(
     count: int = typer.Option(30, "--count", help="[companies] Max companies for LLM seeding"),
     max_pages: int = typer.Option(3, "--max-pages", help="Company pages to crawl for facts/contacts"),
     workers: int = typer.Option(8, "--workers", help="Parallel company crawl workers (max 8)"),
+    no_llm: bool = typer.Option(False, "--no-llm", help="[companies] Deterministic only — no LLM seeding or referee"),
 ) -> None:
     """[Experimental] Discover companies (ICP + region) with a contact bundle, or people (legacy)."""
     do_discover(
         sources_file, icp, output, limit, require_contact, max_pages, workers,
         source_limit, guess_role_email,
         region=region, mode=mode, find_people=find_people, seed_count=count,
+        use_llm=not no_llm,
     )
 
 
@@ -2016,6 +2026,7 @@ SHELL_HELP = f"""\
       --mode <companies|people>   companies (default) or legacy people-from-sources
       --find-people               Also search a named contact per company (may be stale)
       --count <number>            Max companies for LLM seeding (default: 30)
+      --no-llm                    Deterministic only — no LLM seeding or referee
       --require-contact           Only keep companies that have an email
       -o, --output <path>         Output path (default: leads.csv)
       --limit <number>            Max companies (default: 10)
@@ -2134,6 +2145,7 @@ def _parse_discover_args(tokens: list[str]) -> dict:
         "seed_count": 30,
         "max_pages": 3,
         "workers": 8,
+        "use_llm": True,
     }
     positional = []
     i = 0
@@ -2163,6 +2175,8 @@ def _parse_discover_args(tokens: list[str]) -> dict:
             args["guess_role_email"] = True; i += 1
         elif tok == "--find-people":
             args["find_people"] = True; i += 1
+        elif tok == "--no-llm":
+            args["use_llm"] = False; i += 1
         else:
             positional.append(tok); i += 1
     args["sources_file"] = positional[0] if positional else ""
