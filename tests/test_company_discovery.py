@@ -262,6 +262,27 @@ class TestIcpEvidence:
         assert discovery.score_company(cand, land, "landscape")[0] > discovery.score_company(cand, iot, "landscape")[0]
 
 
+class TestMorphology:
+    def test_stem_collapses_inflections(self):
+        stems = {discovery._stem(w) for w in ["landscape", "landscaping", "landscaper", "landscapes", "landscaped"]}
+        assert stems == {"landscap"}
+
+    def test_evidence_matches_morphological_variant(self):
+        # The recall fix: 'landscape' must be evidenced by content that only says 'landscaping'.
+        assert discovery._icp_evidence("landscape companies", {"company_summary": "expert design and landscaping", "personalization_facts": ""})
+        assert discovery._icp_evidence("plumbing", {"company_summary": "experienced plumber and heating", "personalization_facts": ""})
+
+    def test_no_evidence_for_unrelated_or_short_collisions(self):
+        # Unrelated industry stays out; conservative stemmer avoids care->car / marine~marina.
+        assert not discovery._icp_evidence("landscape companies", {"company_summary": "satellite IoT tracking devices", "personalization_facts": ""})
+        assert not discovery._icp_match({"marine"}, "luxury marina apartments")
+        assert not discovery._icp_match({"care"}, "a caring local team")
+
+    def test_substring_backcompat_preserved(self):
+        # Old literal-substring matches still hold (compound words).
+        assert discovery._icp_match({"tech"}, "a fintech and biotech platform") == ["tech"]
+
+
 class TestResolutionContext:
     def test_prefer_cc_picks_country_domain(self):
         # Two same-name domains: the UK ccTLD one must win for a UK search.
@@ -361,3 +382,108 @@ class TestCsvWriter:
         discovery.write_company_csv(rows, str(out))
         header2 = out.read_text(encoding="utf-8").splitlines()[0]
         assert "contact_name" in header2
+
+
+# Real-world layout: {{columns-list}} bullets, mostly UNlinked, with sections to skip.
+WIKI_BULLETS = """{{short description|none}}
+
+== Private sector (life) ==
+{{columns-list|colwidth=20em|
+* [[Pragati Life Insurance|Pragati Life Insurance Ltd.]]
+* Green Delta Insurance Company Ltd.
+* Guardian Life Insurance Company Ltd. (PLC)
+}}
+
+== Defunct ==
+* Old Failed Insurance Ltd
+
+== Regulators ==
+* Insurance Development and Regulatory Authority
+
+== See also ==
+* [[Economy of Bangladesh]]
+"""
+
+# Table layout with header row + a styled cell attribute.
+WIKI_TABLE = """== Banks ==
+{| class="wikitable"
+|-
+! Name !! Founded
+|-
+| [[Delta Bank]] || 1990
+|-
+| style="text-align:left" | Epsilon Bank PLC || 2001
+|}
+"""
+
+
+class TestWikipediaParser:
+    def test_bullets_skip_sections_and_clean_names(self):
+        names = discovery._parse_wikitext_names(WIKI_BULLETS)
+        # Trailing periods stripped; [[wikilink|text]] resolved to text.
+        assert "Pragati Life Insurance Ltd" in names
+        assert "Green Delta Insurance Company Ltd" in names
+        assert "Guardian Life Insurance Company Ltd" in names  # (PLC) stripped
+        # Defunct / Regulators / See also entries are excluded.
+        assert all("Old Failed" not in n for n in names)
+        assert all("Regulatory Authority" not in n for n in names)
+        assert all("Economy of" not in n for n in names)
+
+    def test_wikitable_first_column(self):
+        names = discovery._parse_wikitext_names(WIKI_TABLE)
+        assert names == ["Delta Bank", "Epsilon Bank PLC"]
+
+    def test_clean_wiki_name_strips_markup_and_descriptions(self):
+        assert discovery._clean_wiki_name("[[Foo|Foo Bar Ltd]] – the best (est 1990)<ref>x</ref>") == "Foo Bar Ltd"
+        assert discovery._clean_wiki_name("'''Acme'''") == "Acme"
+        # Intra-name hyphen preserved (only spaced dashes split).
+        assert discovery._clean_wiki_name("Bradley-Hole Schoenaich") == "Bradley-Hole Schoenaich"
+
+    def test_blocklist_excludes_non_companies(self):
+        assert discovery._parse_wikitext_names("* Securities and Exchange Commission") == []
+
+
+class TestWikipediaChannel:
+    def test_company_names_from_list_page(self):
+        search = {"query": {"search": [{"title": "List of insurance companies in Bangladesh"}]}}
+        parse = {"parse": {"wikitext": {"*": WIKI_BULLETS}}}
+
+        def fake_api(params):
+            return search if params.get("list") == "search" else parse
+
+        with patch("opencold.discovery._wiki_api_get", side_effect=fake_api):
+            out = discovery.wikipedia_company_names("insurance companies", "Bangladesh")
+        names = [n for n, _ in out]
+        assert "Green Delta Insurance Company Ltd" in names
+        assert all(src.startswith("https://en.wikipedia.org/wiki/") for _, src in out)
+
+    def test_list_titles_filters_to_list_pages(self):
+        search = {"query": {"search": [
+            {"title": "List of insurance companies in Bangladesh"},
+            {"title": "MetLife"},  # not a list page -> dropped
+        ]}}
+        with patch("opencold.discovery._wiki_api_get", return_value=search):
+            titles = discovery.wikipedia_list_titles("insurance companies", "Bangladesh")
+        assert titles == ["List of insurance companies in Bangladesh"]
+
+    def test_channel_is_additive_and_tagged(self):
+        # Wikipedia contributes a candidate; search harvest still runs alongside.
+        with patch("opencold.discovery.wikipedia_company_names",
+                   return_value=[("Green Delta Insurance", "https://en.wikipedia.org/wiki/List")]), \
+             patch("opencold.discovery._resolve_names",
+                   return_value=[("Green Delta Insurance", "https://greendelta.com.bd")]), \
+             patch("opencold.discovery.discover_companies_by_query",
+                   return_value=[CandidateCompany("Other Co", "https://other.test", "u", "search")]):
+            cands = discovery.discover_company_candidates(
+                "insurance companies", "Bangladesh", use_llm=False, use_wiki=True,
+            )
+        by_channel = {c.discovery_channel for c in cands}
+        assert "wikipedia" in by_channel and "search" in by_channel
+
+    def test_no_wiki_disables_channel(self):
+        with patch("opencold.discovery.wikipedia_company_names") as wiki, \
+             patch("opencold.discovery.discover_companies_by_query", return_value=[]):
+            discovery.discover_company_candidates(
+                "insurance companies", "Bangladesh", use_llm=False, use_wiki=False,
+            )
+        wiki.assert_not_called()
