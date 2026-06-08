@@ -127,6 +127,72 @@ class TestRegionFit:
         assert conflict < in_region
         assert "region_conflict" in reasons
 
+    def test_foreign_address_beats_target_pagetext(self):
+        # Cameroon exporter with an SEO page targeting Turkey: the stated address wins.
+        c = discovery.CompanyContacts(
+            phones=["+237671776559"],
+            address="1310 Avenue De Gaulle, Douala, BP 2667, Cameroon")
+        score, reasons = discovery.region_fit(
+            c, "https://cameroontimberexport.com", "Turkey",
+            pages_text="timber wood supplier turkey best prices")
+        assert score == 0
+        assert "addr_region_match" not in reasons
+        assert "region_conflict:addr:cameroon" in reasons
+
+    def test_uk_address_flags_conflict_for_turkey(self):
+        c = discovery.CompanyContacts(
+            phones=["+442071935609"],
+            address="59 St Martin's Lane, London, WC2N 4JS, United Kingdom")
+        _, reasons = discovery.region_fit(
+            c, "https://wknightconsulting.com", "Turkey",
+            pages_text="UK-based timber wood supplier serving turkey")
+        assert "region_conflict" in reasons
+
+    def test_page_text_target_is_not_an_anchor(self):
+        # A marketplace whose page lists "companies from turkey" is not anchored there.
+        c = discovery.CompanyContacts()
+        score, reasons = discovery.region_fit(
+            c, "https://fordaq.com", "Turkey",
+            pages_text="companies from turkey timber marketplace")
+        assert score == 0
+        assert "addr_region_match" not in reasons
+        assert "page_region_mention" in reasons
+        assert "region_conflict" not in reasons
+
+    def test_genuine_local_with_turkish_city_anchors(self):
+        c = discovery.CompanyContacts(phones=["+902120000000"], address="Istanbul, Turkey")
+        score, reasons = discovery.region_fit(c, "https://example.com", "Turkey")
+        assert score >= 60
+        assert "addr_region_match" in reasons
+        assert "region_conflict" not in reasons
+
+    def test_local_with_foreign_sales_phone_not_rejected(self):
+        c = discovery.CompanyContacts(phones=["+902120000000", "+442079460000"], address="Bursa, Turkey")
+        _, reasons = discovery.region_fit(c, "https://example.com.tr", "Turkey")
+        assert "region_conflict" not in reasons
+
+    def test_hq_prose_anchors_thin_local_site(self):
+        c = discovery.CompanyContacts()
+        score, reasons = discovery.region_fit(
+            c, "https://anatoliawood.com", "Turkey",
+            pages_text="An Istanbul-based timber mill since 1990.")
+        assert "hq_region_match" in reasons
+        assert score >= 20
+
+    def test_foreign_hq_prose_rejected_when_no_anchor(self):
+        c = discovery.CompanyContacts()
+        _, reasons = discovery.region_fit(
+            c, "https://acme.com", "Turkey",
+            pages_text="We are headquartered in Douala, Cameroon.")
+        assert "region_conflict:hq:cameroon" in reasons
+
+    def test_customer_market_prose_not_treated_as_hq(self):
+        c = discovery.CompanyContacts()
+        _, reasons = discovery.region_fit(
+            c, "https://acme.com", "Turkey",
+            pages_text="We supply companies based in Germany.")
+        assert "region_conflict" not in reasons
+
 
 class TestLlmSeeding:
     def test_parse_json_object_tolerates_fences(self):
@@ -298,8 +364,11 @@ class TestResolutionContext:
 
 
 class TestClassification:
-    def _row(self, region_fit="40", country="United Kingdom (UK)"):
-        return {"region_fit": region_fit, "country": country}
+    def _row(self, region_fit="40", country="United Kingdom (UK)", region_anchor=None,
+             is_aggregator=False, is_government=False):
+        anchor = (int(region_fit) > 0) if region_anchor is None else region_anchor
+        return {"region_fit": region_fit, "country": country, "_region_anchor": anchor,
+                "_is_aggregator": is_aggregator, "_is_government": is_government}
 
     def test_region_conflict_is_rejected(self):
         conf, _ = discovery._classify_company(self._row(region_fit="0"), True, True, None)
@@ -328,6 +397,100 @@ class TestClassification:
     def test_no_icp_evidence_is_review(self):
         conf, _ = discovery._classify_company(self._row(), False, False, {"match": "unknown"})
         assert conf == "review"
+
+    def test_no_region_anchor_is_review(self):
+        # A target mention only in marketing text confers no anchor -> not verified.
+        conf, why = discovery._classify_company(
+            self._row(region_fit="0", region_anchor=False), True, False, None)
+        assert conf == "review"
+        assert why == "region_unconfirmed"
+
+    def test_government_site_is_rejected(self):
+        conf, why = discovery._classify_company(self._row(is_government=True), True, False, None)
+        assert conf == "rejected"
+        assert why == "government_site"
+
+    def test_aggregator_routed_to_review(self):
+        conf, why = discovery._classify_company(self._row(is_aggregator=True), True, False, None)
+        assert conf == "review"
+        assert why == "marketplace_directory"
+
+
+class TestCountryDetection:
+    def test_address_country_by_name(self):
+        assert discovery._detect_address_country("..., Douala, Cameroon") == "cameroon"
+        assert discovery._detect_address_country("..., London, United Kingdom") == "united kingdom"
+
+    def test_address_prefers_unambiguous(self):
+        # US state Georgia must not be read as Georgia-the-country.
+        assert discovery._detect_address_country("Atlanta, Georgia, USA") == "united states"
+
+    def test_address_demonym(self):
+        assert discovery._detect_address_country("a UK-based supplier") == "united kingdom"
+
+    def test_address_none(self):
+        assert discovery._detect_address_country("123 Main Street, Suite 4") is None
+
+    def test_phone_country_longest_prefix(self):
+        assert discovery._detect_phone_country("+237671776559") == "cameroon"
+        assert discovery._detect_phone_country("+447549072901") == "united kingdom"
+        assert discovery._detect_phone_country("+902120000000") == "turkey"
+        assert discovery._detect_phone_country("01234") is None
+
+
+class TestDomainCountry:
+    def test_unambiguous_country_in_label(self):
+        assert discovery._detect_domain_country("cameroontimberexport.com") == "cameroon"
+        assert discovery._detect_domain_country("germany-timber.com") == "germany"
+
+    def test_ambiguous_name_ignored(self):
+        assert discovery._detect_domain_country("jordanlumber.com") is None
+
+    def test_generic_tld_label_not_matched(self):
+        assert discovery._detect_domain_country("acme.io") is None
+
+    def test_short_name_substring_not_matched(self):
+        # 'oman' (len<5) must not match inside an unrelated label.
+        assert discovery._detect_domain_country("womanswear.com") is None
+
+
+class TestProseLocation:
+    def test_adjective_form(self):
+        assert discovery._detect_prose_location("a UK-based timber supplier") == "united kingdom"
+        assert discovery._detect_prose_location("an Istanbul-based mill") == "turkey"
+
+    def test_verb_form_city_to_region(self):
+        assert discovery._detect_prose_location("We are headquartered in Douala, Cameroon") == "cameroon"
+
+    def test_customer_subject_excluded(self):
+        assert discovery._detect_prose_location("serving customers based in Turkey") is None
+        assert discovery._detect_prose_location("we supply companies based in Germany") is None
+
+    def test_no_hq_idiom(self):
+        assert discovery._detect_prose_location("top timber supplier turkey best prices") is None
+
+
+class TestAggregator:
+    def test_known_stem(self):
+        assert discovery._is_aggregator("fordaq.com")
+        assert discovery._is_aggregator("europages.com.tr")  # ccTLD variant via stem
+
+    def test_summary_keyword(self):
+        assert discovery._is_aggregator("acme.com", "the leading b2b marketplace for timber")
+
+    def test_real_company_not_flagged(self):
+        assert not discovery._is_aggregator("acme.com", "family-owned timber mill since 1960")
+
+
+class TestGovernment:
+    def test_gov_and_mil(self):
+        assert discovery._is_government_domain("michigan.gov")
+        assert discovery._is_government_domain("x.gov.tr")
+        assert discovery._is_government_domain("army.mil")
+
+    def test_company_not_flagged(self):
+        assert not discovery._is_government_domain("acme.com")
+        assert not discovery._is_government_domain("governance.com")
 
 
 class TestJudge:

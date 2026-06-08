@@ -22,6 +22,7 @@ from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 from bs4 import BeautifulSoup
 
 from opencold import enricher
+from opencold import regions_data as rd
 from opencold import translator
 
 
@@ -455,6 +456,42 @@ def _is_blocked_host(host: str) -> bool:
 def _company_from_domain(domain: str) -> str:
     stem = domain.split(".")[0]
     return stem.replace("-", " ").replace("_", " ").title()
+
+
+# B2B marketplaces / directories: they list one company per page but are not a single
+# company in any one country. Matched by stem so ccTLD variants (europages.com.tr) also
+# hit. Routed to 'review', never 'verified'.
+_AGGREGATOR_DOMAINS = {
+    "fordaq.com", "europages.com", "kompass.com", "go4worldbusiness.com",
+    "globalwood.org", "bulurum.com", "isdunyasirehberi.net", "tradeindia.com",
+    "exporthub.com", "alibaba.com", "made-in-china.com", "globalsources.com",
+    "indiamart.com", "thomasnet.com", "ec21.com", "tradekey.com", "yellowpages.com",
+}
+_AGGREGATOR_STEMS = {d.split(".")[0] for d in _AGGREGATOR_DOMAINS}
+_AGGREGATOR_RE = re.compile(
+    r"\b(?:b2b (?:marketplace|platform)|marketplace for|business directory|"
+    r"company directory|trade directory|suppliers? and buyers?|buyers? and suppliers?|"
+    r"list of (?:companies|suppliers|manufacturers)|connect(?:s|ing)? (?:buyers|businesses))\b",
+    re.IGNORECASE,
+)
+
+
+def _is_aggregator(domain: str, summary: str = "") -> bool:
+    """True for B2B marketplaces/directories (by known stem or summary phrasing)."""
+    d = (domain or "").lower()
+    if d and d.split(".")[0] in _AGGREGATOR_STEMS:
+        return True
+    return bool(summary and _AGGREGATOR_RE.search(summary))
+
+
+def _is_government_domain(domain: str) -> bool:
+    """True for government/military sites: .gov/.mil, or gov./govt./mil. under a ccTLD."""
+    parts = (domain or "").lower().split(".")
+    if len(parts) < 2:
+        return False
+    if parts[-1] in ("gov", "mil"):
+        return True
+    return len(parts) >= 3 and parts[-2] in ("gov", "govt", "mil") and len(parts[-1]) == 2
 
 
 def _company_from_anchor(text: str, domain: str) -> str:
@@ -2467,42 +2504,42 @@ _SOCIAL_HOSTS = (
 # ("United Kingdom (UK)", "uk", "England") is resolved to a canonical key via
 # _resolve_region_key before lookup, so the signals actually fire regardless of
 # how the region was phrased. Easily extensible.
-_REGION_CCTLD = {
-    "bangladesh": "bd", "india": "in", "pakistan": "pk", "turkey": "tr",
-    "germany": "de", "france": "fr", "united kingdom": "uk", "united states": "us",
-    "nigeria": "ng", "kenya": "ke", "indonesia": "id", "brazil": "br", "mexico": "mx",
-}
-_REGION_PHONE = {
-    "bangladesh": "+880", "india": "+91", "pakistan": "+92", "turkey": "+90",
-    "germany": "+49", "france": "+33", "united kingdom": "+44", "united states": "+1",
-    "nigeria": "+234", "kenya": "+254", "indonesia": "+62", "brazil": "+55", "mexico": "+52",
-}
-_REGION_CITIES = {
-    "bangladesh": ["dhaka", "chattogram", "chittagong", "khulna", "sylhet", "rajshahi"],
-    "united kingdom": [
-        "london", "manchester", "birmingham", "leeds", "glasgow", "edinburgh",
-        "bristol", "liverpool", "sheffield", "surrey", "england", "scotland", "wales",
-    ],
-    "united states": ["new york", "san francisco", "los angeles", "chicago", "boston", "austin", "seattle"],
-    "germany": ["berlin", "munich", "hamburg", "frankfurt", "cologne"],
-    "france": ["paris", "lyon", "marseille", "toulouse"],
-    "india": ["mumbai", "delhi", "bengaluru", "bangalore", "hyderabad", "chennai", "pune"],
-}
+# Region lookup tables are DERIVED from regions_data.COUNTRIES (the single source of
+# truth) so widening coverage means editing one file. Names are kept stable for the
+# rest of this module.
+_REGION_CCTLD = {k: v["cctld"] for k, v in rd.COUNTRIES.items() if v.get("cctld")}
+_REGION_PHONE = {k: v["phone"] for k, v in rd.COUNTRIES.items() if v.get("phone")}
+_REGION_CITIES = {k: v["cities"] for k, v in rd.COUNTRIES.items() if v.get("cities")}
+_REGION_LANG = {k: v["lang"] for k, v in rd.COUNTRIES.items() if v.get("lang")}
 
 # Freeform aliases -> canonical region key. Short aliases (<=3 chars) are matched
-# on word boundaries; longer ones as substrings (longest first).
-_REGION_ALIASES = {
-    "united kingdom": "united kingdom", "great britain": "united kingdom",
-    "britain": "united kingdom", "england": "united kingdom", "scotland": "united kingdom",
-    "wales": "united kingdom", "uk": "united kingdom", "gb": "united kingdom",
-    "united states": "united states", "america": "united states", "usa": "united states",
-    "us": "united states",
-    "bangladesh": "bangladesh", "india": "india", "pakistan": "pakistan",
-    "turkey": "turkey", "türkiye": "turkey", "turkiye": "turkey",
-    "germany": "germany", "deutschland": "germany", "france": "france",
-    "nigeria": "nigeria", "kenya": "kenya", "indonesia": "indonesia",
-    "brazil": "brazil", "brasil": "brazil", "mexico": "mexico", "méxico": "mexico",
-}
+# on word boundaries; longer ones as substrings (longest first). See _resolve_region_key.
+_REGION_ALIASES = {a: k for k, v in rd.COUNTRIES.items() for a in v["aliases"]}
+
+# Foreign-country detection tables. _COUNTRY_NAMES maps any name/variant to its
+# canonical key; _COUNTRY_DEMONYMS maps adjectives ("british"); _AMBIGUOUS holds keys
+# whose NAME doubles as a common word / US place (never trigger a reject, excluded from
+# domain matching). _PHONE_CC maps an E.164 calling code to a country (first listed
+# owner wins for shared codes; +1/+7 pinned to the dominant economy).
+_COUNTRY_NAMES = dict(_REGION_ALIASES)
+_COUNTRY_DEMONYMS = {d: k for k, v in rd.COUNTRIES.items() for d in v.get("demonyms", [])}
+_AMBIGUOUS = {k for k, v in rd.COUNTRIES.items() if v.get("ambiguous")}
+
+
+def _build_phone_cc() -> dict:
+    out: dict[str, str] = {}
+    for key, val in rd.COUNTRIES.items():
+        code = val.get("phone")
+        if code and code not in out:
+            out[code] = key
+    out["+1"] = "united states"
+    out["+7"] = "russia"
+    return out
+
+
+_PHONE_CC = _build_phone_cc()
+_COUNTRY_NAMES_BY_LEN = sorted(_COUNTRY_NAMES, key=len, reverse=True)
+_COUNTRY_DEMONYMS_BY_LEN = sorted(_COUNTRY_DEMONYMS, key=len, reverse=True)
 
 
 def _resolve_region_key(region: str) -> str | None:
@@ -2530,6 +2567,112 @@ _REGION_LANG = {
 def _region_language(region: str) -> str | None:
     """Local language to translate into for `region`, or None to stay English."""
     return _REGION_LANG.get(_resolve_region_key(region) or "")
+
+
+def _target_region_tokens(region_key: str | None, region: str) -> list[str]:
+    """Anchor vocabulary for the TARGET region: canonical key + its longer aliases +
+    known cities. Used to decide whether the target is actually named in an address."""
+    if not region_key:
+        r = (region or "").strip().lower()
+        return [r] if r else []
+    toks = {region_key}
+    toks.update(a for a, k in _REGION_ALIASES.items() if k == region_key and len(a) > 3)
+    toks.update(_REGION_CITIES.get(region_key, []))
+    return [t for t in toks if t]
+
+
+def _resolve_place(place: str) -> str | None:
+    """Resolve a free-text place (country name/variant, demonym, or city) to a
+    canonical region key, or None."""
+    p = (place or "").lower().strip()
+    if not p:
+        return None
+    for name in _COUNTRY_NAMES_BY_LEN:
+        if re.search(r"\b" + re.escape(name) + r"\b", p):
+            return _COUNTRY_NAMES[name]
+    for dem in _COUNTRY_DEMONYMS_BY_LEN:
+        if re.search(r"\b" + re.escape(dem) + r"\b", p):
+            return _COUNTRY_DEMONYMS[dem]
+    for rk, cities in _REGION_CITIES.items():
+        if any(re.search(r"\b" + re.escape(c) + r"\b", p) for c in cities):
+            return rk
+    return None
+
+
+def _detect_address_country(text: str) -> str | None:
+    """Detect the country a free-form ADDRESS declares (its stated domicile).
+
+    Prefers an unambiguous country when several names appear, so "Atlanta, Georgia,
+    USA" resolves to united states rather than Georgia-the-country."""
+    if not text:
+        return None
+    low = text.lower()
+    found: list[str] = []
+    for name in _COUNTRY_NAMES_BY_LEN:
+        if re.search(r"\b" + re.escape(name) + r"\b", low):
+            found.append(_COUNTRY_NAMES[name])
+    for dem in _COUNTRY_DEMONYMS_BY_LEN:
+        if re.search(r"\b" + re.escape(dem) + r"(?:-based)?\b", low):
+            found.append(_COUNTRY_DEMONYMS[dem])
+    if not found:
+        return None
+    unambiguous = [f for f in found if f not in _AMBIGUOUS]
+    return unambiguous[0] if unambiguous else found[0]
+
+
+# HQ-statement idioms: "based/headquartered/registered in <place>" (verb form captures
+# the place after "in", stopping at a comma) and "<place>-based" (adjective form).
+_HQ_PLACE = r"([^\W\d_][^\d\n,;:|]{1,38})"
+_HQ_VERB_RE = re.compile(
+    r"\b(?:based|headquarter(?:ed|s)?|head\s*offices?|hq|registered|incorporated)\s+in\s+" + _HQ_PLACE,
+    re.IGNORECASE,
+)
+_HQ_ADJ_RE = re.compile(r"\b([^\W\d_][^\d\n,;:|]{0,28}?)[ \-]based\b", re.IGNORECASE)
+# A market/customer subject immediately before an HQ idiom means the place is where the
+# company SELLS, not where it IS ("serving customers based in Turkey"). Self-referential
+# singulars ("our company based in X") are deliberately NOT listed, only market plurals.
+_HQ_CUSTOMER_RE = re.compile(
+    r"\b(?:customers?|clients?|buyers?|partners?|distributors?|importers?|resellers?|"
+    r"companies|businesses|firms|manufacturers|suppliers|organi[sz]ations|enterprises|brands)\W*$",
+    re.IGNORECASE,
+)
+
+
+def _detect_prose_location(text: str) -> str | None:
+    """Detect a company's self-stated HQ from prose, ignoring market/customer subjects.
+    Returns a canonical region key or None."""
+    if not text:
+        return None
+    low = text.lower()
+    for rx in (_HQ_VERB_RE, _HQ_ADJ_RE):
+        for m in rx.finditer(low):
+            if _HQ_CUSTOMER_RE.search(low[max(0, m.start() - 45):m.start()]):
+                continue
+            rk = _resolve_place(m.group(1))
+            if rk:
+                return rk
+    return None
+
+
+def _detect_domain_country(domain: str) -> str | None:
+    """Detect an UNAMBIGUOUS country named in the registrable domain LABEL (never the
+    URL path). Matches names >=5 chars as a prefix/suffix/hyphen-segment, so 'oman'
+    inside 'romania' or a brand like 'jordan' never fires."""
+    label = (domain.split(".")[0] if domain else "").lower()
+    if not label:
+        return None
+    segments = set(re.split(r"[^a-zà-ÿ]+", label))
+    for name in _COUNTRY_NAMES_BY_LEN:
+        rk = _COUNTRY_NAMES[name]
+        if rk in _AMBIGUOUS:
+            continue
+        n = name.replace(" ", "")
+        if len(n) < 5:
+            continue
+        if n in segments or label.startswith(n) or label.endswith(n):
+            return rk
+    return None
+
 
 _SIZE_BAND_RE = re.compile(r"(\d[\d,\.]*)\s*\+?\s*(?:employees|staff|people|team members)", re.IGNORECASE)
 _SME_HINT_RE = re.compile(
@@ -3059,6 +3202,38 @@ def _clean_phone(raw: str) -> str:
     return cleaned
 
 
+def _detect_phone_country(phones_joined: str) -> str | None:
+    """Map a leading E.164 calling code to a canonical region key (longest prefix
+    wins, so +1 and +880 disambiguate correctly), or None."""
+    p = (phones_joined or "").replace(" ", "")
+    if not p.startswith("+"):
+        return None
+    for code in sorted(_PHONE_CC, key=len, reverse=True):
+        if p.startswith(code):
+            return _PHONE_CC[code]
+    return None
+
+
+def _detected_country(contacts: CompanyContacts, website: str, summary: str = "") -> str:
+    """Best-effort detected country for the `country` column, in trust order:
+    stated address > phone code > ccTLD > HQ prose > domain label. "" if unknown."""
+    by_addr = _detect_address_country(contacts.address)
+    if by_addr:
+        return by_addr
+    by_phone = _detect_phone_country("".join(contacts.phones).replace(" ", ""))
+    if by_phone:
+        return by_phone
+    domain = normalize_domain(website)
+    tld = domain.rsplit(".", 1)[-1] if "." in domain else ""
+    for name, cc in _REGION_CCTLD.items():
+        if cc not in rd.GENERIC_TLDS and (tld == cc or domain.endswith("." + cc)):
+            return name
+    by_hq = _detect_prose_location(summary)
+    if by_hq:
+        return by_hq
+    return _detect_domain_country(domain) or ""
+
+
 def _register_social(contacts: CompanyContacts, url: str) -> None:
     if not url or not isinstance(url, str):
         return
@@ -3260,11 +3435,15 @@ def find_company_linkedin(company: str, contacts: CompanyContacts, domain: str) 
 # ---------------------------------------------------------------------------
 
 def region_fit(contacts: CompanyContacts, website: str, region: str, pages_text: str = "") -> tuple[int, str]:
-    """Score how strongly a company is anchored in the target region (0-100).
+    """Score how strongly a company is anchored in the target region (0-100), and
+    flag a region_conflict when it is clearly domiciled elsewhere.
 
-    Cheap deterministic signals: ccTLD, phone country code, address/text mentions
-    of the region or its major cities. Lets genuine locals outrank a multinational's
-    localized page.
+    Anchors (additive): target ccTLD, local phone code, target named in the company's
+    own address, or a self-stated HQ. A target mention only in marketing/page text is
+    recorded (`page_region_mention`) but scores nothing. When no anchor exists, a
+    foreign ccTLD / address country / dialing code / HQ / domain-label adds a
+    `region_conflict:<src>` reason (the caller rejects on it). Lets genuine locals
+    outrank a multinational's localized page without rejecting locals that export.
     """
     if not (region or "").strip():
         return 0, ""
@@ -3283,25 +3462,49 @@ def region_fit(contacts: CompanyContacts, website: str, region: str, pages_text:
     if target_code and target_code in phones_joined:
         score += 35
         reasons.append(f"phone:{target_code}")
-    haystack = (contacts.address + " " + pages_text).lower()
-    tokens = [region_key or region.lower()] + (_REGION_CITIES.get(region_key, []) if region_key else [])
-    if any(tok and tok in haystack for tok in tokens):
+
+    # A target mention in the company's OWN address (or self-stated HQ) anchors it to
+    # the region; the same word in marketing/SEO page text does NOT (exporters' pages
+    # say "...supplier turkey" constantly), so it scores nothing.
+    addr_low = (contacts.address or "").lower()
+    pages_low = (pages_text or "").lower()
+    tokens = _target_region_tokens(region_key, region)
+    addr_anchor = any(t and t in addr_low for t in tokens)
+    hq = _detect_prose_location(pages_text)
+    if addr_anchor:
         score += 25
         reasons.append("addr_region_match")
+    elif hq and hq == region_key:
+        score += 20
+        reasons.append("hq_region_match")
+    elif any(t and t in pages_low for t in tokens):
+        reasons.append("page_region_mention")
 
-    # Conflict: a clearly different known country (a wrong-country namesake).
-    # Only checked against regions we have signals for, to avoid false flags.
+    # Conflicts only matter when NOTHING anchors the company to the target (score == 0):
+    # any genuine target signal (ccTLD / local phone / target address or HQ) is trusted
+    # over a foreign mention, so a local that merely lists export markets is never
+    # rejected. A foreign ccTLD, stated address country, or dialing code is
+    # domicile-grade; a foreign HQ-prose or domain-label name is a weaker last resort.
     conflict = ""
-    if target_cc:
+    if region_key and not score:
         for cc in set(_REGION_CCTLD.values()):
-            if cc != target_cc and (tld == cc or domain.endswith("." + cc)):
+            if cc != target_cc and cc not in rd.GENERIC_TLDS and (tld == cc or domain.endswith("." + cc)):
                 conflict = f".{cc}"
                 break
-    if not conflict and target_code and score == 0:
-        for code in set(_REGION_PHONE.values()):
-            if code != target_code and phones_joined.startswith(code):
-                conflict = code
-                break
+        if not conflict:
+            ac = _detect_address_country(contacts.address)
+            if ac and ac != region_key and ac not in _AMBIGUOUS:
+                conflict = f"addr:{ac}"
+        if not conflict:
+            pc = _detect_phone_country(phones_joined)
+            if pc and pc != region_key:
+                conflict = f"phone:{pc}"
+        if not conflict and hq and hq != region_key and hq not in _AMBIGUOUS:
+            conflict = f"hq:{hq}"
+        if not conflict:
+            dc = _detect_domain_country(domain)
+            if dc and dc != region_key:
+                conflict = f"domain:{dc}"
     if conflict:
         reasons.append(f"region_conflict:{conflict}")
 
@@ -3413,23 +3616,28 @@ def judge_companies(rows: list[dict], icp: str, region: str, provider_config: di
 def _classify_company(row: dict, icp_evidence: bool, region_conflict: bool, llm: dict | None) -> tuple[str, str]:
     """Combine deterministic evidence with the (optional) LLM verdict.
 
-    Authority split: deterministic signals own REGION (ccTLD/phone are hard facts
-    the model can't override); the LLM owns INDUSTRY semantics. The model deferring
-    ("unknown") never rejects — we fall back to deterministic. Disagreements land in
-    'review', not silently trusted. Returns (confidence, reason).
+    Authority split: deterministic signals own REGION (ccTLD/phone/address are hard
+    facts the model can't override); the LLM owns INDUSTRY semantics. The model
+    deferring ("unknown") never rejects — we fall back to deterministic. A foreign
+    domicile or a government site is rejected; a B2B marketplace/directory is routed to
+    'review' (never verified). Disagreements land in 'review'. Returns (confidence,
+    reason).
     """
-    region_fit_score = int(row.get("region_fit") or 0)
     llm = llm or {}
     llm_match = llm.get("match", "unknown")
 
     if region_conflict:
         return "rejected", "region_conflict"
+    if row.get("_is_government"):
+        return "rejected", "government_site"
     if llm_match == "no":
         detail = llm.get("industry") or llm.get("country") or "different company"
         return "rejected", f"llm_mismatch:{detail}"
+    if row.get("_is_aggregator"):
+        return "review", "marketplace_directory"
 
     industry_ok = icp_evidence or llm_match == "yes"
-    region_ok = region_fit_score > 0 or _country_matches(row.get("country", ""), llm.get("country", ""))
+    region_ok = bool(row.get("_region_anchor")) or _country_matches(row.get("country", ""), llm.get("country", ""))
 
     if industry_ok and region_ok:
         suffix = "+llm" if llm_match == "yes" else ""
@@ -3554,6 +3762,8 @@ def build_company_row(
     linkedin = find_company_linkedin(name, contacts, domain)
     rfit, rfit_reasons = region_fit(contacts, company.website, region, pages_text)
     region_conflict = "region_conflict" in rfit_reasons
+    region_anchor = any(a in rfit_reasons for a in ("cctld:", "phone:", "addr_region_match", "hq_region_match"))
+    detected = _detected_country(contacts, company.website, enrichment.get("company_summary", ""))
     tier = size_tier(pages_text, contacts)
 
     if contacts.partnership_url:
@@ -3572,7 +3782,7 @@ def build_company_row(
         "name": "",
         "company": name,
         "website": company.website,
-        "country": region,
+        "country": detected.title() if detected else region,
         "region_fit": str(rfit),
         "company_email": email,
         "email_type": email_type,
@@ -3598,6 +3808,9 @@ def build_company_row(
     # CSV (DictWriter uses fixed fieldnames + extrasaction="ignore").
     row["_icp_evidence"] = _icp_evidence(icp, enrichment, extra_terms)
     row["_region_conflict"] = region_conflict
+    row["_region_anchor"] = region_anchor
+    row["_is_aggregator"] = _is_aggregator(domain, enrichment.get("company_summary", ""))
+    row["_is_government"] = _is_government_domain(domain)
 
     if find_people:
         people = search_linkedin_contacts(name, domain)
