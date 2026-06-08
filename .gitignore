@@ -6,8 +6,10 @@ build/
 .eggs/
 *.egg
 
-# Environment
+# Environment / secrets (e.g. server/.env holds OPENCOLD_API_SECRET)
 .env
+.env.*
+!.env.example
 .venv/
 venv/
 
