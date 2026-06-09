@@ -99,7 +99,10 @@ def _lexicon_terms(icp: str) -> set[str]:
     core_stems = {_stem(t) for t in _core_tokens(icp)}
     out: set[str] = set()
     for key, terms in lex.items():
-        if _stem(key) in core_stems or key in low:
+        # Single-word keys match by stem (whole word) — a substring test would let a
+        # short symmetric key like "ev"/"tax" hit inside "developer"/"taxi". Multi-word
+        # keys ("timber merchant", "real estate") match as a substring of the ICP.
+        if _stem(key) in core_stems or (" " in key and key in low):
             out |= terms
     return out
 

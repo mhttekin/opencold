@@ -2,8 +2,18 @@
 
 from unittest.mock import patch
 
-from opencold import discovery
+import pytest
+
+from opencold import discovery, translator
 from opencold.discovery import SearchResult, CandidateCompany
+
+
+@pytest.fixture(autouse=True)
+def _no_translation_network(monkeypatch):
+    # Translation is best-effort and network-backed (Lingva). No-op it by default so
+    # every test is hermetic regardless of a region's languages; tests that assert
+    # translation behaviour re-patch translator.translate inside the test.
+    monkeypatch.setattr(translator, "translate", lambda text, target, source="auto": text)
 
 
 # Bangladesh insurer fixture with rich structured data (the validation target).
@@ -191,6 +201,27 @@ class TestRegionFit:
         _, reasons = discovery.region_fit(
             c, "https://acme.com", "Turkey",
             pages_text="We supply companies based in Germany.")
+        assert "region_conflict" not in reasons
+
+    def test_foreign_same_language_company_rejected(self):
+        # A French company surfacing in a French-language Morocco search must be
+        # rejected, not verified — even though it shares the search language. Each
+        # foreign signal (ccTLD, stated country, dialing code) trips the conflict.
+        for site, addr, phone in [
+            ("https://recyclage-paris.fr", "Paris, France", "+33142000000"),
+            ("https://dechets.com", "Lyon, France", "+33478000000"),
+            ("https://acme.com", "", "+33100000000"),
+        ]:
+            c = discovery.CompanyContacts(phones=[phone], address=addr)
+            score, reasons = discovery.region_fit(c, site, "Morocco")
+            assert score == 0, site
+            assert "region_conflict" in reasons, site
+
+    def test_local_company_on_shared_language_still_verifies(self):
+        # A genuine Moroccan firm (French-language site) keeps its local anchors.
+        c = discovery.CompanyContacts(phones=["+212522000000"], address="Casablanca, Morocco")
+        score, reasons = discovery.region_fit(c, "https://recyclage.ma", "Morocco")
+        assert score >= 60
         assert "region_conflict" not in reasons
 
 
@@ -662,6 +693,32 @@ class TestTranslation:
         assert discovery._region_language("United Kingdom") is None
         assert discovery._region_language("USA") is None
 
+    def test_region_languages_multilingual(self):
+        assert discovery._region_languages("Morocco") == ["fr", "ar"]
+        assert discovery._region_languages("Switzerland") == ["de", "fr", "it"]
+        assert discovery._region_languages("Belgium") == ["nl", "fr"]
+        assert discovery._region_languages("China") == ["zh"]    # derived (was dropped by a stale literal)
+        assert discovery._region_languages("United Kingdom") == []
+        assert discovery._region_languages("USA") == []
+
+    def test_native_queries_for_each_language(self):
+        captured = []
+
+        def fake_search(query, num=10):
+            captured.append(query)
+            return []
+
+        def fake_translate(text, target, source="auto"):
+            return f"{text} ::{target}"
+
+        with patch("opencold.translator.translate", side_effect=fake_translate), \
+             patch("opencold.discovery.web_search", side_effect=fake_search):
+            discovery.discover_companies_by_query("recycling", "Morocco", limit=50,
+                                                  target_langs=["fr", "ar"])
+        assert any(q.endswith("::fr") for q in captured)                 # French searched
+        assert any(q.endswith("::ar") for q in captured)                 # Arabic searched
+        assert any("Morocco" in q and "::" not in q for q in captured)   # English kept
+
     def test_native_queries_appended_for_translatable_region(self):
         captured = []
 
@@ -674,7 +731,7 @@ class TestTranslation:
 
         with patch("opencold.translator.translate", side_effect=fake_translate), \
              patch("opencold.discovery.web_search", side_effect=fake_search):
-            discovery.discover_companies_by_query("timber", "Turkey", limit=50, target_lang="tr")
+            discovery.discover_companies_by_query("timber", "Turkey", limit=50, target_langs=["tr"])
 
         assert "timber companies in Turkey" in captured       # English kept
         assert any(q.endswith("::tr") for q in captured)       # native added
@@ -688,7 +745,7 @@ class TestTranslation:
 
         with patch("opencold.translator.translate", side_effect=AssertionError("must not translate")), \
              patch("opencold.discovery.web_search", side_effect=fake_search):
-            discovery.discover_companies_by_query("timber", "Turkey", limit=50, target_lang=None)
+            discovery.discover_companies_by_query("timber", "Turkey", limit=50, target_langs=None)
 
         assert captured == discovery.region_query_templates("timber", "Turkey")
 
@@ -717,13 +774,13 @@ class TestTranslation:
             return "quality timber and log supply"
 
         with patch("opencold.translator.translate", side_effect=fake_translate):
-            out = discovery._localize_enrichment(enrichment, "timber", "tr", set())
+            out = discovery._localize_enrichment(enrichment, "timber", set())
         assert "timber" in out["company_summary"].lower()
         assert discovery._icp_evidence("timber", out)
 
     def test_localize_is_noop_when_evidence_present(self):
         enrichment = {"company_summary": "premium timber supplier", "personalization_facts": ""}
         with patch("opencold.translator.translate") as tr:
-            out = discovery._localize_enrichment(enrichment, "timber", "tr", set())
+            out = discovery._localize_enrichment(enrichment, "timber", set())
         tr.assert_not_called()      # already-English sites cost no translation
         assert out == enrichment

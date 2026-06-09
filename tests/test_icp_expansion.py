@@ -80,6 +80,36 @@ class TestLexicon:
         (tmp_path / "icp_synonyms.json").write_text("{ not json", encoding="utf-8")
         assert "sawmill" in icp_expansion._lexicon_terms("timber")
 
+    def test_symmetric_lookup(self):
+        # The lexicon is symmetric: any cluster member expands to the rest (A<->B<->C),
+        # not only the canonical key. "wood"/"sawmill" reach "timber" and each other.
+        assert {"timber", "lumber", "sawmill"} <= icp_expansion._lexicon_terms("wood")
+        assert {"timber", "wood", "plywood"} <= icp_expansion._lexicon_terms("sawmill")
+        assert "timber" in icp_expansion._lexicon_terms("plywood")
+
+    def test_user_override_is_symmetric(self, tmp_path):
+        (tmp_path / "icp_synonyms.json").write_text('{"timber": ["xylophonics"]}', encoding="utf-8")
+        # override link works in reverse too (xylophonics -> timber cluster)
+        assert "timber" in icp_expansion._lexicon_terms("xylophonics")
+
+    def test_short_key_not_substring_matched(self):
+        # Short symmetric keys (ev, tax, hr) must NOT hit inside unrelated words.
+        assert icp_expansion._lexicon_terms("developer") == set()   # 'ev' inside developer
+        assert icp_expansion._lexicon_terms("taxi") == set()        # 'tax' inside taxi
+        assert icp_expansion._lexicon_terms("threads") == set()     # 'hr' inside threads
+
+    def test_polysemous_terms_excluded_as_keys(self):
+        # Cross-industry-polysemous values are kept out of clusters, so they don't
+        # become misleading reverse keys.
+        for t in ("policy", "claims", "api", "platform", "agency", "developer"):
+            assert icp_expansion._lexicon_terms(t) == set(), t
+
+    def test_hub_spoke_not_overlinked(self):
+        # A courier is logistics-adjacent but not a warehouse; the tight cluster keeps
+        # them apart even though both are "logistics".
+        assert "warehousing" not in icp_expansion._lexicon_terms("courier")
+        assert "courier" not in icp_expansion._lexicon_terms("warehousing")
+
 
 class TestDatamuse:
     def test_parsed_and_filtered(self):
