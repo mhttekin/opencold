@@ -466,12 +466,18 @@ _AGGREGATOR_DOMAINS = {
     "globalwood.org", "bulurum.com", "isdunyasirehberi.net", "tradeindia.com",
     "exporthub.com", "alibaba.com", "made-in-china.com", "globalsources.com",
     "indiamart.com", "thomasnet.com", "ec21.com", "tradekey.com", "yellowpages.com",
+    "telecontact.ma", "kerix.net", "kerix-export.net", "goafricaonline.com",
+    "enfrecycling.com",
 }
 _AGGREGATOR_STEMS = {d.split(".")[0] for d in _AGGREGATOR_DOMAINS}
 _AGGREGATOR_RE = re.compile(
     r"\b(?:b2b (?:marketplace|platform)|marketplace for|business directory|"
     r"company directory|trade directory|suppliers? and buyers?|buyers? and suppliers?|"
-    r"list of (?:companies|suppliers|manufacturers)|connect(?:s|ing)? (?:buyers|businesses))\b",
+    r"list of (?:companies|suppliers|manufacturers)|connect(?:s|ing)? (?:buyers|businesses)|"
+    # directory phrasing in other languages / translated summaries
+    r"directory of (?:professionals|companies|businesses|suppliers|manufacturers)|"
+    r"yellow ?pages|pages jaunes|annuaire|directorio de empresas|firmenverzeichnis|"
+    r"firma rehberi)\b",
     re.IGNORECASE,
 )
 
@@ -1958,7 +1964,10 @@ def score_company(
     return score, enricher.FACT_SEPARATOR.join(matched)
 
 
-def _icp_evidence(icp: str, enrichment: dict, extra_terms: set[str] | None = None) -> bool:
+def _icp_evidence(
+    icp: str, enrichment: dict,
+    extra_terms: set[str] | None = None, weak_terms: set[str] | None = None,
+) -> bool:
     """True when ICP terms appear in the company's own crawled content.
 
     Content-only (no company name, no discovery_reason): this is the evidence
@@ -1966,30 +1975,77 @@ def _icp_evidence(icp: str, enrichment: dict, extra_terms: set[str] | None = Non
     literally named 'X Landscapes' should still have to prove it on its pages.
 
     extra_terms adds native-language ICP terms, so a home-language site that says
-    "kereste" counts as evidence for an English "timber" ICP.
+    "kereste" counts as evidence for an English "timber" ICP. weak_terms (semantic
+    expansion) mirror their half-weight in scoring: one strong hit is evidence, but
+    weak-only matches need at least two — a single related word ("waste" on a page
+    about something else) must not push a lead into 'verified'.
     """
-    terms = _icp_terms(icp) | (extra_terms or set())
-    if not terms:
+    strong = _icp_terms(icp) | (extra_terms or set())
+    weak = (weak_terms or set()) - strong
+    if not strong and not weak:
         return False
     content = " ".join([
         enrichment.get("company_summary", ""),
         enrichment.get("personalization_facts", ""),
     ])
-    return bool(_icp_match(terms, content))
+    if _icp_match(strong, content):
+        return True
+    return len(_icp_match(weak, content)) >= 2
+
+
+# Function words that phrase translations leak as standalone tokens ("waste
+# management" -> "gestion DES déchets"). A leaked article/preposition matches any
+# text in that language, so it must never become a matcher term. Tokens under 4
+# chars are dropped outright; this list covers the common >=4-char leaks.
+_NATIVE_FUNCTION_WORDS = {
+    "pour", "avec", "dans", "sans", "sous", "chez", "leur", "elles", "vers",
+    "para", "como", "sobre", "entre", "desde", "hasta", "unas", "unos",
+    "della", "delle", "degli", "dello", "dalla", "nella", "alla",
+    "eine", "einer", "eines", "einem", "einen", "nach", "über", "unter",
+    "voor", "naar", "deze", "onder", "için", "veya",
+}
+
+
+def _translated_term_ok(term: str, translated: str, target_lang: str) -> bool:
+    """Round-trip validation of one term translation. Keyless providers sometimes
+    return a wrong translation-memory match ("recycling" -> ar "water treatment"):
+    translate the result back to English and require a shared stem with the original
+    term. When the round trip is unavailable (provider down / echoes its input), keep
+    the term — this tier is best-effort, and a dead provider must not erase it."""
+    back = translator.translate(translated, "en", source=target_lang)
+    if not back or back.strip().lower() == translated.strip().lower():
+        return True
+    back_stems = {_stem(w) for w in re.findall(r"[a-z0-9]+", back.lower())}
+    return any(_stem(w) in back_stems for w in re.findall(r"[a-z0-9]+", term.lower()))
 
 
 def _translate_terms(terms: set[str], target_lang: str) -> set[str]:
     """Native-language forms of an English term set: translate each term and keep the
-    result tokens. Best-effort and cached; returns an empty set when translation is
-    unavailable. Unicode-aware so native tokens stay intact (e.g. "ürünleri") — the
-    matcher's literal-substring branch (`t in low`) handles non-ASCII directly."""
+    result tokens plus, for multi-word results, the full phrase (matched via the
+    literal-substring branch). Best-effort and cached; returns an empty set when
+    translation is unavailable. Unicode-aware so native tokens stay intact (e.g.
+    "ürünleri").
+
+    These become MATCHER terms, so the tier is precision-filtered: alternative lists
+    ("gaspillage/gaspiller/perdre/...") collapse to their first entry, >3-token
+    results are provider noise and dropped, a round-trip check kills wrong
+    translation-memory matches, and short/function-word tokens are dropped — a leaked
+    article like "des" matches every text in its language."""
     out: set[str] = set()
     for term in terms:
         translated = translator.translate(term, target_lang, source="en")
         if not translated or translated.lower() == term:
             continue
-        for token in re.findall(r"\w[\w\-]{2,}", translated.lower(), re.UNICODE):
-            out.add(token)
+        translated = re.split(r"[/;|]", translated)[0].strip()
+        tokens = re.findall(r"\w[\w\-]{2,}", translated.lower(), re.UNICODE)
+        if not tokens or len(tokens) > 3:
+            continue
+        if not _translated_term_ok(term, translated, target_lang):
+            continue
+        kept = [t for t in tokens if len(t) >= 4 and t not in _NATIVE_FUNCTION_WORDS]
+        out.update(kept)
+        if len(tokens) > 1 and kept:
+            out.add(" ".join(tokens))
     return out
 
 
@@ -3254,6 +3310,14 @@ def _clean_phone(raw: str) -> str:
     digits = re.sub(r"\D", "", cleaned)
     if len(digits) < 7 or len(digits) > 15:
         return ""
+    # Year spans ("2005-2026" copyright lines, "2021-2030" programme ranges) and
+    # doubled quads ("1000 1000") regex-match as phones; a "+" marks a real number.
+    if "+" not in cleaned and len(digits) == 8:
+        first, second = digits[:4], digits[4:]
+        if first == second:
+            return ""
+        if all(1900 <= int(half) <= 2099 for half in (first, second)):
+            return ""
     return cleaned
 
 
@@ -3428,11 +3492,15 @@ def extract_company_contacts(website: str, max_pages: int = 5) -> CompanyContact
                     seen_emails.add(el)
                     contacts.emails.append((el, url))
 
-    # Phone regex fallback from the home page text.
+    # Phone regex fallback from the home page text. Weakest source, so require the
+    # raw match to LOOK like a displayed phone: a "+" prefix or >=2 separator chars
+    # ("05 22 77 71 00") — bare digit runs are usually IDs, years, or counters.
     if not contacts.phones and home_text:
         match = _PHONE_RE.search(home_text)
         if match:
-            tel = _clean_phone(match.group(1))
+            raw = match.group(1)
+            formatted = raw.lstrip().startswith("+") or len(re.findall(r"[\s().\-]", raw)) >= 2
+            tel = _clean_phone(raw) if formatted else ""
             if tel:
                 contacts.phones.append(tel)
 
@@ -3472,14 +3540,35 @@ def pick_company_email(emails: list, domain: str) -> tuple[str, str, str]:
     return best[1], best[2], best[3]
 
 
+def _linkedin_slug_matches(url: str, company: str, domain: str) -> bool:
+    """Does a linkedin.com/company/<slug> plausibly belong to this company?
+
+    Search results for small companies are noisy — without this check the first
+    hit wins, attaching unrelated profiles (e.g. /company/cotiviti to "Macarpa").
+    Compares the slug against the company-name tokens and the domain stem; tiny
+    slugs (e.g. /company/t) can match anything, so they never pass.
+    """
+    slug = url.rstrip("/").rsplit("/", 1)[-1].lower()
+    slug_compact = re.sub(r"[^a-z0-9]", "", slug)
+    if len(slug_compact) < 3:
+        return False
+    stem = re.sub(r"[^a-z0-9]", "", domain.split(".")[0].lower())
+    candidates = {stem, "".join(_company_tokens(company))}
+    candidates |= {t for t in _company_tokens(company) if len(t) >= 4}
+    return any(c and (c in slug_compact or slug_compact in c) for c in candidates if len(c) >= 3)
+
+
 def find_company_linkedin(company: str, contacts: CompanyContacts, domain: str) -> str:
     if contacts.linkedin_company_url:
         return contacts.linkedin_company_url
     try:
         for result in web_search(f'"{company}" site:linkedin.com/company', num=5):
             match = _LINKEDIN_COMPANY_RE.search(result.url)
-            if match:
-                return match.group(0).split("?")[0]
+            if not match:
+                continue
+            url = match.group(0).split("?")[0]
+            if _linkedin_slug_matches(url, company, domain):
+                return url
     except Exception:
         pass
     return ""
@@ -3814,8 +3903,14 @@ def build_company_row(
 
     contacts = extract_company_contacts(company.website, max_pages=max_pages)
     name = company.company
-    if contacts.company_name and (not name or name == _company_from_domain(domain)):
+    if contacts.company_name and not _bad_company_name(contacts.company_name) and (
+        not name or name == _company_from_domain(domain) or _bad_company_name(name)
+    ):
         name = contacts.company_name
+    if _bad_company_name(name):
+        # Anchor/title scrape produced junk (SEO keyword stuffing, 100-char titles)
+        # and the site offered nothing structured — the domain stem beats garbage.
+        name = _company_from_domain(domain)
 
     email, email_type, _email_src = pick_company_email(contacts.emails, domain)
     linkedin = find_company_linkedin(name, contacts, domain)
@@ -3865,10 +3960,13 @@ def build_company_row(
     row["lead_score_reasons"] = lead_reasons
     # Carried for verification/classification; underscore keys are not written to
     # CSV (DictWriter uses fixed fieldnames + extrasaction="ignore").
-    row["_icp_evidence"] = _icp_evidence(icp, enrichment, all_extra)
+    row["_icp_evidence"] = _icp_evidence(icp, enrichment, extra_terms, weak_terms)
     row["_region_conflict"] = region_conflict
     row["_region_anchor"] = region_anchor
-    row["_is_aggregator"] = _is_aggregator(domain, enrichment.get("company_summary", ""))
+    row["_is_aggregator"] = _is_aggregator(domain, " ".join([
+        enrichment.get("company_summary", ""),
+        enrichment.get("personalization_facts", ""),
+    ]))
     row["_is_government"] = _is_government_domain(domain)
 
     if find_people:

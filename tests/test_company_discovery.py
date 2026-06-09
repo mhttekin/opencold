@@ -513,6 +513,53 @@ class TestAggregator:
     def test_real_company_not_flagged(self):
         assert not discovery._is_aggregator("acme.com", "family-owned timber mill since 1960")
 
+    def test_local_directories_flagged(self):
+        # Moroccan yellow pages / directories that slipped through as "verified"
+        assert discovery._is_aggregator("telecontact.ma")
+        assert discovery._is_aggregator("kerix.net")
+        assert discovery._is_aggregator("goafricaonline.com")
+
+    def test_native_directory_phrasing(self):
+        assert discovery._is_aggregator("acme.ma", "l'annuaire des professionnels du Maroc")
+        assert discovery._is_aggregator("acme.com", "the directory of professionals in Morocco")
+        assert discovery._is_aggregator("acme.com", "your local yellow pages for businesses")
+
+
+class TestPhoneCleaning:
+    def test_real_numbers_kept(self):
+        assert discovery._clean_phone("+212 522 66 28 37") == "+212522662837"
+        assert discovery._clean_phone("05 22 77 71 00") == "0522777100"
+
+    def test_year_spans_rejected(self):
+        # Copyright lines ("2005-2026") and programme ranges ("2021-2030")
+        # regex-match as phones but are not.
+        assert discovery._clean_phone("2005-2026") == ""
+        assert discovery._clean_phone("2021 2030") == ""
+
+    def test_doubled_quad_rejected(self):
+        assert discovery._clean_phone("1000 1000") == ""
+
+    def test_plus_prefix_trusted(self):
+        assert discovery._clean_phone("+20212030") == "+20212030"
+
+
+class TestLinkedinSlugMatch:
+    def test_matching_slugs_accepted(self):
+        assert discovery._linkedin_slug_matches(
+            "https://www.linkedin.com/company/valotrimaroc", "Valotri", "valotri.com")
+        assert discovery._linkedin_slug_matches(
+            "https://www.linkedin.com/company/tadweir-maroc", "Tadweir", "tadweir.com")
+
+    def test_unrelated_slug_rejected(self):
+        assert not discovery._linkedin_slug_matches(
+            "https://www.linkedin.com/company/cotiviti", "Macarpa", "macarpa.com")
+        assert not discovery._linkedin_slug_matches(
+            "https://www.linkedin.com/company/suez", "Metalimpex group", "metalimpexgroup.com")
+
+    def test_tiny_slug_rejected(self):
+        assert not discovery._linkedin_slug_matches(
+            "https://www.linkedin.com/company/t", "Telecontact", "telecontact.ma")
+
 
 class TestGovernment:
     def test_gov_and_mil(self):
@@ -763,6 +810,64 @@ class TestTranslation:
         with patch("opencold.translator.translate", side_effect=fake_translate):
             terms = discovery._translate_icp_terms("timber", "tr")
         assert "orman" in terms and "ürünleri" in terms
+
+    def test_translate_terms_drops_function_words(self):
+        # "waste management" -> "gestion des déchets": the article "des" matches ANY
+        # French text, so it must never become a matcher term (it made Moroccan
+        # directories "verified" for a Recycling ICP). The full phrase is kept.
+        def fake_translate(text, target, source="auto"):
+            return "gestion des déchets" if text == "waste management" else text
+
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            terms = discovery._translate_terms({"waste management"}, "fr")
+        assert "des" not in terms
+        assert "déchets" in terms
+        assert "gestion des déchets" in terms
+
+    def test_translate_terms_rejects_wrong_roundtrip(self):
+        # MyMemory returns a wrong translation-memory match for recycling->ar
+        # ("water treatment", match=0.99). The round trip exposes it.
+        def fake_translate(text, target, source="auto"):
+            if text == "recycling" and target == "ar":
+                return "معالجة المياه"
+            if text == "معالجة المياه" and target == "en":
+                return "water treatment"
+            return text
+
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            assert discovery._translate_terms({"recycling"}, "ar") == set()
+
+    def test_translate_terms_roundtrip_unavailable_keeps_term(self):
+        def fake_translate(text, target, source="auto"):
+            if text == "recycling" and target == "fr":
+                return "recyclage"
+            return text  # back-translation echoes input (provider down)
+
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            assert discovery._translate_terms({"recycling"}, "fr") == {"recyclage"}
+
+    def test_translate_terms_collapses_alternative_lists(self):
+        # Providers sometimes return every alternative slash-separated.
+        def fake_translate(text, target, source="auto"):
+            if text == "waste" and target == "fr":
+                return "gaspillage/gaspiller /perdre /gâcher / déchet/déchets/tricher"
+            if target == "en":
+                return "wastage"
+            return text
+
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            terms = discovery._translate_terms({"waste"}, "fr")
+        # Only the first alternative is considered; generic verbs never leak in.
+        assert "tricher" not in terms and "perdre" not in terms
+
+    def test_weak_only_evidence_needs_two_matches(self):
+        # One half-weight expansion hit is not verification-grade evidence...
+        thin = {"company_summary": "annuaire des professionnels du Maroc", "personalization_facts": ""}
+        assert not discovery._icp_evidence("recycling", thin, set(), {"gestion", "valorisation"})
+        # ...two weak hits are, and one strong (ICP/native) hit always is.
+        real = {"company_summary": "collecte et valorisation, gestion des déchets", "personalization_facts": ""}
+        assert discovery._icp_evidence("recycling", real, set(), {"gestion", "valorisation"})
+        assert discovery._icp_evidence("recycling", thin, {"annuaire"}, set()) is True
 
     def test_localize_translates_facts_on_english_miss(self):
         enrichment = {
