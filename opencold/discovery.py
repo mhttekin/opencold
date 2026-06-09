@@ -3898,7 +3898,11 @@ def discover_company_rows(
         expansion = icp_expansion.expand_icp(
             icp, use_llm=use_llm, provider=_resolve_llm_provider() if use_llm else None,
         )
-        weak_terms = expansion | (_translate_terms(expansion, target_lang) if target_lang else set())
+        weak_terms = set(expansion)
+        if target_lang:
+            # Translate ONLY curated terms to native (plywood -> kontrplak). Datamuse-tail
+            # translations spawn generic native words (e.g. "alan") that falsely match.
+            weak_terms |= _translate_terms(expansion & icp_expansion.curated_terms(icp), target_lang)
     candidates = discover_company_candidates(
         icp, region, sources=sources, limit=pool,
         workers=workers, use_llm=use_llm, seed_count=seed_count, use_wiki=use_wiki,

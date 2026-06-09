@@ -251,6 +251,13 @@ def expand_icp(icp: str, *, use_llm: bool = True, provider: dict | None = None,
     return out
 
 
+def curated_terms(icp: str) -> set[str]:
+    """The curated-lexicon subset for `icp`. Used when translating expansion terms to a
+    native language: only these are safe to translate — Datamuse-tail terms spawn
+    generic native words (e.g. "alan") that cause false matches."""
+    return _lexicon_terms(icp)
+
+
 def expansion_queries(expansion: set[str], region: str, cap: int = EXPANSION_QUERY_CAP) -> list[str]:
     """Bounded search queries: ONE template per top-N expansion term. Curated lexicon
     terms are preferred for search (higher precision than Datamuse associations like

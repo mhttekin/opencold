@@ -22,7 +22,7 @@ import json
 INDUSTRY_SYNONYMS: dict[str, set[str]] = {
     # ---- materials / wood / building ----
     "timber": {"wood", "lumber", "sawmill", "plywood", "hardwood", "softwood",
-               "joinery", "forestry", "woodworking", "timber merchant", "log", "veneer", "decking"},
+               "joinery", "forestry", "woodworking", "timber merchant", "veneer", "decking"},
     "lumber": {"timber", "wood", "sawmill", "plywood", "hardwood", "millwork", "building materials"},
     "furniture": {"furnishings", "cabinetry", "joinery", "upholstery", "woodworking", "millwork", "fit-out"},
     "construction": {"contractor", "builder", "civil engineering", "building", "general contractor",
