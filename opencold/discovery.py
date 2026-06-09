@@ -1931,7 +1931,8 @@ def _icp_match(terms: set[str], text: str) -> list[str]:
 
 
 def score_company(
-    company: CandidateCompany, enrichment: dict, icp: str, extra_terms: set[str] | None = None
+    company: CandidateCompany, enrichment: dict, icp: str,
+    extra_terms: set[str] | None = None, weak_terms: set[str] | None = None,
 ) -> tuple[int, str]:
     # NOTE: company.discovery_reason is deliberately excluded — for LLM/search
     # candidates it echoes our own query (e.g. "llm seed: landscape in UK"), so
@@ -1939,16 +1940,21 @@ def score_company(
     # the company's own name and crawled content only.
     # extra_terms: native-language ICP terms (e.g. "kereste" for "timber") so a
     # home-language site matches without us translating its text first.
-    terms = _icp_terms(icp) | (extra_terms or set())
+    # weak_terms: semantic-expansion terms (e.g. "sawmill" for "timber") — counted at
+    # half weight so a related-only hit never outranks a true ICP / native-term hit.
+    strong = _icp_terms(icp) | (extra_terms or set())
+    weak = (weak_terms or set()) - strong
     haystack = " ".join([
         company.company,
         enrichment.get("company_summary", ""),
         enrichment.get("personalization_facts", ""),
     ]).lower()
-    matched = _icp_match(terms, haystack)
+    matched_strong = _icp_match(strong, haystack)
+    matched_weak = _icp_match(weak, haystack)
     base = 35 if enrichment.get("website_status") == "ok" else 15
-    match_bonus = min(len(matched) * 14, 50)
+    match_bonus = min(len(matched_strong) * 14 + len(matched_weak) * 7, 50)
     score = min(100, base + match_bonus)
+    matched = sorted(set(matched_strong) | set(matched_weak))
     return score, enricher.FACT_SEPARATOR.join(matched)
 
 
@@ -1972,20 +1978,25 @@ def _icp_evidence(icp: str, enrichment: dict, extra_terms: set[str] | None = Non
     return bool(_icp_match(terms, content))
 
 
-def _translate_icp_terms(icp: str, target_lang: str) -> set[str]:
-    """Native-language ICP terms for matching home-language sites: translate each
-    English ICP token (e.g. "timber" -> "kereste") and keep the result tokens.
-    Best-effort and cached; returns an empty set if translation is unavailable."""
+def _translate_terms(terms: set[str], target_lang: str) -> set[str]:
+    """Native-language forms of an English term set: translate each term and keep the
+    result tokens. Best-effort and cached; returns an empty set when translation is
+    unavailable. Unicode-aware so native tokens stay intact (e.g. "ürünleri") — the
+    matcher's literal-substring branch (`t in low`) handles non-ASCII directly."""
     out: set[str] = set()
-    for term in _icp_terms(icp):
+    for term in terms:
         translated = translator.translate(term, target_lang, source="en")
         if not translated or translated.lower() == term:
             continue
-        # Unicode-aware: keep native tokens intact (e.g. "ürünleri"). The matcher's
-        # literal-substring branch (`t in low`) handles non-ASCII terms directly.
         for token in re.findall(r"\w[\w\-]{2,}", translated.lower(), re.UNICODE):
             out.add(token)
     return out
+
+
+def _translate_icp_terms(icp: str, target_lang: str) -> set[str]:
+    """Native-language ICP terms for matching home-language sites (e.g. "timber" ->
+    "kereste"), so a home-language site matches without translating its text first."""
+    return _translate_terms(_icp_terms(icp), target_lang)
 
 
 def _localize_enrichment(
@@ -2719,10 +2730,14 @@ _SEED_SYSTEM = (
 )
 
 
-def _build_seed_prompt(icp: str, region: str, count: int) -> str:
+def _build_seed_prompt(icp: str, region: str, count: int, related: set[str] | None = None) -> str:
+    hint = ""
+    if related:
+        hint = f"Related terms (same industry, treat as in-scope): {', '.join(sorted(related)[:8])}\n"
     return (
         f"Target profile: {icp}\n"
-        f"Region/country: {region}\n\n"
+        f"Region/country: {region}\n"
+        f"{hint}\n"
         f"Return up to {count} real, currently-operating companies that match the "
         f"target profile and are based in or serve that region. Prefer local small "
         f"and mid-size companies over global multinationals.\n"
@@ -2757,7 +2772,8 @@ def _parse_json_object(text: str) -> dict:
 
 
 def seed_companies_via_llm(
-    icp: str, region: str, count: int = 30, provider_config: dict | None = None
+    icp: str, region: str, count: int = 30, provider_config: dict | None = None,
+    related: set[str] | None = None,
 ) -> dict:
     """Ask an LLM for known companies + local directories for (ICP, region).
 
@@ -2770,7 +2786,7 @@ def seed_companies_via_llm(
         return {"companies": [], "local_directories": []}
     try:
         from opencold import generator as _gen
-        raw = _gen.complete(prov, _SEED_SYSTEM, _build_seed_prompt(icp, region, count), max_tokens=1024)
+        raw = _gen.complete(prov, _SEED_SYSTEM, _build_seed_prompt(icp, region, count, related), max_tokens=1024)
     except Exception:
         return {"companies": [], "local_directories": []}
     data = _parse_json_object(raw)
@@ -2828,9 +2844,14 @@ def discover_companies_by_query(
         # native-first so the local channel isn't starved by the English pool cap.
         native = [q for q in translator.translate_many(base, target_lang, source="en") if q and q.strip()]
         queries = [q for pair in zip_longest(native, base) for q in pair if q]
+        # Translate the extras (LLM directories + expansion queries) too, native-first,
+        # so related-term search also runs in the local language.
+        extra = list(extra_queries or [])
+        native_extra = [q for q in translator.translate_many(extra, target_lang, source="en") if q and q.strip()]
+        queries += [q for pair in zip_longest(native_extra, extra) for q in pair if q]
     else:
         queries = list(base)
-    queries += list(extra_queries or [])
+        queries += list(extra_queries or [])
     candidates: dict[str, CandidateCompany] = {}
     for query in queries:
         for result in web_search(query, num=10):
@@ -3120,6 +3141,8 @@ def discover_company_candidates(
     seed_count: int = 30,
     use_wiki: bool = True,
     use_translation: bool = True,
+    expansion: set[str] | None = None,
+    use_expansion: bool = True,
 ) -> list[CandidateCompany]:
     """Collect candidate companies from LLM seeding (A), Wikipedia lists (A2),
     search harvest (B), and an optional manual sources file (C). Deduped by
@@ -3144,13 +3167,19 @@ def discover_company_candidates(
     if use_llm:
         prov = _resolve_llm_provider()
         if prov:
-            seed = seed_companies_via_llm(icp, region, count=seed_count, provider_config=prov)
+            seed = seed_companies_via_llm(icp, region, count=seed_count, provider_config=prov, related=expansion)
             extra_queries = [f"{d} {region}" for d in seed.get("local_directories", [])]
             for name, url in _resolve_names(seed.get("companies", []), icp, region, workers):
                 _add(CandidateCompany(
                     company=name, website=url, discovery_source_url=url,
                     discovery_reason=f"llm seed: {icp} in {region}",
                 ), "llm")
+
+    # Bounded expansion queries (top-N related terms, ONE template each) appended to
+    # the search-harvest extras — capped in expansion_queries to avoid a query explosion.
+    if use_expansion and expansion:
+        from opencold import icp_expansion
+        extra_queries += icp_expansion.expansion_queries(expansion, region)
 
     # Channel A2: Wikipedia "List of ..." names (deterministic, no LLM). Additive.
     if use_wiki:
@@ -3734,8 +3763,12 @@ def build_company_row(
     find_people: bool = False,
     target_lang: str | None = None,
     extra_terms: set[str] | None = None,
+    weak_terms: set[str] | None = None,
 ) -> dict | None:
     domain = normalize_domain(company.website)
+    # Union of native (full-weight) + expansion (half-weight) terms for the boolean
+    # evidence/localize checks, where weighting does not matter.
+    all_extra = (extra_terms or set()) | (weak_terms or set())
     pages = crawl_company_pages(company.website, max_pages=max_pages)
     pages = _merge_pages(pages, search_company_pages(company))
     facts = enricher.extract_facts(pages)
@@ -3750,7 +3783,7 @@ def build_company_row(
     # Translate a home-language site's facts into English when the English/native
     # ICP terms find no evidence, so matching, the judge, and the CSV read English.
     if target_lang:
-        enrichment = _localize_enrichment(enrichment, icp, target_lang, extra_terms)
+        enrichment = _localize_enrichment(enrichment, icp, target_lang, all_extra)
     pages_text = " ".join(f"{p.title} {p.description} {p.text}" for p in pages)
 
     contacts = extract_company_contacts(company.website, max_pages=max_pages)
@@ -3773,7 +3806,7 @@ def build_company_row(
     else:
         partnership = ""
 
-    icp_score, matched_terms = score_company(company, enrichment, icp, extra_terms)
+    icp_score, matched_terms = score_company(company, enrichment, icp, extra_terms, weak_terms)
     if rfit_reasons:
         matched_terms = (matched_terms + (enricher.FACT_SEPARATOR if matched_terms else "") + rfit_reasons)
 
@@ -3806,7 +3839,7 @@ def build_company_row(
     row["lead_score_reasons"] = lead_reasons
     # Carried for verification/classification; underscore keys are not written to
     # CSV (DictWriter uses fixed fieldnames + extrasaction="ignore").
-    row["_icp_evidence"] = _icp_evidence(icp, enrichment, extra_terms)
+    row["_icp_evidence"] = _icp_evidence(icp, enrichment, all_extra)
     row["_region_conflict"] = region_conflict
     row["_region_anchor"] = region_anchor
     row["_is_aggregator"] = _is_aggregator(domain, enrichment.get("company_summary", ""))
@@ -3835,6 +3868,7 @@ def discover_company_rows(
     progress_callback: object = None,
     use_wiki: bool = True,
     use_translation: bool = True,
+    use_expansion: bool = True,
 ) -> list[dict]:
     """Discover companies for (ICP, region) with a durable contact bundle.
 
@@ -3853,10 +3887,22 @@ def discover_company_rows(
     # native-language matcher terms are reused across every company (not per row).
     target_lang = _region_language(region) if use_translation else None
     extra_terms = _translate_icp_terms(icp, target_lang) if target_lang else set()
+    # Semantic ICP expansion (e.g. "timber" -> sawmill/plywood), computed once and
+    # reused across every company: English terms widen matching directly; their native
+    # translations widen home-language matching; a bounded few also drive extra search
+    # queries (inside discover_company_candidates).
+    expansion: set[str] = set()
+    weak_terms: set[str] = set()
+    if use_expansion:
+        from opencold import icp_expansion
+        expansion = icp_expansion.expand_icp(
+            icp, use_llm=use_llm, provider=_resolve_llm_provider() if use_llm else None,
+        )
+        weak_terms = expansion | (_translate_terms(expansion, target_lang) if target_lang else set())
     candidates = discover_company_candidates(
         icp, region, sources=sources, limit=pool,
         workers=workers, use_llm=use_llm, seed_count=seed_count, use_wiki=use_wiki,
-        use_translation=use_translation,
+        use_translation=use_translation, expansion=expansion, use_expansion=use_expansion,
     )
     # Dedupe by domain up front (channels already dedupe, but be safe).
     seen: set[str] = set()
@@ -3878,7 +3924,7 @@ def discover_company_rows(
         future_to_company = {
             executor.submit(
                 build_company_row, company, icp, region, max_pages, find_people,
-                target_lang, extra_terms,
+                target_lang, extra_terms, weak_terms,
             ): company
             for company in candidates
         }

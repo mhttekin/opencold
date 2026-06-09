@@ -20,6 +20,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# Future: optional embeddings relevance-filter for ICP expansion (re-ranks
+# candidates; keyless lexicon + Datamuse already cover the default path).
+# expansion = ["sentence-transformers>=2.2"]
 
 [project.scripts]
 opencold = "opencold.cli:main"
