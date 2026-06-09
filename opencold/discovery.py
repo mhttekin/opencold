@@ -2000,7 +2000,7 @@ def _translate_icp_terms(icp: str, target_lang: str) -> set[str]:
 
 
 def _localize_enrichment(
-    enrichment: dict, icp: str, target_lang: str, extra_terms: set[str] | None
+    enrichment: dict, icp: str, extra_terms: set[str] | None
 ) -> dict:
     """Translate-on-miss: when neither English nor native ICP terms are evidenced
     (likely a home-language site the English path missed), translate this company's
@@ -2521,7 +2521,7 @@ _SOCIAL_HOSTS = (
 _REGION_CCTLD = {k: v["cctld"] for k, v in rd.COUNTRIES.items() if v.get("cctld")}
 _REGION_PHONE = {k: v["phone"] for k, v in rd.COUNTRIES.items() if v.get("phone")}
 _REGION_CITIES = {k: v["cities"] for k, v in rd.COUNTRIES.items() if v.get("cities")}
-_REGION_LANG = {k: v["lang"] for k, v in rd.COUNTRIES.items() if v.get("lang")}
+_REGION_LANGS = {k: v["langs"] for k, v in rd.COUNTRIES.items() if v.get("langs")}
 
 # Freeform aliases -> canonical region key. Short aliases (<=3 chars) are matched
 # on word boundaries; longer ones as substrings (longest first). See _resolve_region_key.
@@ -2565,19 +2565,25 @@ def _resolve_region_key(region: str) -> str | None:
     return None
 
 
-# Region -> primary business language (ISO code) for translation. Regions where
-# English is the de-facto business web language are deliberately omitted, so
-# translation no-ops there (None) and behaviour is unchanged: united kingdom,
-# united states, india, pakistan, bangladesh, nigeria, kenya.
-_REGION_LANG = {
-    "turkey": "tr", "germany": "de", "france": "fr",
-    "brazil": "pt", "mexico": "es", "indonesia": "id",
-}
+# Cap the number of business languages a single region is searched in, so a
+# many-language market (e.g. switzerland: de/fr/it) doesn't explode the query count.
+# Matching still uses every language; only SEARCH is capped. Most regions have ≤2.
+MAX_SEARCH_LANGS = 3
+
+
+def _region_languages(region: str) -> list[str]:
+    """Business-web languages to ALSO search/translate into for `region` (most-
+    productive first), or [] where English is the de-facto business language. Derived
+    from regions_data.COUNTRIES; multilingual markets (morocco -> ["fr","ar"]) return
+    several. Foreign same-language companies are dropped later by region_fit."""
+    return list(_REGION_LANGS.get(_resolve_region_key(region) or "", []))
 
 
 def _region_language(region: str) -> str | None:
-    """Local language to translate into for `region`, or None to stay English."""
-    return _REGION_LANG.get(_resolve_region_key(region) or "")
+    """Primary local language for `region` (first of _region_languages), or None to
+    stay English. Kept for single-language callers and the status line."""
+    langs = _region_languages(region)
+    return langs[0] if langs else None
 
 
 def _target_region_tokens(region_key: str | None, region: str) -> list[str]:
@@ -2832,26 +2838,46 @@ def _candidate_from_result(result: SearchResult, reason: str) -> CandidateCompan
     )
 
 
+def _interleave_translations(texts: list[str], langs: list[str]) -> list[str]:
+    """Round-robin interleave native translations (one list per business language)
+    with the English originals, native-first, dropping blanks/dupes while preserving
+    order. So Morocco [fr, ar] yields fr[0], ar[0], en[0], fr[1], ar[1], en[1], … —
+    no single language starves the pool."""
+    if not texts:
+        return []
+    lists: list[list[str]] = []
+    for lang in langs:
+        nat = [q for q in translator.translate_many(texts, lang, source="en") if q and q.strip()]
+        if nat:
+            lists.append(nat)
+    lists.append(list(texts))  # English last so native languages take priority slots
+    seen: set[str] = set()
+    out: list[str] = []
+    for tup in zip_longest(*lists):
+        for q in tup:
+            if q and q not in seen:
+                seen.add(q)
+                out.append(q)
+    return out
+
+
 def discover_companies_by_query(
     icp: str, region: str, limit: int = 50, extra_queries: list[str] | None = None,
-    target_lang: str | None = None,
+    target_langs: list[str] | None = None,
 ) -> list[CandidateCompany]:
     base = region_query_templates(icp, region)
-    if target_lang:
-        # Native-language queries ("Türkiye'deki kereste firmaları") surface real
-        # local SMEs that English queries bury under English directory spam (and
-        # avoid "timber turkey" pulling US turkey-hunting noise). Interleave
-        # native-first so the local channel isn't starved by the English pool cap.
-        native = [q for q in translator.translate_many(base, target_lang, source="en") if q and q.strip()]
-        queries = [q for pair in zip_longest(native, base) for q in pair if q]
-        # Translate the extras (LLM directories + expansion queries) too, native-first,
-        # so related-term search also runs in the local language.
-        extra = list(extra_queries or [])
-        native_extra = [q for q in translator.translate_many(extra, target_lang, source="en") if q and q.strip()]
-        queries += [q for pair in zip_longest(native_extra, extra) for q in pair if q]
+    extra = list(extra_queries or [])
+    langs = list(target_langs or [])[:MAX_SEARCH_LANGS]
+    if langs:
+        # Native-language queries ("Türkiye'deki kereste firmaları" / "entreprises de
+        # recyclage au Maroc") surface real local SMEs that English queries bury under
+        # English directory spam. The region name is in every template, so a foreign
+        # same-language result (a French firm in a French Morocco search) is region-
+        # bounded here and rejected downstream by region_fit.
+        queries = _interleave_translations(base, langs)
+        queries += _interleave_translations(extra, langs)
     else:
-        queries = list(base)
-        queries += list(extra_queries or [])
+        queries = list(base) + extra
     candidates: dict[str, CandidateCompany] = {}
     for query in queries:
         for result in web_search(query, num=10):
@@ -3152,7 +3178,7 @@ def discover_company_candidates(
     so every request is served by search harvest at minimum, with LLM/Wikipedia
     layering curated names on top."""
     candidates: dict[str, CandidateCompany] = {}
-    target_lang = _region_language(region) if use_translation else None
+    target_langs = _region_languages(region) if use_translation else []
 
     def _add(cand: CandidateCompany, channel: str) -> None:
         domain = normalize_domain(cand.website)
@@ -3193,7 +3219,7 @@ def discover_company_candidates(
 
     # Channel B: search harvest (always runs).
     for cand in discover_companies_by_query(
-        icp, region, limit=limit, extra_queries=extra_queries, target_lang=target_lang
+        icp, region, limit=limit, extra_queries=extra_queries, target_langs=target_langs
     ):
         _add(cand, "search")
 
@@ -3761,7 +3787,7 @@ def build_company_row(
     region: str,
     max_pages: int = 4,
     find_people: bool = False,
-    target_lang: str | None = None,
+    target_langs: list[str] | None = None,
     extra_terms: set[str] | None = None,
     weak_terms: set[str] | None = None,
 ) -> dict | None:
@@ -3782,8 +3808,8 @@ def build_company_row(
     }
     # Translate a home-language site's facts into English when the English/native
     # ICP terms find no evidence, so matching, the judge, and the CSV read English.
-    if target_lang:
-        enrichment = _localize_enrichment(enrichment, icp, target_lang, all_extra)
+    if target_langs:
+        enrichment = _localize_enrichment(enrichment, icp, all_extra)
     pages_text = " ".join(f"{p.title} {p.description} {p.text}" for p in pages)
 
     contacts = extract_company_contacts(company.website, max_pages=max_pages)
@@ -3883,10 +3909,13 @@ def discover_company_rows(
     # Crawl more than `limit` so rejected namesakes can be replaced by verified
     # ones — but cap the pool so latency stays bounded.
     pool = min(max(limit * 2, limit + 8), 40)
-    # Resolve the target language once, and translate the ICP terms once, so the
-    # native-language matcher terms are reused across every company (not per row).
-    target_lang = _region_language(region) if use_translation else None
-    extra_terms = _translate_icp_terms(icp, target_lang) if target_lang else set()
+    # Resolve the target language(s) once, and translate the ICP terms once per
+    # language, so the native-language matcher terms are reused across every company
+    # (not per row). Multilingual markets (morocco -> fr+ar) get every language.
+    target_langs = _region_languages(region) if use_translation else []
+    extra_terms: set[str] = set()
+    for lang in target_langs:
+        extra_terms |= _translate_icp_terms(icp, lang)
     # Semantic ICP expansion (e.g. "timber" -> sawmill/plywood), computed once and
     # reused across every company: English terms widen matching directly; their native
     # translations widen home-language matching; a bounded few also drive extra search
@@ -3899,10 +3928,11 @@ def discover_company_rows(
             icp, use_llm=use_llm, provider=_resolve_llm_provider() if use_llm else None,
         )
         weak_terms = set(expansion)
-        if target_lang:
-            # Translate ONLY curated terms to native (plywood -> kontrplak). Datamuse-tail
-            # translations spawn generic native words (e.g. "alan") that falsely match.
-            weak_terms |= _translate_terms(expansion & icp_expansion.curated_terms(icp), target_lang)
+        # Translate ONLY curated terms to native (plywood -> kontrplak), per language.
+        # Datamuse-tail translations spawn generic native words (e.g. "alan") that match.
+        curated = expansion & icp_expansion.curated_terms(icp)
+        for lang in target_langs:
+            weak_terms |= _translate_terms(curated, lang)
     candidates = discover_company_candidates(
         icp, region, sources=sources, limit=pool,
         workers=workers, use_llm=use_llm, seed_count=seed_count, use_wiki=use_wiki,
@@ -3928,7 +3958,7 @@ def discover_company_rows(
         future_to_company = {
             executor.submit(
                 build_company_row, company, icp, region, max_pages, find_people,
-                target_lang, extra_terms, weak_terms,
+                target_langs, extra_terms, weak_terms,
             ): company
             for company in candidates
         }

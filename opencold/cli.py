@@ -1640,9 +1640,9 @@ def _do_discover_companies(
         typer.echo(f"  {GREEN}✓{RESET} Wikipedia list channel enabled")
     else:
         typer.echo(f"  {CYAN}ℹ{RESET} --no-wiki: Wikipedia list channel disabled")
-    target_lang = discovery._region_language(region) if use_translation else None
-    if target_lang:
-        typer.echo(f"  {GREEN}✓{RESET} Local-language search enabled ({region} → {target_lang})")
+    target_langs = discovery._region_languages(region) if use_translation else []
+    if target_langs:
+        typer.echo(f"  {GREEN}✓{RESET} Local-language search enabled ({region} → {', '.join(target_langs)})")
     elif not use_translation:
         typer.echo(f"  {CYAN}ℹ{RESET} --no-translate: English-only search/matching")
     if use_expansion:
