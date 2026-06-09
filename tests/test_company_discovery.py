@@ -246,6 +246,7 @@ class TestEndToEnd:
         }
         with patch("opencold.discovery.discover_company_candidates", return_value=candidates), \
              patch("opencold.discovery.web_search", return_value=[]), \
+             patch("opencold.icp_expansion.expand_icp", return_value=set()), \
              patch("opencold.enricher._fetch_html", _fetch_for(html_by_domain)):
             rows = discovery.discover_company_rows(
                 "insurance companies", "Bangladesh", limit=10, use_llm=False,
