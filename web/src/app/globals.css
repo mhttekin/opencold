@@ -10,6 +10,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-geist-mono), "SFMono-Regular", Consolas, monospace;
+  --font-code: var(--font-source-code-pro), "SFMono-Regular", Consolas, monospace;
 }
 
 body {
@@ -26,21 +27,74 @@ textarea {
   font: inherit;
 }
 
-/* ── dot field ── */
+/* ── discovery tree (landing hero) ── */
 
-.dot-field {
+.tree-caret {
+  display: inline-block;
+  width: 0.55ch;
+  height: 1.05em;
+  margin-left: 2px;
+  background: #0a0a0a;
+  vertical-align: text-bottom;
+  animation: caret-blink 1.1s steps(1) infinite;
+}
+
+@keyframes caret-blink {
+  50% { opacity: 0; }
+}
+
+.tree-pill {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 0 5px;
+  border: 1px solid rgb(228 228 231);
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.7);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgb(161 161 170);
+  vertical-align: 2px;
+}
+
+/* shimmering "searching…" placeholder that resolves into a company name */
+.tree-scan {
+  background: linear-gradient(90deg, rgb(228 228 231) 25%, rgb(113 113 122) 50%, rgb(228 228 231) 75%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: scan-sweep 0.9s linear infinite;
+}
+
+@keyframes scan-sweep {
+  from { background-position: 200% 0; }
+  to { background-position: 0% 0; }
+}
+
+/* ── notebook grid field ── */
+
+.grid-field {
   position: fixed;
   inset: 0;
-  background-image: radial-gradient(circle, rgb(0 0 0 / 0.07) 1px, transparent 1px);
-  background-size: 32px 32px;
-  mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, black 20%, transparent 70%);
+  background-image:
+    linear-gradient(to right, rgb(9 9 11 / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(9 9 11 / 0.05) 1px, transparent 1px),
+    linear-gradient(to right, rgb(9 9 11 / 0.024) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(9 9 11 / 0.024) 1px, transparent 1px);
+  background-size:
+    112px 112px,
+    112px 112px,
+    28px 28px,
+    28px 28px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 42%, black 30%, transparent 78%);
   pointer-events: none;
   transition: opacity 600ms ease, transform 600ms ease;
 }
 
-.dot-field--fade {
-  opacity: 0.3;
-  transform: scale(1.08);
+.grid-field--fade {
+  opacity: 0.35;
+  transform: scale(1.04);
 }
 
 /* ── drop zone (evolved reference design) ── */
