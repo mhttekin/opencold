@@ -22,8 +22,11 @@ from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 from bs4 import BeautifulSoup
 
 from opencold import enricher
+from opencold import icp_phrases
 from opencold import regions_data as rd
 from opencold import translator
+# Re-exported names: tests and icp_expansion resolve these via opencold.discovery.
+from opencold.icp_phrases import GENERIC_ICP_TERMS, stem as _stem
 
 
 BLOCKED_DOMAINS = {
@@ -93,19 +96,6 @@ INTERNAL_DETAIL_HINTS = (
     "/tool/",
     "/tools/",
 )
-
-GENERIC_ICP_TERMS = {
-    "startup",
-    "startups",
-    "company",
-    "companies",
-    "tool",
-    "tools",
-    "early",
-    "software",
-    "platform",
-    "business",
-}
 
 ROLE_PREFIXES = {
     "contact",
@@ -491,13 +481,14 @@ def _is_aggregator(domain: str, summary: str = "") -> bool:
 
 
 def _is_government_domain(domain: str) -> bool:
-    """True for government/military sites: .gov/.mil, or gov./govt./mil. under a ccTLD."""
+    """True for government/military sites: .gov/.mil, or gov./govt./go./mil. under a
+    ccTLD ("go" is the government second level in .go.jp/.go.ke/.go.ug/.go.id/...)."""
     parts = (domain or "").lower().split(".")
     if len(parts) < 2:
         return False
     if parts[-1] in ("gov", "mil"):
         return True
-    return len(parts) >= 3 and parts[-2] in ("gov", "govt", "mil") and len(parts[-1]) == 2
+    return len(parts) >= 3 and parts[-2] in ("gov", "govt", "go", "mil") and len(parts[-1]) == 2
 
 
 def _company_from_anchor(text: str, domain: str) -> str:
@@ -1902,43 +1893,25 @@ def _icp_terms(icp: str) -> set[str]:
     }
 
 
-# Common inflectional suffixes, longest-first so "landscapers" -> "ers" (not "er"+"s").
-_STEM_SUFFIXES = ("ings", "ing", "ers", "er", "ed", "es", "s")
-
-
-def _stem(word: str) -> str:
-    """Light inflectional stemmer so morphological variants of an ICP term collapse
-    to one form: landscape / landscaping / landscaper / landscapes / landscaped ->
-    'landscap'. Deliberately conservative — only strips a common suffix when ≥4 stem
-    characters remain (guards short words like 'caring'->'car'), then normalises a
-    trailing 'e'. Not a full Porter stemmer; predictability beats coverage here."""
-    w = word.lower()
-    for suf in _STEM_SUFFIXES:
-        if w.endswith(suf) and len(w) - len(suf) >= 4:
-            w = w[: -len(suf)]
-            break
-    if len(w) >= 5 and w.endswith("e"):
-        w = w[:-1]
-    return w
-
-
 def _icp_match(terms: set[str], text: str) -> list[str]:
     """ICP terms evidenced in `text`. Additive over the old literal-substring test:
     a term matches if its stem equals a whole-word stem in the text (morphology:
-    'landscape' ~ 'landscaping') OR the literal term is a substring (back-compat for
-    hyphenated/compound terms like 'tech' in 'fintech'). Returns the original term
+    'landscape' ~ 'landscaping') OR a ≥4-char literal term is a substring
+    (hyphenated/compound terms like 'tech' in 'fintech' — shorter terms like
+    Datamuse's 'urn' would match inside 'journalism'). Returns the original term
     spellings, sorted, so callers can display them as before."""
     if not terms or not text:
         return []
     low = text.lower()
     word_stems = {_stem(tok) for tok in re.findall(r"[a-z0-9]+", low)}
-    matched = [t for t in terms if _stem(t) in word_stems or t in low]
+    matched = [t for t in terms if _stem(t) in word_stems or (len(t) >= 4 and t in low)]
     return sorted(matched)
 
 
 def score_company(
     company: CandidateCompany, enrichment: dict, icp: str,
     extra_terms: set[str] | None = None, weak_terms: set[str] | None = None,
+    provenance: dict[str, set[str]] | None = None,
 ) -> tuple[int, str]:
     # NOTE: company.discovery_reason is deliberately excluded — for LLM/search
     # candidates it echoes our own query (e.g. "llm seed: landscape in UK"), so
@@ -1948,47 +1921,88 @@ def score_company(
     # home-language site matches without us translating its text first.
     # weak_terms: semantic-expansion terms (e.g. "sawmill" for "timber") — counted at
     # half weight so a related-only hit never outranks a true ICP / native-term hit.
-    strong = _icp_terms(icp) | (extra_terms or set())
-    weak = (weak_terms or set()) - strong
+    # provenance: derived term -> the ICP core token it evidences (see icp_phrases).
+    # A derived term that matched is credited ONCE, through its token — otherwise a
+    # cluster of same-meaning words (consultancy/consulting/consultant) piles up
+    # points for one concept.
+    profile = icp_phrases.parse_icp(icp)
+    extras = extra_terms or set()
+    icp_tokens = set(profile.core_tokens) | set(profile.qualifier_tokens) | _icp_terms(icp)
+    weak = (weak_terms or set()) - extras - icp_tokens
+    prov_terms = set().union(*provenance.values()) if provenance else set()
     haystack = " ".join([
         company.company,
         enrichment.get("company_summary", ""),
         enrichment.get("personalization_facts", ""),
     ]).lower()
-    matched_strong = _icp_match(strong, haystack)
+
+    core = icp_phrases.evidence_core(profile, haystack, provenance)
+    matched_extra = _icp_match(extras, haystack)
     matched_weak = _icp_match(weak, haystack)
+
     base = 35 if enrichment.get("website_status") == "ok" else 15
-    match_bonus = min(len(matched_strong) * 14 + len(matched_weak) * 7, 50)
-    score = min(100, base + match_bonus)
-    matched = sorted(set(matched_strong) | set(matched_weak))
-    return score, enricher.FACT_SEPARATOR.join(matched)
+    # Phrase hit > full core co-occurrence > partial core (half weight). A core
+    # token is worth 14 only when the WHOLE core is evidenced; a lone generic
+    # head ("consultancy" without "sustainability") scores like a weak term.
+    bonus = 18 * len(core.phrase_chunks)
+    if core.confirmed:
+        bonus += 14 * len(core.required)
+    else:
+        bonus += 7 * len(core.evidenced)
+    bonus += 14 * sum(1 for t in matched_extra if t not in prov_terms)
+    bonus += 7 * len(core.matched_qualifiers)
+    bonus += 7 * sum(1 for t in matched_weak if t not in prov_terms)
+    score = min(100, base + min(bonus, 50))
+
+    display = sorted(set(matched_extra) | set(matched_weak)
+                     | core.evidenced | set(core.matched_qualifiers))
+    parts = [f"phrase:{' '.join(c)}" for c in core.phrase_chunks] + display
+    return score, enricher.FACT_SEPARATOR.join(parts)
 
 
 def _icp_evidence(
     icp: str, enrichment: dict,
     extra_terms: set[str] | None = None, weak_terms: set[str] | None = None,
+    provenance: dict[str, set[str]] | None = None,
 ) -> bool:
-    """True when ICP terms appear in the company's own crawled content.
+    """True when the ICP's CORE CONCEPT is evidenced in the company's own crawled
+    content.
 
     Content-only (no company name, no discovery_reason): this is the evidence
     used to gate leads, so it must reflect what the site actually says — a company
     literally named 'X Landscapes' should still have to prove it on its pages.
 
+    A multi-word core ("sustainability consultancy") confirms only as a phrase or
+    when EVERY required core token is evidenced — each token via its own form, a
+    native translation, or an expansion term attributed to it (provenance). A
+    partial hit never confirms: matching "consultancy" alone (or its whole
+    consulting/advisory cluster) must not verify a sustainability ICP. Qualifier
+    tokens ("for SMEs") never confirm on their own.
+
     extra_terms adds native-language ICP terms, so a home-language site that says
     "kereste" counts as evidence for an English "timber" ICP. weak_terms (semantic
-    expansion) mirror their half-weight in scoring: one strong hit is evidence, but
-    weak-only matches need at least two — a single related word ("waste" on a page
-    about something else) must not push a lead into 'verified'.
+    expansion) mirror their half-weight in scoring: for single-token cores,
+    weak-only evidence needs at least two distinct hits. Multi-word cores get NO
+    weak fallback at all — expansion tails are unattributed noise (Datamuse gave
+    "uganda" and "urn" for "coffee exporter"), and two stray matches on a Ugandan
+    news page must never verify a lead whose core concept has zero evidence.
     """
-    strong = _icp_terms(icp) | (extra_terms or set())
-    weak = (weak_terms or set()) - strong
-    if not strong and not weak:
-        return False
+    profile = icp_phrases.parse_icp(icp)
+    extras = extra_terms or set()
+    icp_tokens = set(profile.core_tokens) | set(profile.qualifier_tokens) | _icp_terms(icp)
+    weak = (weak_terms or set()) - extras - icp_tokens
     content = " ".join([
         enrichment.get("company_summary", ""),
         enrichment.get("personalization_facts", ""),
     ])
-    if _icp_match(strong, content):
+    core = icp_phrases.evidence_core(profile, content, provenance)
+    if core.confirmed:
+        return True
+    if len(core.required) >= 2:
+        return False
+    # Single-token or all-generic core: legacy semantics — one native/strong hit
+    # confirms, else two weak hits.
+    if _icp_match(extras, content):
         return True
     return len(_icp_match(weak, content)) >= 2
 
@@ -2019,33 +2033,40 @@ def _translated_term_ok(term: str, translated: str, target_lang: str) -> bool:
     return any(_stem(w) in back_stems for w in re.findall(r"[a-z0-9]+", term.lower()))
 
 
+def _translate_one(term: str, target_lang: str) -> tuple[list[str], str]:
+    """One English term -> (kept native tokens, full native phrase or ""). The
+    phrase is non-empty only for multi-word results with at least one kept token
+    ("waste management" -> "gestion des déchets"). Precision-filtered: alternative
+    lists ("gaspillage/gaspiller/perdre/...") collapse to their first entry,
+    >3-token results are provider noise and dropped, a round-trip check kills wrong
+    translation-memory matches, and short/function-word tokens are dropped — a
+    leaked article like "des" matches every text in its language."""
+    translated = translator.translate(term, target_lang, source="en")
+    if not translated or translated.lower() == term:
+        return [], ""
+    translated = re.split(r"[/;|]", translated)[0].strip()
+    tokens = re.findall(r"\w[\w\-]{2,}", translated.lower(), re.UNICODE)
+    if not tokens or len(tokens) > 3:
+        return [], ""
+    if not _translated_term_ok(term, translated, target_lang):
+        return [], ""
+    kept = [t for t in tokens if len(t) >= 4 and t not in _NATIVE_FUNCTION_WORDS]
+    phrase = " ".join(tokens) if len(tokens) > 1 and kept else ""
+    return kept, phrase
+
+
 def _translate_terms(terms: set[str], target_lang: str) -> set[str]:
     """Native-language forms of an English term set: translate each term and keep the
     result tokens plus, for multi-word results, the full phrase (matched via the
     literal-substring branch). Best-effort and cached; returns an empty set when
     translation is unavailable. Unicode-aware so native tokens stay intact (e.g.
-    "ürünleri").
-
-    These become MATCHER terms, so the tier is precision-filtered: alternative lists
-    ("gaspillage/gaspiller/perdre/...") collapse to their first entry, >3-token
-    results are provider noise and dropped, a round-trip check kills wrong
-    translation-memory matches, and short/function-word tokens are dropped — a leaked
-    article like "des" matches every text in its language."""
+    "ürünleri")."""
     out: set[str] = set()
     for term in terms:
-        translated = translator.translate(term, target_lang, source="en")
-        if not translated or translated.lower() == term:
-            continue
-        translated = re.split(r"[/;|]", translated)[0].strip()
-        tokens = re.findall(r"\w[\w\-]{2,}", translated.lower(), re.UNICODE)
-        if not tokens or len(tokens) > 3:
-            continue
-        if not _translated_term_ok(term, translated, target_lang):
-            continue
-        kept = [t for t in tokens if len(t) >= 4 and t not in _NATIVE_FUNCTION_WORDS]
+        kept, phrase = _translate_one(term, target_lang)
         out.update(kept)
-        if len(tokens) > 1 and kept:
-            out.add(" ".join(tokens))
+        if phrase:
+            out.add(phrase)
     return out
 
 
@@ -2055,14 +2076,84 @@ def _translate_icp_terms(icp: str, target_lang: str) -> set[str]:
     return _translate_terms(_icp_terms(icp), target_lang)
 
 
+def _translate_profile(
+    profile: "icp_phrases.IcpProfile", target_lang: str
+) -> tuple[set[str], set[str], dict[str, set[str]]]:
+    """Native-language matcher terms for one ICP profile, with attribution:
+    (strong flat, weak flat, token -> native terms).
+
+    Core tokens translate to strong terms attributed to themselves; qualifier
+    tokens ("for SMEs") translate to weak terms only — an audience word must not
+    verify an industry. Each multi-token core phrase is ALSO translated whole:
+    languages like Dutch compound it into one word ("sustainability consultancy"
+    -> "duurzaamheidsadvies") that per-token translation can never produce, and
+    that single word co-evidences the entire chunk. A multi-word phrase result
+    keeps multi-token attribution only as the full phrase; its individual tokens
+    go weak — a leaked "advies" must never co-evidence "sustainability"."""
+    strong: set[str] = set()
+    weak: set[str] = set()
+    provenance: dict[str, set[str]] = {}
+
+    def attribute(token: str, terms: set[str]) -> None:
+        if terms:
+            provenance.setdefault(token, set()).update(terms)
+
+    for token in profile.core_tokens:
+        kept, phrase = _translate_one(token, target_lang)
+        native = set(kept) | ({phrase} if phrase else set())
+        strong |= native
+        attribute(token, native)
+    for token in profile.qualifier_tokens:
+        kept, phrase = _translate_one(token, target_lang)
+        native = set(kept) | ({phrase} if phrase else set())
+        weak |= native
+        attribute(token, native)
+    for chunk in profile.core_phrases:
+        required = [t for t in chunk if t in profile.core_tokens]
+        kept, phrase = _translate_one(" ".join(chunk), target_lang)
+        if phrase:
+            # Multi-word native phrase: only the whole phrase speaks for the chunk.
+            strong.add(phrase)
+            weak.update(kept)
+            for token in required:
+                attribute(token, {phrase})
+        elif len(kept) == 1:
+            # Single native compound: one word covers the whole concept.
+            strong.update(kept)
+            for token in required:
+                attribute(token, set(kept))
+    return strong, weak, provenance
+
+
+def _translate_expansion_terms(terms: set[str], target_lang: str) -> tuple[set[str], set[str]]:
+    """Native forms of expansion-cluster terms: (all forms, attribution-safe subset).
+    A multi-word native result is attribution-safe only as the full phrase — its
+    individual tokens are common words ("professional services" -> "zakelijke
+    dienstverlening" leaks "zakelijke" = plain "business") that would let any site
+    in that language co-evidence a core token. Cluster terms are already one
+    semantic hop from the ICP; their translations must not drift further."""
+    flat: set[str] = set()
+    safe: set[str] = set()
+    for term in terms:
+        kept, phrase = _translate_one(term, target_lang)
+        flat.update(kept)
+        if phrase:
+            flat.add(phrase)
+            safe.add(phrase)
+        else:
+            safe.update(kept)
+    return flat, safe
+
+
 def _localize_enrichment(
-    enrichment: dict, icp: str, extra_terms: set[str] | None
+    enrichment: dict, icp: str, extra_terms: set[str] | None,
+    provenance: dict[str, set[str]] | None = None,
 ) -> dict:
     """Translate-on-miss: when neither English nor native ICP terms are evidenced
     (likely a home-language site the English path missed), translate this company's
     distilled facts into English in place, so downstream matching, the LLM judge,
     and the CSV all read English. Facts are short and cached, so volume stays low."""
-    if _icp_evidence(icp, enrichment, extra_terms):
+    if _icp_evidence(icp, enrichment, extra_terms, provenance=provenance):
         return enrichment
     summary = enrichment.get("company_summary", "")
     facts = enrichment.get("personalization_facts", "")
@@ -2873,6 +2964,13 @@ def region_query_templates(icp: str, region: str) -> list[str]:
         f"top {icp} {region}",
         f"{icp} {region} contact email",
         f"{icp} association {region} members",
+    ]
+    # One exact-phrase query per multi-word core chunk ("sustainability
+    # consultancy"): search engines treat the quoted form as adjacency, which
+    # finds companies the bare bag-of-words queries bury under generic matches.
+    templates += [
+        f'"{" ".join(chunk)}" {region}'
+        for chunk in icp_phrases.parse_icp(icp).core_phrases
     ]
     return [q for q in templates if q.strip()]
 
@@ -3879,6 +3977,7 @@ def build_company_row(
     target_langs: list[str] | None = None,
     extra_terms: set[str] | None = None,
     weak_terms: set[str] | None = None,
+    provenance: dict[str, set[str]] | None = None,
 ) -> dict | None:
     domain = normalize_domain(company.website)
     # Union of native (full-weight) + expansion (half-weight) terms for the boolean
@@ -3898,7 +3997,7 @@ def build_company_row(
     # Translate a home-language site's facts into English when the English/native
     # ICP terms find no evidence, so matching, the judge, and the CSV read English.
     if target_langs:
-        enrichment = _localize_enrichment(enrichment, icp, all_extra)
+        enrichment = _localize_enrichment(enrichment, icp, all_extra, provenance)
     pages_text = " ".join(f"{p.title} {p.description} {p.text}" for p in pages)
 
     contacts = extract_company_contacts(company.website, max_pages=max_pages)
@@ -3927,7 +4026,8 @@ def build_company_row(
     else:
         partnership = ""
 
-    icp_score, matched_terms = score_company(company, enrichment, icp, extra_terms, weak_terms)
+    icp_score, matched_terms = score_company(company, enrichment, icp, extra_terms, weak_terms,
+                                             provenance)
     if rfit_reasons:
         matched_terms = (matched_terms + (enricher.FACT_SEPARATOR if matched_terms else "") + rfit_reasons)
 
@@ -3960,7 +4060,7 @@ def build_company_row(
     row["lead_score_reasons"] = lead_reasons
     # Carried for verification/classification; underscore keys are not written to
     # CSV (DictWriter uses fixed fieldnames + extrasaction="ignore").
-    row["_icp_evidence"] = _icp_evidence(icp, enrichment, extra_terms, weak_terms)
+    row["_icp_evidence"] = _icp_evidence(icp, enrichment, extra_terms, weak_terms, provenance)
     row["_region_conflict"] = region_conflict
     row["_region_anchor"] = region_anchor
     row["_is_aggregator"] = _is_aggregator(domain, " ".join([
@@ -4007,30 +4107,51 @@ def discover_company_rows(
     # Crawl more than `limit` so rejected namesakes can be replaced by verified
     # ones — but cap the pool so latency stays bounded.
     pool = min(max(limit * 2, limit + 8), 40)
-    # Resolve the target language(s) once, and translate the ICP terms once per
+    # Resolve the target language(s) once, and translate the ICP profile once per
     # language, so the native-language matcher terms are reused across every company
     # (not per row). Multilingual markets (morocco -> fr+ar) get every language.
+    # `provenance` maps each ICP token to the derived terms (native translations,
+    # expansion-cluster members) that evidence it — the phrase-aware gate needs the
+    # attribution, not just the flat sets.
+    profile = icp_phrases.parse_icp(icp)
     target_langs = _region_languages(region) if use_translation else []
     extra_terms: set[str] = set()
+    weak_terms: set[str] = set()
+    provenance: dict[str, set[str]] = {}
+
+    def _attribute(token: str, terms: set[str]) -> None:
+        if terms:
+            provenance.setdefault(token, set()).update(terms)
+
     for lang in target_langs:
-        extra_terms |= _translate_icp_terms(icp, lang)
+        strong_nat, weak_nat, prov_nat = _translate_profile(profile, lang)
+        extra_terms |= strong_nat
+        weak_terms |= weak_nat
+        for token, terms in prov_nat.items():
+            _attribute(token, terms)
     # Semantic ICP expansion (e.g. "timber" -> sawmill/plywood), computed once and
     # reused across every company: English terms widen matching directly; their native
     # translations widen home-language matching; a bounded few also drive extra search
     # queries (inside discover_company_candidates).
     expansion: set[str] = set()
-    weak_terms: set[str] = set()
     if use_expansion:
         from opencold import icp_expansion
-        expansion = icp_expansion.expand_icp(
+        grouped = icp_expansion.expand_icp_grouped(
             icp, use_llm=use_llm, provider=_resolve_llm_provider() if use_llm else None,
         )
-        weak_terms = set(expansion)
-        # Translate ONLY curated terms to native (plywood -> kontrplak), per language.
-        # Datamuse-tail translations spawn generic native words (e.g. "alan") that match.
-        curated = expansion & icp_expansion.curated_terms(icp)
+        expansion = grouped.flat
+        weak_terms |= grouped.flat
+        for token, terms in grouped.by_token.items():
+            _attribute(token, terms)
+        # Translate ONLY curated terms to native (plywood -> kontrplak), per language,
+        # token by token so the native forms stay attributed. Datamuse-tail
+        # translations spawn generic native words (e.g. "alan") that match.
+        curated_grouped = icp_expansion.curated_terms_grouped(icp)
         for lang in target_langs:
-            weak_terms |= _translate_terms(curated, lang)
+            for token, terms in curated_grouped.items():
+                native, safe = _translate_expansion_terms(terms & expansion, lang)
+                weak_terms |= native
+                _attribute(token, safe)
     candidates = discover_company_candidates(
         icp, region, sources=sources, limit=pool,
         workers=workers, use_llm=use_llm, seed_count=seed_count, use_wiki=use_wiki,
@@ -4056,7 +4177,7 @@ def discover_company_rows(
         future_to_company = {
             executor.submit(
                 build_company_row, company, icp, region, max_pages, find_people,
-                target_langs, extra_terms, weak_terms,
+                target_langs, extra_terms, weak_terms, provenance,
             ): company
             for company in candidates
         }
