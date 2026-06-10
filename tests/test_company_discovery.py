@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from opencold import discovery, translator
+from opencold import discovery, icp_expansion, translator
 from opencold.discovery import SearchResult, CandidateCompany
 
 
@@ -277,7 +277,8 @@ class TestEndToEnd:
         }
         with patch("opencold.discovery.discover_company_candidates", return_value=candidates), \
              patch("opencold.discovery.web_search", return_value=[]), \
-             patch("opencold.icp_expansion.expand_icp", return_value=set()), \
+             patch("opencold.icp_expansion.expand_icp_grouped",
+                   return_value=icp_expansion.ExpansionResult()), \
              patch("opencold.enricher._fetch_html", _fetch_for(html_by_domain)):
             rows = discovery.discover_company_rows(
                 "insurance companies", "Bangladesh", limit=10, use_llm=False,
@@ -379,6 +380,135 @@ class TestMorphology:
     def test_substring_backcompat_preserved(self):
         # Old literal-substring matches still hold (compound words).
         assert discovery._icp_match({"tech"}, "a fintech and biotech platform") == ["tech"]
+
+
+class TestPhraseAwareGate:
+    """Multi-word ICP cores confirm as a phrase or full co-occurrence — never on a
+    single word, no matter how many same-meaning expansion terms pile onto it."""
+
+    ICP = "Sustainability Consultancy for SMEs"
+    PROV = {"sustainability": {"esg", "duurzaamheid"},
+            "consultancy": {"consulting", "consultant", "advisory"}}
+
+    def _enr(self, summary):
+        return {"website_status": "ok", "company_summary": summary, "personalization_facts": ""}
+
+    def test_single_generic_head_no_longer_confirms(self):
+        # Regression (consultancy.eu): a consulting-news platform matched
+        # "consultancy" + its whole cluster and verified a sustainability ICP.
+        enr = self._enr("The online platform for Europe's consulting industry: news, "
+                        "consultancy rankings and jobs for consultants.")
+        assert not discovery._icp_evidence(
+            self.ICP, enr, weak_terms={"consulting", "consultant", "advisory"},
+            provenance=self.PROV,
+        )
+
+    def test_phrase_hit_confirms(self):
+        enr = self._enr("We are a sustainability consultancy for Dutch SMEs.")
+        assert discovery._icp_evidence(self.ICP, enr, provenance=self.PROV)
+
+    def test_cooccurrence_via_provenance_confirms(self):
+        # "ESG" speaks for sustainability, "consulting" for consultancy: every core
+        # token is covered even though the exact phrase never appears.
+        enr = self._enr("ESG strategy and management consulting for mid-sized firms.")
+        assert discovery._icp_evidence(
+            self.ICP, enr, weak_terms={"esg", "consulting"}, provenance=self.PROV,
+        )
+
+    def test_native_compound_confirms_whole_core(self):
+        prov = {"sustainability": {"duurzaamheidsadvies"},
+                "consultancy": {"duurzaamheidsadvies"}}
+        enr = self._enr("Duurzaamheidsadvies voor het MKB.")
+        assert discovery._icp_evidence(
+            self.ICP, enr, extra_terms={"duurzaamheidsadvies"}, provenance=prov,
+        )
+
+    def test_qualifier_only_never_confirms(self):
+        enr = self._enr("We provide services for SMEs across Europe.")
+        assert not discovery._icp_evidence(self.ICP, enr)
+
+    def test_weak_terms_never_confirm_multiword_core(self):
+        # No weak fallback for multi-word cores: expansion tails are unattributed
+        # noise, and stray matches must not stand in for absent core evidence.
+        enr = self._enr("Carbon footprint reporting and greenhouse gas accounting.")
+        assert not discovery._icp_evidence(
+            self.ICP, enr, weak_terms={"carbon footprint", "greenhouse"},
+            provenance=self.PROV,
+        )
+
+    def test_geo_and_junk_weak_terms_never_verify(self):
+        # Regression (Coffee exporter / Uganda): Datamuse expansion returned
+        # "uganda" and "urn"; a Kampala NEWS site matched both ("urn" inside
+        # "journalism") and two weak hits verified it with zero coffee/exporter
+        # evidence.
+        enr = {"website_status": "ok",
+               "company_summary": "Kampala Post delivers quality journalism covering "
+                                  "politics, business, technology and sports.",
+               "personalization_facts": "Stay informed with the latest news from Uganda."}
+        assert not discovery._icp_evidence(
+            "Coffee exporter", enr, set(),
+            weak_terms={"uganda", "urn", "bean", "export"},
+            provenance={"coffee": {"bean"}, "exporter": {"export"}},
+        )
+        # ...and "urn" no longer matches inside "journalism" anywhere (substring
+        # guard), so it can't even inflate the score.
+        assert discovery._icp_match({"urn"}, "quality journalism") == []
+        assert discovery._icp_match({"urn"}, "a coffee urn supplier") == ["urn"]
+
+    def test_real_trader_confirms_via_cluster(self):
+        # Positive control for the same ICP: a genuine coffee trader co-occurs
+        # through the exporter cluster (trader ∈ provenance[exporter]).
+        enr = {"website_status": "ok",
+               "company_summary": "Volcafe is one of the largest green coffee traders, "
+                                  "providing the beans for 66 billion cups of coffee each year.",
+               "personalization_facts": ""}
+        assert discovery._icp_evidence(
+            "Coffee exporter", enr, set(), weak_terms={"bean", "trader"},
+            provenance={"coffee": {"bean"}, "exporter": {"trader", "export", "importer"}},
+        )
+
+
+class TestPhraseAwareScoring:
+    ICP = "Sustainability Consultancy for SMEs"
+    PROV = {"sustainability": {"esg"}, "consultancy": {"consulting"}}
+
+    def _cand(self):
+        return discovery.CandidateCompany("Acme", "https://acme.test", "src", "search", "search")
+
+    def _enr(self, summary):
+        return {"website_status": "ok", "company_summary": summary, "personalization_facts": ""}
+
+    def test_phrase_beats_cooccurrence_beats_partial(self):
+        phrase, m = discovery.score_company(
+            self._cand(), self._enr("A sustainability consultancy for SMEs."),
+            self.ICP, provenance=self.PROV)
+        cooc, _ = discovery.score_company(
+            self._cand(), self._enr("ESG reporting and management consulting."),
+            self.ICP, weak_terms={"esg", "consulting"}, provenance=self.PROV)
+        partial, _ = discovery.score_company(
+            self._cand(), self._enr("a consultancy for executive coaching"),
+            self.ICP, weak_terms={"esg", "consulting"}, provenance=self.PROV)
+        assert phrase > cooc > partial
+        assert m.startswith("phrase:sustainability consultancy")
+
+    def test_partial_core_scores_like_weak_term(self):
+        hit, matched = discovery.score_company(
+            self._cand(), self._enr("a consultancy platform"), self.ICP)
+        miss, _ = discovery.score_company(
+            self._cand(), self._enr("unrelated topic"), self.ICP)
+        assert hit - miss == 7
+        assert "consultancy" in matched
+
+    def test_attributed_term_credited_once(self):
+        # "consulting" evidences the consultancy token; it must not ALSO count as
+        # an independent weak term.
+        with_prov, _ = discovery.score_company(
+            self._cand(), self._enr("management consulting firm"),
+            self.ICP, weak_terms={"consulting"}, provenance=self.PROV)
+        no_prov, _ = discovery.score_company(
+            self._cand(), self._enr("management consulting firm"),
+            self.ICP, weak_terms={"consulting"})
+        assert with_prov == no_prov == 35 + 7
 
 
 class TestResolutionContext:
@@ -567,9 +697,16 @@ class TestGovernment:
         assert discovery._is_government_domain("x.gov.tr")
         assert discovery._is_government_domain("army.mil")
 
+    def test_go_second_level_cctld(self):
+        # "go" is the government second level in several ccTLDs.
+        assert discovery._is_government_domain("ugandacoffee.go.ug")
+        assert discovery._is_government_domain("meti.go.jp")
+
     def test_company_not_flagged(self):
         assert not discovery._is_government_domain("acme.com")
         assert not discovery._is_government_domain("governance.com")
+        assert not discovery._is_government_domain("go.com")           # Disney, not gov
+        assert not discovery._is_government_domain("lets.go.example")  # not a ccTLD
 
 
 class TestJudge:
@@ -889,3 +1026,93 @@ class TestTranslation:
             out = discovery._localize_enrichment(enrichment, "timber", set())
         tr.assert_not_called()      # already-English sites cost no translation
         assert out == enrichment
+
+
+class TestTranslateProfile:
+    def test_core_phrase_compound_attributed_to_all_tokens(self):
+        # Dutch compounds the core phrase into ONE word that per-token translation
+        # can never produce; that word co-evidences the whole chunk.
+        def fake_translate(text, target, source="auto"):
+            return {
+                "sustainability": "duurzaamheid",
+                "consultancy": "adviesbureau",
+                "sustainability consultancy": "duurzaamheidsadvies",
+            }.get(text, text)  # unknown inputs echo (round-trip keeps the term)
+
+        profile = discovery.icp_phrases.parse_icp("Sustainability Consultancy for SMEs")
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            strong, weak, prov = discovery._translate_profile(profile, "nl")
+        assert {"duurzaamheid", "adviesbureau", "duurzaamheidsadvies"} <= strong
+        assert "duurzaamheidsadvies" in prov["sustainability"]
+        assert "duurzaamheidsadvies" in prov["consultancy"]
+        assert "duurzaamheid" in prov["sustainability"]
+        assert "duurzaamheid" not in prov.get("consultancy", set())
+
+    def test_qualifier_translations_are_weak(self):
+        def fake_translate(text, target, source="auto"):
+            return {"plumbing": "loodgieterswerk", "dentists": "tandartsen"}.get(text, text)
+
+        profile = discovery.icp_phrases.parse_icp("Plumbing for dentists")
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            strong, weak, prov = discovery._translate_profile(profile, "nl")
+        assert "loodgieterswerk" in strong
+        assert "tandartsen" in weak and "tandartsen" not in strong
+        assert "tandartsen" in prov["dentists"]
+
+    def test_multiword_phrase_result_attributes_only_full_phrase(self):
+        # A leaked token like "gestion" must never co-evidence the OTHER core token;
+        # only the full native phrase speaks for the whole chunk.
+        def fake_translate(text, target, source="auto"):
+            return {
+                "waste": "déchets",
+                "management": "gestion",
+                "waste management": "gestion des déchets",
+            }.get(text, text)
+
+        profile = discovery.icp_phrases.parse_icp("Waste Management")
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            strong, weak, prov = discovery._translate_profile(profile, "fr")
+        assert "gestion des déchets" in strong
+        assert "gestion des déchets" in prov["waste"]
+        assert "gestion des déchets" in prov["management"]
+        assert "gestion" not in prov["waste"]          # leaked token stays put
+        assert {"gestion", "déchets"} <= weak
+
+
+class TestTranslateExpansionTerms:
+    def test_multiword_result_attribution_safe_as_phrase_only(self):
+        # Regression (censo.nl): "professional services" (consultancy cluster) ->
+        # "zakelijke dienstverlening"; the leaked token "zakelijke" (plain Dutch
+        # "business") evidenced the consultancy token and verified an energy
+        # installer for a sustainability-consultancy ICP.
+        def fake_translate(text, target, source="auto"):
+            return {"professional services": "zakelijke dienstverlening",
+                    "plywood": "kontrplak"}.get(text, text)
+
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            flat, safe = discovery._translate_expansion_terms(
+                {"professional services", "plywood"}, "nl")
+        assert {"zakelijke", "dienstverlening", "zakelijke dienstverlening", "kontrplak"} <= flat
+        assert "zakelijke dienstverlening" in safe   # full phrase: precise
+        assert "kontrplak" in safe                   # single-word result: precise
+        assert "zakelijke" not in safe               # leaked token: weak only
+
+    def test_leaked_token_no_longer_coevidences_core(self):
+        enr = {"website_status": "ok",
+               "company_summary": "Censo gaat voorop in het verduurzamen van zakelijk Nederland.",
+               "personalization_facts": ""}
+        icp = "Sustainability Consultancy for SMEs"
+        prov = {"sustainability": {"duurzame", "duurzaamheid"},
+                "consultancy": {"zakelijke dienstverlening"}}   # phrase-only attribution
+        weak = {"duurzame", "zakelijke", "zakelijke dienstverlening"}
+        assert not discovery._icp_evidence(icp, enr, set(), weak, prov)
+
+
+class TestQuotedPhraseQuery:
+    def test_multiword_core_adds_quoted_template(self):
+        queries = discovery.region_query_templates("Sustainability Consultancy for SMEs", "Netherlands")
+        assert '"sustainability consultancy" Netherlands' in queries
+
+    def test_single_word_icp_unchanged(self):
+        queries = discovery.region_query_templates("timber", "Turkey")
+        assert not any(q.startswith('"') for q in queries)

@@ -110,6 +110,58 @@ class TestLexicon:
         assert "warehousing" not in icp_expansion._lexicon_terms("courier")
         assert "courier" not in icp_expansion._lexicon_terms("warehousing")
 
+    def test_experiment_gap_clusters_covered(self):
+        # These ICPs returned ZERO lexicon terms in the Datamuse help-vs-harm
+        # experiment; coverage now comes from curated clusters, offline.
+        assert {"pulp mill", "papermaking"} <= icp_expansion._lexicon_terms("Paper Mill")
+        assert "additive manufacturing" in icp_expansion._lexicon_terms("3D printing services")
+        assert {"vineyard", "vintner"} <= icp_expansion._lexicon_terms("Wine producers")
+        assert {"arabica", "robusta"} <= icp_expansion._lexicon_terms("Coffee exporter")
+        assert "skincare" in icp_expansion._lexicon_terms("Organic cosmetics brands")
+        # "paper" alone stays out (polysemous: newspaper, research paper).
+        assert icp_expansion._lexicon_terms("paper") == set()
+
+    def test_cluster_hygiene(self):
+        # Mechanical guard for the failure classes this lexicon has already paid
+        # for: members double as matcher evidence and reverse keys, so no member
+        # may be a generic ICP word, an expansion stopword, a documented
+        # cross-industry polyseme, an everyday word measured to leak ("health"),
+        # or geography (country/city/demonym — region fit has its own layer).
+        from opencold import icp_phrases, icp_synonyms
+        banned = (
+            icp_phrases.GENERIC_ICP_TERMS
+            | icp_expansion._EXTRA_STOPWORDS
+            | {"policy", "claims", "api", "developer", "agency", "platform",
+               "media", "power", "infrastructure", "health", "casting", "studio"}
+        )
+        geo = icp_expansion._geo_terms()
+        for cluster in icp_synonyms.CLUSTERS:
+            for member in cluster:
+                m = member.strip().lower()
+                assert m == member and len(m) >= 2, f"unnormalised member: {member!r}"
+                assert m not in banned, f"banned member: {member!r}"
+                assert m not in geo, f"geographic member: {member!r}"
+
+    def test_new_vertical_coverage(self):
+        # Spot checks across the deepened verticals (single-word stem keys and
+        # multi-word substring keys both fire).
+        assert "metal fabrication" in icp_expansion._lexicon_terms("Welding services")
+        assert "venture capital" in icp_expansion._lexicon_terms("Private Equity firms")
+        assert "barbershop" in icp_expansion._lexicon_terms("hairdressers")
+        assert "wind turbines" in icp_expansion._lexicon_terms("wind farm developers")
+        assert "abattoir" in icp_expansion._lexicon_terms("Meat exporters")
+        assert "luminaires" in icp_expansion._lexicon_terms("LED lighting manufacturers")
+        assert "fuel cell" in icp_expansion._lexicon_terms("green hydrogen")
+        assert "veterinarian" in icp_expansion._lexicon_terms("Veterinary clinics")
+
+    def test_deliberate_separation_kept(self):
+        # Adjacent industries stay un-bridged: physical security is not cyber,
+        # cold chain is not general warehousing, banking never keys from "bank"
+        # (bare "banking"/"bank" stem-match "bank transfer" on any contact page).
+        assert "cctv" not in icp_expansion._lexicon_terms("cybersecurity")
+        assert "warehousing" not in icp_expansion._lexicon_terms("cold chain")
+        assert icp_expansion._lexicon_terms("bank") == set()
+
 
 class TestDatamuse:
     def test_parsed_and_filtered(self):
@@ -120,6 +172,19 @@ class TestDatamuse:
         assert "lumber" in out and "sawmill" in out and "wood products" in out
         for junk in ("the", "services", "123"):
             assert junk not in out
+
+    def test_everyday_english_filtered_by_frequency(self):
+        # Measured harm: ml("plumbing") returns water(278/M)/line(187)/health(161) —
+        # enough for an insurance page to pass the weak-evidence gate. Specific
+        # industry terms sit far below the ceiling; untagged results are kept.
+        payload = [{"word": "water", "tags": ["f:278.40"]},
+                   {"word": "health", "tags": ["f:161.05"]},
+                   {"word": "sewerage", "tags": ["f:0.52"]},
+                   {"word": "pipework", "tags": ["f:bogus"]},
+                   {"word": "drainlayer"}]
+        with patch_urlopen(_FakeResp(payload)):
+            out = icp_expansion._datamuse("plumbing")
+        assert out == ["sewerage", "pipework", "drainlayer"]
 
     def test_returns_ordered_list(self):
         payload = [{"word": "lumber"}, {"word": "sawmill"}]
@@ -165,16 +230,105 @@ class TestExpandIcp:
 
     def test_lexicon_prioritized_over_datamuse(self, monkeypatch):
         # Lexicon terms fill the cap before noisier Datamuse terms.
-        monkeypatch.setattr(icp_expansion, "_datamuse", lambda tok: ["geyser", "blacksmith"])
+        monkeypatch.setattr(icp_expansion, "_datamuse",
+                            lambda tok, rels=("ml", "rel_trg"): ["geyser", "blacksmith"])
         out = icp_expansion.expand_icp("timber", use_llm=False, use_datamuse=True)
         assert "sawmill" in out  # curated kept
+
+
+class TestGroupedExpansion:
+    def test_lexicon_attribution_per_token(self):
+        flat, by_token = icp_expansion._lexicon_terms_grouped("Sustainability Consultancy for SMEs")
+        assert "esg" in by_token["sustainability"]
+        assert "advisory" in by_token["consultancy"]
+        # Same-meaning cluster members never cross tokens.
+        assert "advisory" not in by_token["sustainability"]
+        assert "esg" not in by_token["consultancy"]
+        assert flat == set().union(*by_token.values())
+
+    def test_multiword_key_attributes_to_contained_tokens(self):
+        # "waste management" is a lexicon key: its cluster vouches for BOTH tokens
+        # (trusted phrase-level equivalence).
+        _, by_token = icp_expansion._lexicon_terms_grouped("Waste Management")
+        assert "recycling" in by_token["waste"]
+        assert "recycling" in by_token["management"]
+
+    def test_datamuse_attribution_by_relation_quality(self):
+        # Per-token means-like results attribute; phrase-level results and loose
+        # per-token associations (coffee -> urn) stay flat-only.
+        def fake_dm(term, rels=("ml", "rel_trg")):
+            if term == "paper mill":
+                return ["paperworks"]                      # phrase-level: flat only
+            if rels == ("ml",):
+                return {"paper": ["pulp"], "mill": ["milling"]}.get(term, [])
+            if rels == ("rel_trg",):
+                return {"paper": ["stationery"], "mill": ["grindstone"]}.get(term, [])
+            return []
+
+        with patch.object(icp_expansion, "_datamuse", side_effect=fake_dm):
+            result = icp_expansion.expand_icp_grouped("Paper Mill", use_llm=False)
+        assert {"paperworks", "pulp", "milling", "stationery", "grindstone"} <= result.flat
+        assert "pulp" in result.by_token["paper"]
+        assert "milling" in result.by_token["mill"]
+        attributed = set().union(*result.by_token.values())
+        assert "paperworks" not in attributed      # phrase-level never attributes
+        assert "stationery" not in attributed      # associations never attribute
+        assert "grindstone" not in attributed
+        # ...while lexicon phrase-key members ARE attributed, to both tokens.
+        assert "pulp mill" in result.by_token["paper"]
+        assert "pulp mill" in result.by_token["mill"]
+
+    def test_attributed_terms_survive_phrase_flood(self):
+        # Regression (coffee exporter): phrase-level results used to fill the cap
+        # first, starving the attributable per-token terms out of `flat`.
+        def fake_dm(term, rels=("ml", "rel_trg")):
+            if term == "paper mill":
+                return [f"noise{i}" for i in range(40)]
+            if rels == ("ml",):
+                return {"paper": ["pulp"], "mill": ["milling"]}.get(term, [])
+            return []
+
+        with patch.object(icp_expansion, "_datamuse", side_effect=fake_dm):
+            result = icp_expansion.expand_icp_grouped("Paper Mill", use_llm=False)
+        assert "pulp" in result.by_token["paper"]
+        assert "milling" in result.by_token["mill"]
+
+    def test_geo_terms_never_expansion_candidates(self):
+        # Datamuse associates "coffee exporter" with producer countries; a region
+        # word as a matcher term makes every local site "match" the ICP.
+        for geo in ("uganda", "ugandan", "kampala", "ethiopia", "brazil"):
+            assert not icp_expansion._good_candidate(geo), geo
+        assert icp_expansion._good_candidate("arabica")
+
+    def test_views_never_disagree(self):
+        with patch.object(icp_expansion, "_datamuse", return_value=[]):
+            result = icp_expansion.expand_icp_grouped("timber", use_llm=False)
+        for terms in result.by_token.values():
+            assert terms <= result.flat
+
+    def test_grouped_cache_round_trip(self):
+        with patch.object(icp_expansion, "_datamuse", return_value=["lumberjack"]) as dm:
+            a = icp_expansion.expand_icp_grouped("timber", use_llm=False)
+            first_calls = dm.call_count
+            b = icp_expansion.expand_icp_grouped("timber", use_llm=False)
+        assert dm.call_count == first_calls       # second call served from cache
+        assert a.flat == b.flat and a.by_token == b.by_token
+
+    def test_flat_view_delegates(self):
+        with patch.object(icp_expansion, "_datamuse", return_value=[]):
+            assert icp_expansion.expand_icp("timber", use_llm=False) == \
+                icp_expansion.expand_icp_grouped("timber", use_llm=False).flat
+
+    def test_cache_key_preserves_core_order(self):
+        assert icp_expansion._norm_v2("Sustainability Consultancy") != \
+            icp_expansion._norm_v2("Consultancy for Sustainability")
 
 
 class TestCache:
     def test_round_trip_no_second_network(self, monkeypatch):
         calls = {"n": 0}
 
-        def fake_dm(tok):
+        def fake_dm(tok, rels=("ml", "rel_trg")):
             calls["n"] += 1
             return ["lumber"]
 
@@ -187,13 +341,13 @@ class TestCache:
         assert (config.CONFIG_DIR / "icp_expansions.json").exists()
 
     def test_sig_separates_llm_on_off(self, monkeypatch):
-        monkeypatch.setattr(icp_expansion, "_datamuse", lambda tok: [])
+        monkeypatch.setattr(icp_expansion, "_datamuse", lambda tok, rels=("ml", "rel_trg"): [])
         icp_expansion.expand_icp("timber", use_llm=False, use_datamuse=True)
         with patch_complete('{"terms": ["sawmill"]}'):
             icp_expansion.expand_icp("timber", use_llm=True, provider={"type": "x"}, use_datamuse=True)
         keys = list(icp_expansion._load_cache().keys())
-        assert any(k.endswith("|l1d") for k in keys)
-        assert any(k.endswith("|l1dm") for k in keys)
+        assert any(k.endswith("|v6l1d") for k in keys)
+        assert any(k.endswith("|v6l1dm") for k in keys)
 
 
 class TestExpansionQueries:
@@ -240,7 +394,10 @@ class TestExpansionEndToEnd:
         with patch("opencold.discovery.discover_company_candidates", return_value=candidates), \
              patch("opencold.discovery.web_search", return_value=[]), \
              patch("opencold.enricher._fetch_html", _fetch_for(html)), \
-             patch("opencold.icp_expansion.expand_icp", return_value={"sawmill", "plywood"}):
+             patch("opencold.icp_expansion.expand_icp_grouped",
+                   return_value=icp_expansion.ExpansionResult(
+                       flat={"sawmill", "plywood"},
+                       by_token={"timber": {"sawmill", "plywood"}})):
             rows = discovery.discover_company_rows("timber", "United States", limit=5, use_llm=False)
         row = next(r for r in rows if "Yildiz" in (r.get("company") or ""))
         assert "sawmill" in row["matched_terms"] or "plywood" in row["matched_terms"]
