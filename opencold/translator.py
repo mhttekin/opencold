@@ -2,9 +2,11 @@
 
 Rotates across public Lingva Translate instances (privacy-respecting proxies in
 front of Google Translate), falling back to MyMemory, then to the original text.
-This module never raises: a translation failure degrades discovery to its
-previous English-only behaviour rather than breaking a run. No API keys, no
-signup — suitable for a hosted, free-to-use front-end.
+Failing instances are remembered and skipped for a cooldown period, so a dead
+pool is paid for once per run — not once per translated text. This module never
+raises: a translation failure degrades discovery to its previous English-only
+behaviour rather than breaking a run. No API keys, no signup — suitable for a
+hosted, free-to-use front-end.
 
 Volume is kept tiny by design (the callers translate the ICP keyword and each
 company's already-distilled facts, never raw HTML), and every result is cached
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 import json
 import random
+import time
 import urllib.parse
 import urllib.request
 
@@ -34,6 +37,20 @@ _LINGVA_INSTANCES = (
 _MYMEMORY = "https://api.mymemory.translated.net/get"
 _UA = "opencold/0.1 (discovery translation)"
 _TIMEOUT = 4.0
+# Volunteer instances die in bulk (the whole official list has been observed
+# dead at once). Without memory, EVERY translate() call re-walks the dead pool
+# — at ~4s per attempt that turns a Poland/"wood manufacturing" run (~60 terms,
+# queries, and facts to translate) into many minutes of silent hang before the
+# first progress line. An instance that fails is skipped for _INSTANCE_COOLDOWN
+# seconds, so a run pays for the dead pool once; the cooldown (not a permanent
+# mark) lets long-lived server processes recover instances that come back.
+_INSTANCE_COOLDOWN = 600.0
+# Hard ceiling on one call's instance walk. _TIMEOUT bounds each socket
+# operation but not DNS resolution, so a dead-but-resolving host can exceed it;
+# the budget stops starting new attempts once a call has burned its share.
+_WALK_BUDGET = 8.0
+# Instance base URL -> monotonic time until which it is skipped.
+_SKIP_UNTIL: dict[str, float] = {}
 
 # Our inputs are short (keywords, ≤5 distilled facts); skip pathological blobs
 # rather than risk a slow request or a provider rejection.
@@ -54,20 +71,32 @@ def _get(url: str, timeout: float = _TIMEOUT) -> str | None:
 
 
 def _lingva(text: str, target: str, source: str) -> str | None:
-    """Translate via a rotating pool of Lingva instances. First hit wins."""
+    """Translate via a rotating pool of Lingva instances. First hit wins.
+
+    Failure-aware: an instance that yields no usable translation is put on a
+    cooldown and skipped by later calls, and each call stops walking the pool
+    once _WALK_BUDGET seconds are spent — so a dead pool costs one bounded walk
+    per run instead of one per translated text."""
     path = "/".join(("api", "v1", source, target, urllib.parse.quote(text, safe="")))
     start = random.randrange(len(_LINGVA_INSTANCES))
+    deadline = time.monotonic() + _WALK_BUDGET
     for offset in range(len(_LINGVA_INSTANCES)):
         base = _LINGVA_INSTANCES[(start + offset) % len(_LINGVA_INSTANCES)]
+        if _SKIP_UNTIL.get(base, 0.0) > time.monotonic():
+            continue
+        if time.monotonic() >= deadline:
+            break
         body = _get(f"{base}/{path}")
-        if not body:
-            continue
-        try:
-            translation = json.loads(body).get("translation")
-        except (ValueError, AttributeError):
-            continue
+        translation = None
+        if body:
+            try:
+                translation = json.loads(body).get("translation")
+            except (ValueError, AttributeError):
+                translation = None
         if isinstance(translation, str) and translation.strip():
+            _SKIP_UNTIL.pop(base, None)
             return translation.strip()
+        _SKIP_UNTIL[base] = time.monotonic() + _INSTANCE_COOLDOWN
     return None
 
 
@@ -81,7 +110,14 @@ def _mymemory(text: str, target: str, source: str) -> str | None:
     if not body:
         return None
     try:
-        translation = json.loads(body).get("responseData", {}).get("translatedText")
+        data = json.loads(body)
+        # On quota/abuse errors MyMemory still returns 200 with its warning text
+        # in translatedText ("MYMEMORY WARNING: YOU USED ALL AVAILABLE FREE
+        # TRANSLATIONS...") and a non-200 responseStatus — that junk must not be
+        # cached as a translation and leak into matcher terms.
+        if str(data.get("responseStatus", 200)) != "200":
+            return None
+        translation = data.get("responseData", {}).get("translatedText")
     except (ValueError, AttributeError):
         return None
     if isinstance(translation, str) and translation.strip():
