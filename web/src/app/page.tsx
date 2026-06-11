@@ -26,7 +26,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 
 import DiscoveryGraph from "@/components/DiscoveryGraph";
-import WorldMap from "@/components/WorldMap";
+import WorldMap, {CountryPicker} from "@/components/WorldMap";
 import {
   parseCsv,
   pollRun,
