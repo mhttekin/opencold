@@ -360,8 +360,47 @@ textarea {
 /* ── range slider (discovery: companies to discover) ── */
 
 .range-slider {
+  -webkit-appearance: none;
+  appearance: none;
   cursor: pointer;
   height: 18px;
+  background: transparent;
+}
+
+.range-slider::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: rgb(228 228 231);
+}
+
+.range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5.5px;
+  border: none;
+  border-radius: 999px;
+  background: #18181b;
+  transition: transform 140ms ease;
+}
+
+.range-slider:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+.range-slider::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: rgb(228 228 231);
+}
+
+.range-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 999px;
+  background: #18181b;
 }
 
 .range-slider:focus-visible {
@@ -370,14 +409,9 @@ textarea {
 
 /* ── world map (discovery country picker) ── */
 
+/* bare atlas canvas — the map sits directly on the page, no card chrome */
 .worldmap-frame {
   position: relative;
-  overflow: hidden;
-  border-radius: 16px;
-  border: 1px solid rgb(228 228 231);
-  background:
-    radial-gradient(ellipse 90% 80% at 50% 0%, rgb(250 250 250) 0%, rgb(244 244 245) 100%);
-  padding: 14px;
 }
 
 /* zoom controls */
@@ -394,71 +428,71 @@ textarea {
 .worldmap-ctrl {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  border: 1px solid rgb(228 228 231);
-  background: rgb(255 255 255 / 0.9);
-  color: rgb(82 82 91);
-  backdrop-filter: blur(4px);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: rgb(255 255 255 / 0.65);
+  color: rgb(113 113 122);
   cursor: pointer;
   transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
 }
 
 .worldmap-ctrl:hover:not(:disabled) {
-  border-color: rgb(161 161 170);
+  border-color: #e5e4df;
   color: #0a0a0a;
   background: white;
 }
 
 .worldmap-ctrl:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: default;
 }
 
-.worldmap-label {
-  position: absolute;
-  top: 12px;
-  left: 14px;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  height: 26px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid rgb(228 228 231);
-  background: rgb(255 255 255 / 0.85);
-  backdrop-filter: blur(4px);
-  font-size: 12px;
-  pointer-events: none;
-}
-
 .worldmap-country {
-  fill: rgb(228 228 231);
-  stroke: white;
+  fill: #e2e1da;
+  stroke: #fafaf7;
   stroke-width: 0.5;
   vector-effect: non-scaling-stroke;
   cursor: pointer;
   outline: none;
-  transition: fill 140ms ease;
+  transition: fill 180ms ease;
 }
 
 .worldmap-country:hover {
-  fill: rgb(161 161 170);
+  fill: #d0cfc7;
 }
 
 .worldmap-country:focus-visible {
-  fill: rgb(161 161 170);
-  stroke: #0a0a0a;
+  fill: #d0cfc7;
+  stroke: #18181b;
   stroke-width: 0.9;
 }
 
 .worldmap-country--on {
-  fill: #0a0a0a;
+  fill: #a9ddc3;
 }
 
 .worldmap-country--on:hover {
-  fill: rgb(39 39 42);
+  fill: #94d2b3;
+}
+
+/* selected-country labels + localized term previews */
+.worldmap-name {
+  font-size: 10px;
+  font-weight: 600;
+  fill: #3f3f46;
+  paint-order: stroke;
+  stroke: rgb(250 250 247 / 0.85);
+  stroke-width: 2.5px;
+}
+
+.worldmap-term {
+  font-size: 9px;
+  font-style: italic;
+  fill: #52525b;
+  paint-order: stroke;
+  stroke: rgb(250 250 247 / 0.85);
+  stroke-width: 2.5px;
 }
 

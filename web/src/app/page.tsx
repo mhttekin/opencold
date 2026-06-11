@@ -16,6 +16,7 @@ import {
   Phone,
   Play,
   Send,
+  Settings2,
   ShieldCheck,
   Star,
   X,
@@ -152,6 +153,72 @@ const REVIEW_COMPANIES = MOCK_COMPANIES.filter((c) => c.confidence !== "verified
 const ORDERED_COMPANIES = [...VERIFIED_COMPANIES, ...REVIEW_COMPANIES];
 const WALL_INDEX = VERIFIED_COMPANIES.length;
 
+// Localized search-term previews for the discovery setup atlas — a small
+// deterministic sample of what the translation channel would produce, keyed
+// by common ICP stems. Purely illustrative; sparse on purpose.
+const LOCAL_TERMS: { match: RegExp; terms: Record<string, string> }[] = [
+  {
+    match: /logisti|freight|shipping|forward|transport/i,
+    terms: {
+      "United Kingdom": "freight forwarders",
+      Germany: "Spedition",
+      France: "transitaires",
+      Spain: "operadores logísticos",
+      Italy: "spedizionieri",
+      Netherlands: "expediteurs",
+      Brazil: "transportadoras",
+      Mexico: "operadores logísticos",
+    },
+  },
+  {
+    match: /insur|underwrit/i,
+    terms: {
+      "United Kingdom": "insurance brokers",
+      Germany: "Versicherungsmakler",
+      France: "compagnies d’assurance",
+      Spain: "aseguradoras",
+      "Saudi Arabia": "شركات التأمين",
+      "United Arab Emirates": "شركات التأمين",
+      Morocco: "compagnies d’assurance",
+      Brazil: "seguradoras",
+    },
+  },
+  {
+    match: /dental|dentist/i,
+    terms: {
+      Mexico: "clínicas dentales",
+      Brazil: "clínicas odontológicas",
+      Spain: "clínicas dentales",
+      Colombia: "clínicas odontológicas",
+      Germany: "Zahnarztpraxen",
+      France: "cabinets dentaires",
+    },
+  },
+  {
+    match: /software|saas|tech/i,
+    terms: {
+      Germany: "Softwareunternehmen",
+      France: "éditeurs de logiciels",
+      Spain: "empresas de software",
+      Brazil: "empresas de software",
+      Netherlands: "softwarebedrijven",
+    },
+  },
+];
+
+function localTermsFor(
+  icp: string,
+  selectedCountries: string[],
+): Record<string, string> {
+  const rule = LOCAL_TERMS.find((r) => r.match.test(icp));
+  if (!rule) return {};
+  return Object.fromEntries(
+    selectedCountries.flatMap((c) =>
+      rule.terms[c] ? [[c, rule.terms[c]] as [string, string]] : [],
+    ),
+  );
+}
+
 /* ── helpers ── */
 
 function warningBadge(w: string) {
@@ -209,14 +276,16 @@ export default function Home() {
   const [icp, setIcp] = useState("");
   const [countries, setCountries] = useState<string[]>([]);
 
-  // discovery — right sidebar accordions
-  const [dProviderOpen, setDProviderOpen] = useState(false);
-  const [dOptionsOpen, setDOptionsOpen] = useState(false);
+  // discovery — advanced settings accordion
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // discovery options
   const [targetCount, setTargetCount] = useState(25);
   const [findPeople, setFindPeople] = useState(false);
-  const [requireContact, setRequireContact] = useState(false);
+  const [requirePhone, setRequirePhone] = useState(false);
+  const [requireEvidence, setRequireEvidence] = useState(false);
+  const [excludeDirs, setExcludeDirs] = useState(true);
+  const [expandTerms, setExpandTerms] = useState(true);
 
   // discovery results
   const [openCompany, setOpenCompany] = useState<number | null>(0);
@@ -288,6 +357,12 @@ export default function Home() {
   // discovery derived
   const hasIcp = icp.trim().length > 0;
   const canRunDiscovery = hasIcp && countries.length > 0;
+  const localTerms = localTermsFor(icp, countries);
+  const localTermCount = Object.keys(localTerms).length;
+
+  // the discovery workspace runs wider than the rest of the site — the
+  // header (and footer) animate their max-width to align with it
+  const discoveryWorkspace = stage === "configure" && mode === "discovery";
   const toggleCountry = (name: string) =>
     setCountries((prev) =>
       prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name],
@@ -505,7 +580,11 @@ export default function Home() {
       />
 
       {/* header */}
-      <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 pb-5 pt-8 sm:px-10 sm:pt-10">
+      <header
+        className={`relative z-10 mx-auto flex w-full items-center justify-between px-6 pb-5 pt-8 transition-[max-width] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] sm:px-10 sm:pt-10 ${
+          discoveryWorkspace ? "max-w-[1480px]" : "max-w-6xl"
+        }`}
+      >
         <button
           className="text-[15px] font-semibold tracking-tight"
           onClick={resetHome}
@@ -848,193 +927,57 @@ export default function Home() {
 
       {/* ── STAGE: CONFIGURE (discovery) ── */}
       {stage === "configure" && mode === "discovery" && (
-        <section className="configure-enter relative z-10 mx-auto max-w-5xl px-6 pb-20 pt-6 sm:pt-10">
-          {/* top bar — discovery indicator + run button */}
-          <div className="mb-8 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="grid size-7 place-items-center rounded-lg bg-zinc-100">
-                <Compass size={14} className="text-zinc-500" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Company discovery</p>
-                <p className="text-xs text-zinc-400">
-                  No file needed — describe and target
-                </p>
-              </div>
-            </div>
-            <button
-              disabled={!canRunDiscovery}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-zinc-900 px-5 text-sm font-medium text-white transition disabled:opacity-30 active:scale-[0.97]"
-              onClick={startRun}
+        <section className="relative z-10 mx-auto w-full max-w-[1480px] flex-1 px-6 pb-8 pt-2 sm:px-10 sm:pt-4">
+          {/* explicit viewport-based height — percentage chains (h-full) don't
+              resolve through a flex-1 section under min-h-screen, so the
+              workspace height is pinned here and everything inside fills it */}
+          <div className="grid items-stretch gap-10 lg:h-[calc(100vh-190px)] lg:min-h-[540px] lg:grid-cols-[380px_1fr] lg:grid-rows-[minmax(0,1fr)] lg:gap-10">
+            {/* ── LEFT: setup rail ── */}
+            <motion.div
+              initial={{ opacity: 0, x: -16 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+              className="relative flex flex-col lg:h-full lg:min-h-0"
             >
-              <Play size={14} />
-              Run
-            </button>
-          </div>
-
-          {/* two-column layout */}
-          <div className="grid items-start gap-8 lg:grid-cols-[1fr_340px]">
-            {/* ── LEFT: sections ── */}
-            <div className="space-y-10">
-              {/* Section 1: ICP */}
-              <div className="config-section">
-                <div className="config-section-header">
-                  <span className="config-step-number">1</span>
-                  <div>
-                    <h2 className="text-[15px] font-semibold tracking-tight">
-                      What do the target companies do?
-                    </h2>
-                    <p className="mt-0.5 text-sm text-zinc-400">
-                      Describe your ideal customer — their industry, product, or
-                      niche.
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-5">
-                  <label className="block text-xs font-medium text-zinc-500">
-                    Target profile (ICP)
-                    <textarea
-                      className="mt-1.5 min-h-[84px] w-full resize-y rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm font-normal text-zinc-900 outline-none transition placeholder:text-zinc-300 focus:border-zinc-900"
-                      value={icp}
-                      onChange={(e) => setIcp(e.target.value)}
-                      placeholder="e.g. commercial insurance brokers, B2B logistics startups, independent dental clinics..."
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {/* Section 2: Countries — expands once ICP is filled */}
-              <div
-                className="accordion-body"
-                style={{ gridTemplateRows: hasIcp ? "1fr" : "0fr" }}
-              >
-                <div className="min-h-0 overflow-hidden">
-                  <div className="config-section">
-                    <div className="config-section-header">
-                      <span className="config-step-number">2</span>
-                      <div>
-                        <h2 className="text-[15px] font-semibold tracking-tight">
-                          Which countries should we target?
-                        </h2>
-                        <p className="mt-0.5 text-sm text-zinc-400">
-                          Click the map or use the suggestions — pick one or more.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-5">
-                      <WorldMap
-                        selected={countries}
-                        onToggle={toggleCountry}
-                        onClear={() => setCountries([])}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 3: Ready to run — expands once ICP + countries set */}
-              <div
-                className="accordion-body"
-                style={{ gridTemplateRows: canRunDiscovery ? "1fr" : "0fr" }}
-              >
-                <div className="min-h-0 overflow-hidden">
-                  <div className="config-section" style={{ borderBottom: "none" }}>
-                    <div className="config-section-header">
-                      <span className="config-step-number">3</span>
-                      <div>
-                        <h2 className="text-[15px] font-semibold tracking-tight">
-                          Ready to discover
-                        </h2>
-                        <p className="mt-0.5 text-sm text-zinc-400">
-                          We&apos;ll seed candidates, crawl their sites, and verify
-                          each match against your profile and region.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-5">
-                      <button
-                        disabled={!canRunDiscovery}
-                        className="inline-flex h-10 items-center gap-2 rounded-lg bg-zinc-900 px-6 text-sm font-medium text-white transition disabled:opacity-30 active:scale-[0.97]"
-                        onClick={startRun}
-                      >
-                        <Play size={14} />
-                        Run discovery
-                        <ArrowRight size={14} />
-                      </button>
-                      <p className="mt-3 text-xs text-zinc-400">
-                        Provider is optional — without one, discovery runs
-                        deterministic-only.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ── RIGHT: sidebar accordions ── */}
-            <aside className="space-y-3 lg:sticky lg:top-6 lg:self-start">
-              {/* Provider — optional for discovery */}
-              <Accordion
-                title="Provider"
-                badge="optional"
-                open={dProviderOpen}
-                onToggle={() => setDProviderOpen(!dProviderOpen)}
-                filled={provider === "proxy" ? proxyUrl.length > 0 : apiKey.length > 0}
-              >
-                <p className="mb-3 text-[11px] leading-relaxed text-zinc-400">
-                  Optional. With a provider, an LLM seeds known companies and judges
-                  each match. Without one, discovery uses search + deterministic
-                  checks.
+              {/* scrollable setup content — the run button stays pinned
+                  below while this area scrolls (long Advanced accordion) */}
+              <div className="flex flex-col gap-7 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pb-32">
+              {/* header */}
+              <div>
+                <h1 className="text-[19px] font-semibold tracking-tight">
+                  Company discovery
+                </h1>
+                <p className="mt-1 text-[13px] leading-relaxed text-zinc-400">
+                  Describe who you sell to, then choose where OpenCold should
+                  search.
                 </p>
-                <ProviderFields
-                  provider={provider}
-                  switchProvider={switchProvider}
-                  apiKey={apiKey}
-                  setApiKey={setApiKey}
-                  selectedModel={selectedModel}
-                  setSelectedModel={setSelectedModel}
-                  customModel={customModel}
-                  setCustomModel={setCustomModel}
-                  modelDropOpen={modelDropOpen}
-                  setModelDropOpen={setModelDropOpen}
-                  proxyUrl={proxyUrl}
-                  setProxyUrl={setProxyUrl}
-                  proxyToken={proxyToken}
-                  setProxyToken={setProxyToken}
-                  proxyModel={proxyModel}
-                  setProxyModel={setProxyModel}
-                />
-              </Accordion>
+              </div>
 
-              {/* Options */}
-              <Accordion
-                title="Options"
-                open={dOptionsOpen}
-                onToggle={() => setDOptionsOpen(!dOptionsOpen)}
-              >
-                <div className="space-y-4">
-                  <SidebarToggle
-                    label="Find people"
-                    description="Also search a named contact per company"
-                    checked={findPeople}
-                    onChange={setFindPeople}
+              {/* target profile */}
+              <div>
+                <label className="block">
+                  <span className="text-sm font-medium text-zinc-800">
+                    What companies should we find?
+                  </span>
+                  <span className="mt-0.5 block text-xs text-zinc-400">
+                    Describe the industry, niche, or business type.
+                  </span>
+                  <textarea
+                    className="mt-2.5 min-h-[64px] w-full resize-y rounded-xl border border-zinc-200 bg-white/80 px-3.5 py-2.5 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-300 focus:border-zinc-400"
+                    value={icp}
+                    onChange={(e) => setIcp(e.target.value)}
+                    placeholder="e.g. logistics"
                   />
-                  <SidebarToggle
-                    label="Require contact"
-                    description="Drop companies with no email"
-                    checked={requireContact}
-                    onChange={setRequireContact}
-                  />
-                </div>
-              </Accordion>
+                </label>
+              </div>
 
-              {/* companies-to-discover slider */}
-              <div className="rounded-xl border border-zinc-100 bg-zinc-50/50 p-5">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+              {/* companies to discover */}
+              <div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-sm font-medium text-zinc-800">
                     Companies to discover
-                  </h3>
-                  <span className="text-sm font-semibold text-zinc-900">
+                  </span>
+                  <span className="font-code text-sm font-semibold text-zinc-900">
                     {targetCount}
                   </span>
                 </div>
@@ -1046,7 +989,7 @@ export default function Home() {
                   value={targetCount}
                   onChange={(e) => setTargetCount(Number(e.target.value))}
                   aria-label="Companies to discover"
-                  className="range-slider mt-4 w-full accent-zinc-900"
+                  className="range-slider mt-3 w-full"
                 />
                 <div className="mt-1 flex justify-between text-[10px] text-zinc-400">
                   <span>5</span>
@@ -1054,41 +997,173 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* run summary */}
-              <div className="rounded-xl border border-zinc-100 bg-zinc-50/50 p-5">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                  Run summary
-                </h3>
-                <dl className="mt-4 space-y-3 text-sm">
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-zinc-400">Profile</dt>
-                    <dd className="max-w-[180px] truncate text-right font-medium">
-                      {icp || "—"}
-                    </dd>
+              {/* advanced settings — one quiet row, everything inside */}
+              <div className="border-t border-zinc-100 pt-5">
+                <button
+                  onClick={() => setAdvancedOpen(!advancedOpen)}
+                  className="flex w-full items-center justify-between text-left"
+                >
+                  <span className="flex items-center gap-2 text-[13px] font-medium text-zinc-600">
+                    <Settings2 size={14} className="text-zinc-400" />
+                    Advanced settings
+                  </span>
+                  <ChevronDown
+                    size={14}
+                    className={`text-zinc-400 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+                <div
+                  className="accordion-body"
+                  style={{ gridTemplateRows: advancedOpen ? "1fr" : "0fr" }}
+                >
+                  <div className="min-h-0 overflow-hidden">
+                    <div className="space-y-4 pt-5">
+                      <SidebarToggle
+                        label="Find people"
+                        description="Also search a named contact per company"
+                        checked={findPeople}
+                        onChange={setFindPeople}
+                      />
+                      <SidebarToggle
+                        label="Require phone number"
+                        description="Drop companies with no phone"
+                        checked={requirePhone}
+                        onChange={setRequirePhone}
+                      />
+                      <SidebarToggle
+                        label="Require website evidence"
+                        description="Keep only matches verified on their own site"
+                        checked={requireEvidence}
+                        onChange={setRequireEvidence}
+                      />
+                      <SidebarToggle
+                        label="Exclude directories & marketplaces"
+                        description="Skip aggregators, listicles, and portals"
+                        checked={excludeDirs}
+                        onChange={setExcludeDirs}
+                      />
+                      <SidebarToggle
+                        label="Expand local language search terms"
+                        description="Search in each country’s own language"
+                        checked={expandTerms}
+                        onChange={setExpandTerms}
+                      />
+
+                      {/* provider — secondary, inside advanced */}
+                      <div className="border-t border-zinc-100 pt-4">
+                        <div className="mb-3 flex items-center gap-2">
+                          <span className="text-[13px] font-medium text-zinc-600">
+                            Provider
+                          </span>
+                          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
+                            optional
+                          </span>
+                        </div>
+                        <ProviderFields
+                          provider={provider}
+                          switchProvider={switchProvider}
+                          apiKey={apiKey}
+                          setApiKey={setApiKey}
+                          selectedModel={selectedModel}
+                          setSelectedModel={setSelectedModel}
+                          customModel={customModel}
+                          setCustomModel={setCustomModel}
+                          modelDropOpen={modelDropOpen}
+                          setModelDropOpen={setModelDropOpen}
+                          proxyUrl={proxyUrl}
+                          setProxyUrl={setProxyUrl}
+                          proxyToken={proxyToken}
+                          setProxyToken={setProxyToken}
+                          proxyModel={proxyModel}
+                          setProxyModel={setProxyModel}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <dt className="text-zinc-400">Countries</dt>
-                    <dd className="font-medium">{countries.length || "—"}</dd>
-                  </div>
-                  <div className="flex justify-between">
-                    <dt className="text-zinc-400">Target</dt>
-                    <dd className="font-medium">{targetCount} companies</dd>
-                  </div>
-                  <div className="flex justify-between">
-                    <dt className="text-zinc-400">Provider</dt>
-                    <dd className="max-w-[180px] truncate text-right font-mono text-xs font-medium">
-                      {(provider === "proxy" ? proxyUrl : apiKey)
-                        ? effectiveModel
-                        : "None"}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between">
-                    <dt className="text-zinc-400">Find people</dt>
-                    <dd className="font-medium">{findPeople ? "On" : "Off"}</dd>
-                  </div>
-                </dl>
+                </div>
               </div>
-            </aside>
+
+              </div>
+
+              {/* run — absolutely pinned to the rail's bottom edge; the
+                  setup content scrolls underneath, fading out behind it */}
+              <div className="hidden lg:absolute lg:inset-x-0 lg:bottom-0 lg:block lg:bg-gradient-to-t lg:from-[#FAFAF7] lg:from-70% lg:to-transparent lg:pt-7">
+                <div className="border-t border-zinc-100 pt-4">
+                  <button
+                    disabled={!canRunDiscovery}
+                    onClick={startRun}
+                    className="h-10 w-full rounded-lg bg-zinc-900 text-[13px] font-medium text-white transition hover:bg-zinc-700 active:scale-[0.99] disabled:bg-zinc-900/10 disabled:text-zinc-400"
+                  >
+                    Run discovery
+                  </button>
+                  <p className="mt-2.5 text-center font-code text-[11px] text-zinc-400">
+                    {canRunDiscovery
+                      ? `${countries.length} ${countries.length === 1 ? "country" : "countries"} · ${localTermCount} local terms · ${targetCount} companies`
+                      : !hasIcp
+                        ? "Describe your target companies to get started."
+                        : "Pick at least one country on the atlas."}
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* ── RIGHT: atlas workspace ── */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.12, duration: 0.6, ease: "easeOut" }}
+              className="relative flex flex-col gap-4 lg:h-full"
+            >
+              {/* soft boundary between rail and atlas */}
+              <div
+                aria-hidden
+                className="absolute -left-5 bottom-6 top-6 hidden w-px bg-gradient-to-b from-transparent via-zinc-200/80 to-transparent lg:block"
+              />
+
+              {/* workspace title */}
+              <div>
+                <p className="text-[13px] font-medium text-zinc-700">
+                  Choose where OpenCold should search
+                </p>
+                <p className="mt-0.5 text-xs text-zinc-400">
+                  Select countries on the atlas or search below.
+                </p>
+              </div>
+
+              {/* the atlas fills the middle of the workspace */}
+              <div className="h-[320px] sm:h-[380px] lg:h-auto lg:min-h-0 lg:flex-1">
+                <WorldMap
+                  selected={countries}
+                  onToggle={toggleCountry}
+                  terms={localTerms}
+                />
+              </div>
+
+              {/* country controls — docked to the atlas */}
+              <CountryPicker
+                selected={countries}
+                onToggle={toggleCountry}
+                onClear={() => setCountries([])}
+              />
+
+              {/* run — mobile only, after the atlas */}
+              <div className="lg:hidden">
+                <button
+                  disabled={!canRunDiscovery}
+                  onClick={startRun}
+                  className="h-10 w-full rounded-lg bg-zinc-900 text-[13px] font-medium text-white transition hover:bg-zinc-700 active:scale-[0.99] disabled:bg-zinc-900/10 disabled:text-zinc-400"
+                >
+                  Run discovery
+                </button>
+                <p className="mt-2.5 text-center font-code text-[11px] text-zinc-400">
+                  {canRunDiscovery
+                    ? `${countries.length} ${countries.length === 1 ? "country" : "countries"} · ${localTermCount} local terms · ${targetCount} companies`
+                    : !hasIcp
+                      ? "Describe your target companies to get started."
+                      : "Pick at least one country on the atlas."}
+                </p>
+              </div>
+            </motion.div>
           </div>
         </section>
       )}
@@ -1494,7 +1569,11 @@ export default function Home() {
       )}
 
       {/* ── footer ── */}
-      <footer className="font-code relative z-10 mx-auto mt-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-6 py-6 text-[11px] text-zinc-400 sm:px-10">
+      <footer
+        className={`font-code relative z-10 mx-auto mt-auto flex w-full flex-wrap items-center justify-between gap-2 px-6 py-6 text-[11px] text-zinc-400 transition-[max-width] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] sm:px-10 ${
+          discoveryWorkspace ? "max-w-[1480px]" : "max-w-6xl"
+        }`}
+      >
         <p>© 2026 opencold</p>
         <div className="flex items-center gap-5">
           <a
