@@ -20,9 +20,11 @@ import {
   Star,
   X,
 } from "lucide-react";
+import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 
+import DiscoveryGraph from "@/components/DiscoveryGraph";
 import WorldMap from "@/components/WorldMap";
 import {
   parseCsv,
@@ -199,7 +201,7 @@ function Counter({ value }: { value: number }) {
 
 export default function Home() {
   const [stage, setStage] = useState<Stage>("drop");
-  const [mode, setMode] = useState<Mode>("outreach");
+  const [mode, setMode] = useState<Mode>("discovery");
   const [fileName, setFileName] = useState("");
   const [dropHint, setDropHint] = useState<string | null>(null);
 
@@ -479,31 +481,31 @@ export default function Home() {
     }
   };
 
-  // mode navigation — outreach stays on the drop hero, discovery jumps
-  // straight to its configure panel (no file needed).
+  // mode navigation — both modes land on their hero; discovery is the
+  // default front door, its CTA moves on to the configure panel.
   const goOutreach = () => {
     setMode("outreach");
     setStage("drop");
   };
   const goDiscovery = () => {
     setMode("discovery");
-    setStage("configure");
+    setStage("drop");
   };
   const resetHome = () => {
     pollAbort.current?.abort();
     setStage("drop");
-    setMode("outreach");
+    setMode("discovery");
   };
 
   return (
-    <main className="relative min-h-screen bg-white text-zinc-900">
-      {/* dot background */}
+    <main className="relative flex min-h-screen flex-col bg-[#FAFAF7] text-zinc-900">
+      {/* notebook grid background */}
       <div
-        className={`dot-field ${stage !== "drop" ? "dot-field--fade" : ""}`}
+        className={`grid-field ${stage !== "drop" ? "grid-field--fade" : ""}`}
       />
 
       {/* header */}
-      <header className="relative z-10 flex items-center justify-between px-6 py-5 sm:px-10">
+      <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 pb-5 pt-8 sm:px-10 sm:pt-10">
         <button
           className="text-[15px] font-semibold tracking-tight"
           onClick={resetHome}
@@ -532,7 +534,7 @@ export default function Home() {
 
       {/* ── STAGE: DROP ── */}
       {stage === "drop" && (
-        <div className="relative z-10">
+        <div className="relative z-10 flex flex-1 flex-col">
           <div className="flex justify-center px-6 pt-2 sm:pt-4">
             <ModeSelector
               mode={mode}
@@ -540,25 +542,28 @@ export default function Home() {
               onDiscovery={goDiscovery}
             />
           </div>
-          <DropHero
-            onFile={async (file) => {
-              setDropHint(`Reading ${file.name}…`);
-              try {
-                const rows = parseCsv(await file.text());
-                if (rows.length === 0) {
-                  setDropHint("Couldn't read any rows — check the CSV header.");
-                  return;
-                }
-                setLeads(rows);
-                setDropHint(null);
-                startConfigure(file.name);
-              } catch {
-                setDropHint("Couldn't read that file.");
-              }
-            }}
-            hint={dropHint}
-            onHintClear={() => setDropHint(null)}
-          />
+          {mode === "discovery" ? (
+            <DiscoveryHero
+              onStart={(icpText) => {
+                if (icpText) setIcp(icpText);
+                setStage("configure");
+              }}
+            />
+          ) : (
+            <DropHero
+              onFile={(file) => {
+                console.log("Parsed file:", file);
+                setDropHint(`Reading ${file.name}…`);
+                // TODO: hand off file to processing pipeline
+                window.setTimeout(() => {
+                  setDropHint(null);
+                  startConfigure(file.name);
+                }, 1200);
+              }}
+              hint={dropHint}
+              onHintClear={() => setDropHint(null)}
+            />
+          )}
         </div>
       )}
 
@@ -1488,6 +1493,29 @@ export default function Home() {
         </div>
       )}
 
+      {/* ── footer ── */}
+      <footer className="font-code relative z-10 mx-auto mt-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-6 py-6 text-[11px] text-zinc-400 sm:px-10">
+        <p>© 2026 opencold</p>
+        <div className="flex items-center gap-5">
+          <a
+            href="https://github.com/mhttekin/opencold"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="transition hover:text-zinc-900"
+          >
+            github
+          </a>
+          <a
+            href="https://github.com/mhttekin/opencold#readme"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="transition hover:text-zinc-900"
+          >
+            docs
+          </a>
+        </div>
+      </footer>
+
       {/* ── confirm dialog ── */}
       {confirmOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/20 backdrop-blur-[2px] p-5">
@@ -1539,16 +1567,16 @@ function ModeSelector({
   return (
     <div className="inline-flex items-center gap-1 rounded-xl border border-zinc-200 bg-white/70 p-1 backdrop-blur">
       <ModeButton
-        active={mode === "outreach"}
-        onClick={onOutreach}
-        icon={<Mail size={14} />}
-        label="Outreach"
-      />
-      <ModeButton
         active={mode === "discovery"}
         onClick={onDiscovery}
         icon={<Compass size={14} />}
         label="Discovery"
+      />
+      <ModeButton
+        active={mode === "outreach"}
+        onClick={onOutreach}
+        icon={<Mail size={14} />}
+        label="Outreach"
       />
     </div>
   );
@@ -1858,6 +1886,158 @@ function SidebarToggle({
         <span className="toggle-thumb" />
       </span>
     </button>
+  );
+}
+
+function DiscoveryHero({
+  onStart,
+}: {
+  onStart: (icp?: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const submit = () => onStart(draft.trim() || undefined);
+
+  const copyInstall = () => {
+    navigator.clipboard?.writeText("pip install opencold");
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  };
+
+  return (
+    <section className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col justify-end px-6 pb-8 pt-4 sm:px-10 lg:min-h-[540px] lg:pb-12">
+      {/* ambient discovery graph — full-bleed canvas on desktop, its own
+          block below the copy on mobile so nodes never sit behind text */}
+      <div className="relative order-last mt-10 h-[330px] w-full lg:absolute lg:inset-0 lg:order-none lg:mt-0 lg:h-auto">
+        <DiscoveryGraph />
+      </div>
+
+      {/* warm lower wash — an atmospheric stage for the copy, not a
+          container: an ellipse anchored at the bottom that dissolves before
+          reaching any of its own edges (top, left, and right all fade) */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute bottom-0 left-[-8%] hidden h-[62%] w-[90%] lg:block"
+        style={{
+          background:
+            "radial-gradient(ellipse 72% 95% at 38% 100%, rgba(248,244,234,0.78), rgba(248,244,234,0.38) 52%, transparent 76%)",
+        }}
+      />
+
+      {/* editorial poster row: copy bottom-left, CTAs bottom-right */}
+      <div className="relative z-10 flex flex-col gap-9 lg:flex-row lg:items-end lg:justify-between lg:gap-12">
+        <div className="relative max-w-2xl">
+          <motion.h1
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            className="text-left text-[clamp(2.1rem,4.5vw,3.4rem)] font-normal leading-[1.08] tracking-tight"
+          >
+            Two words in.
+            <br />
+            {/* one soft highlight hugging the full second line; clones per
+                line if it ever wraps on small screens */}
+            <motion.span
+              initial={{ backgroundSize: "0% 30%" }}
+              animate={{ backgroundSize: "100% 30%" }}
+              transition={{
+                delay: 1.0,
+                duration: 0.6,
+                ease: [0.22, 1, 0.36, 1],
+              }}
+              className="bg-no-repeat [-webkit-box-decoration-break:clone] [box-decoration-break:clone] sm:whitespace-nowrap"
+              style={{
+                backgroundImage:
+                  "linear-gradient(rgb(167 243 208 / 0.5), rgb(167 243 208 / 0.5))",
+                backgroundPosition: "0 88%",
+              }}
+            >
+              Verified companies out.
+            </motion.span>
+          </motion.h1>
+
+          <motion.p
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              delay: 0.25,
+              duration: 0.7,
+              ease: [0.22, 1, 0.36, 1],
+            }}
+            className="mt-5 max-w-md text-left text-[15px] leading-relaxed text-zinc-500"
+          >
+            Describe your ICP once. OpenCold expands it into local search
+            terms, finds real companies, and verifies every match from their
+            own websites.
+          </motion.p>
+        </div>
+
+        <div className="flex w-full max-w-sm flex-col gap-2.5">
+          {/* primary CTA — a command/prompt bar: type an ICP, run discovery.
+              opacity-only entrance: animating transform here triggers a
+              subpixel re-raster snap on retina when the GPU layer is demoted
+              at animation end (reads as a one-frame flicker + tiny shift) */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            className="flex h-[52px] w-full items-center gap-2.5 rounded-2xl border border-zinc-200 bg-white/80 pl-4 pr-2.5 transition-colors focus-within:border-zinc-400"
+          >
+            <Compass size={14} className="shrink-0 text-zinc-300" />
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submit();
+              }}
+              placeholder="Describe your ICP…"
+              aria-label="Describe your ideal customer profile"
+              className="h-full w-full bg-transparent font-sans text-[12.5px] text-zinc-900 outline-none placeholder:text-zinc-400"
+            />
+            <button
+              onClick={submit}
+              aria-label="Run discovery"
+              className="grid size-8 shrink-0 place-items-center rounded-full bg-zinc-900 text-white transition hover:bg-zinc-700 active:scale-[0.95]"
+            >
+              <ArrowRight size={14} />
+            </button>
+          </motion.div>
+
+          {/* secondary — run it locally instead */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.55, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            className="flex h-9 w-full items-center justify-between rounded-lg border border-zinc-200/70 bg-zinc-100/60 pl-3.5 pr-1 font-code text-[11.5px] text-zinc-500"
+          >
+            <span>
+              <span className="text-zinc-400">$ </span>pip install opencold
+            </span>
+            <button
+              onClick={copyInstall}
+              aria-label="Copy install command"
+              className="grid size-7 shrink-0 place-items-center rounded-md text-zinc-400 transition hover:text-zinc-900"
+            >
+              {copied ? (
+                <Check size={13} className="text-emerald-600" />
+              ) : (
+                <Clipboard size={13} />
+              )}
+            </button>
+          </motion.div>
+
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.7, duration: 0.8 }}
+            className="font-code text-[10.5px] text-zinc-400"
+          >
+            no API key needed · open source · searches in any language
+          </motion.p>
+        </div>
+      </div>
+    </section>
   );
 }
 
