@@ -26,6 +26,18 @@ import { useDropzone } from "react-dropzone";
 
 import DiscoveryGraph from "@/components/DiscoveryGraph";
 import WorldMap from "@/components/WorldMap";
+import {
+  parseCsv,
+  pollRun,
+  sendEmails,
+  startRun as startRunApi,
+  testSmtp,
+  type Lead,
+  type Progress,
+  type ResultRow,
+  type RunPayload,
+  type SmtpConfig,
+} from "@/lib/api";
 
 /* ── types ── */
 
@@ -50,54 +62,6 @@ const PROVIDER_MODELS: Record<Exclude<ProviderType, "proxy">, { id: string; labe
     { id: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
   ],
 };
-
-const MOCK_RESULTS = [
-  {
-    firstName: "Maya",
-    lastName: "Chen",
-    company: "Northstar Labs",
-    email: "maya@northstar.dev",
-    subject: "Quick thought on Northstar\u2019s RevOps pipeline",
-    body: "Hi Maya,\n\nI noticed Northstar Labs recently posted about helping RevOps teams spot stalled pipeline \u2014 that\u2019s a problem we hear about constantly from our B2B customers.\n\nWe built OpenCold to automate the outreach side of that equation: once your users identify a stuck deal, our tool generates research-backed follow-ups in seconds.\n\nWould it make sense to explore a quick integration? Happy to show you a 10-minute demo.\n\nBest,\nJane Smith",
-    qualityWarnings: "",
-  },
-  {
-    firstName: "Elliot",
-    lastName: "Park",
-    company: "Tandem API",
-    email: "elliot@tandemapi.com",
-    subject: "Saw your new API docs \u2014 partnership idea",
-    body: "Hi Elliot,\n\nCongrats on the new API docs launch \u2014 the developer experience looks really polished. I\u2019m reaching out because Tandem\u2019s workflow APIs could be a great fit alongside what we\u2019re doing at OpenCold.\n\nWe help B2B teams automate personalized outreach using website research. A native Tandem integration could let your users trigger outreach sequences directly from their workflows.\n\nWorth a quick chat?\n\nBest,\nJane Smith",
-    qualityWarnings: "",
-  },
-  {
-    firstName: "Samira",
-    lastName: "Ali",
-    company: "Beacon CRM",
-    email: "partners@beaconcrm.io",
-    subject: "Partnership opportunity \u2014 OpenCold + Beacon CRM",
-    body: "Hi Samira,\n\nI came across Beacon CRM\u2019s partner page and saw you\u2019re actively building out your agency ecosystem. We\u2019ve been working with similar B2B sales tools and think there\u2019s a natural fit.\n\nOpenCold auto-researches prospects and generates personalized emails \u2014 it could plug directly into Beacon\u2019s CRM workflows for your agency partners.\n\nWould love to explore this. Free for a 15-minute call this week?\n\nBest,\nJane Smith",
-    qualityWarnings: "",
-  },
-  {
-    firstName: "Jon",
-    lastName: "Bell",
-    company: "Ledgerflow",
-    email: "jon@ledgerflow.co",
-    subject: "Outreach idea for Ledgerflow\u2019s SMB push",
-    body: "Hi Jon,\n\nI noticed Ledgerflow recently updated your pricing page with a focus on SMB finance teams. We\u2019re working on something complementary \u2014 OpenCold helps teams like yours reach the right prospects with emails grounded in real company research.\n\nGiven your product marketing focus, I thought you\u2019d appreciate seeing how we personalize at scale without sounding generic.\n\nHappy to send a quick demo video if that\u2019s easier?\n\nBest,\nJane Smith",
-    qualityWarnings: "short_personalization",
-  },
-  {
-    firstName: "Alex",
-    lastName: "Torres",
-    company: "SignalDesk",
-    email: "alex@signaldesk.io",
-    subject: "Helping SignalDesk teams close faster",
-    body: "Hi Alex,\n\nSignalDesk\u2019s support ops dashboard caught my eye \u2014 especially the focus on fast-growing software teams. That\u2019s exactly the audience we serve with OpenCold.\n\nWe auto-research each prospect\u2019s website, find the right contact, and draft emails that reference real facts. It\u2019s been a game-changer for teams doing outbound alongside support-led growth.\n\nWould you be open to a quick call to see if there\u2019s a fit?\n\nBest,\nJane Smith",
-    qualityWarnings: "",
-  },
-];
 
 type CompanyConfidence = "verified" | "review" | "rejected";
 
@@ -296,6 +260,27 @@ export default function Home() {
   const [smtpOpen, setSmtpOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  // run + results data (from the API)
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [results, setResults] = useState<ResultRow[]>([]);
+  const [runProgress, setRunProgress] = useState<Progress | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+  const pollAbort = useRef<AbortController | null>(null);
+
+  // smtp drawer
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpUser, setSmtpUser] = useState("");
+  const [smtpPass, setSmtpPass] = useState("");
+  const [smtpFrom, setSmtpFrom] = useState("");
+  const [smtpTesting, setSmtpTesting] = useState(false);
+  const [smtpTestMsg, setSmtpTestMsg] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sendResult, setSendResult] = useState<string | null>(null);
+
+  // stop polling if the component unmounts mid-run
+  useEffect(() => () => pollAbort.current?.abort(), []);
+
   const hasCampaign = campaignTitle.trim().length > 0;
   const hasProfile = profileName.trim().length > 0;
   const canRun = hasCampaign && hasProfile;
@@ -328,9 +313,172 @@ export default function Home() {
     setStage("configure");
   };
 
-  const startRun = () => {
+  const buildRunPayload = (): RunPayload => {
+    const runModel =
+      provider === "proxy"
+        ? proxyModel
+        : selectedModel === "custom"
+          ? customModel
+          : selectedModel;
+    return {
+      leads,
+      campaign: {
+        title: campaignTitle,
+        description: profileBio || campaignTitle,
+        pitch: campaignPitch,
+      },
+      identity: { name: profileName, email: smtpFrom },
+      profile: {
+        company: profileCompany,
+        role: profileRole,
+        bio: profileBio,
+        pitch: campaignPitch,
+      },
+      provider: {
+        type: provider,
+        api_key: provider === "proxy" ? proxyToken : apiKey,
+        model: runModel,
+        ...(provider === "proxy" && proxyUrl ? { base_url: proxyUrl } : {}),
+      },
+      options: {
+        do_resolve_websites: true,
+        do_enrich: true,
+        do_verify: findContacts,
+        drop_invalid: requireVerified,
+        ...(template.trim() ? { template } : {}),
+      },
+    };
+  };
+
+  const startRun = async () => {
+    // Discovery is still a mocked preview — not wired to the API yet.
+    if (mode === "discovery") {
+      setStage("running");
+      window.setTimeout(() => setStage("results"), 1400);
+      return;
+    }
+    if (!canRun) return;
+    setRunError(null);
+    setRunProgress(null);
+    setResults([]);
+    setSendResult(null);
     setStage("running");
-    window.setTimeout(() => setStage("results"), 1400);
+
+    pollAbort.current?.abort();
+    const controller = new AbortController();
+    pollAbort.current = controller;
+
+    try {
+      const { job_id } = await startRunApi(buildRunPayload());
+      const final = await pollRun(
+        job_id,
+        (job) => setRunProgress(job.progress ?? null),
+        { intervalMs: 2000, signal: controller.signal },
+      );
+      if (final.status === "succeeded") {
+        setResults(final.results ?? []);
+        setOpenRow(0);
+        setStage("results");
+      } else {
+        setRunError(final.error ?? "Generation failed.");
+        setStage("configure");
+      }
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      setRunError(e instanceof Error ? e.message : String(e));
+      setStage("configure");
+    }
+  };
+
+  // ── results helpers ──
+  const recipientName = (row: ResultRow) =>
+    row.name ||
+    [row.first_name, row.last_name].filter(Boolean).join(" ") ||
+    row.email ||
+    "—";
+  const firstWarning = (w?: string) => (w ? w.split(" | ")[0] : "");
+  const sendableResults = results.filter(
+    (r) => r.email && r.generated_email && !r.generated_email.startsWith("ERROR:"),
+  );
+  const skippedCount = results.length - sendableResults.length;
+
+  const copyText = (text: string) => navigator.clipboard?.writeText(text);
+  const copyAll = () =>
+    copyText(
+      results
+        .map((r) => `Subject: ${r.generated_subject ?? ""}\n\n${r.generated_email ?? ""}`)
+        .join("\n\n———\n\n"),
+    );
+
+  const downloadCsv = () => {
+    if (results.length === 0) return;
+    const cols = Array.from(
+      results.reduce((set, r) => {
+        Object.keys(r).forEach((k) => set.add(k));
+        return set;
+      }, new Set<string>()),
+    );
+    const esc = (v: string) =>
+      /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    const lines = [
+      cols.join(","),
+      ...results.map((r) => cols.map((c) => esc((r[c] ?? "") as string)).join(",")),
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "opencold-drafts.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── smtp helpers ──
+  const buildSmtp = (): SmtpConfig => ({
+    host: smtpHost,
+    port: Number(smtpPort) || 587,
+    username: smtpUser,
+    password: smtpPass,
+    sender_email: smtpFrom || smtpUser,
+    sender_name: profileName,
+    use_tls: true,
+  });
+
+  const doTestSmtp = async () => {
+    setSmtpTesting(true);
+    setSmtpTestMsg(null);
+    try {
+      const res = await testSmtp(buildSmtp());
+      setSmtpTestMsg(res.ok ? "Connection OK" : `Failed: ${res.error}`);
+    } catch (e) {
+      setSmtpTestMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSmtpTesting(false);
+    }
+  };
+
+  const doSend = async () => {
+    setSending(true);
+    setSendResult(null);
+    try {
+      const items = sendableResults.map((r) => ({
+        email: r.email as string,
+        name: recipientName(r),
+        subject: r.generated_subject ?? "",
+        body: r.generated_email ?? "",
+      }));
+      const res = await sendEmails(buildSmtp(), items);
+      setSendResult(
+        `Sent ${res.sent}/${res.results.length}` +
+          (res.failed ? `, ${res.failed} failed` : ""),
+      );
+      setConfirmOpen(false);
+    } catch (e) {
+      setSendResult(e instanceof Error ? e.message : String(e));
+      setConfirmOpen(false);
+    } finally {
+      setSending(false);
+    }
   };
 
   // mode navigation — both modes land on their hero; discovery is the
@@ -344,6 +492,7 @@ export default function Home() {
     setStage("drop");
   };
   const resetHome = () => {
+    pollAbort.current?.abort();
     setStage("drop");
     setMode("discovery");
   };
@@ -441,6 +590,12 @@ export default function Home() {
               Run
             </button>
           </div>
+
+          {runError && (
+            <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {runError}
+            </div>
+          )}
 
           {/* two-column layout */}
           <div className="grid items-start gap-8 lg:grid-cols-[1fr_340px]">
@@ -947,8 +1102,14 @@ export default function Home() {
           <p className="mt-2 text-sm text-zinc-400">
             {mode === "discovery"
               ? "Seeding candidates, crawling sites, and verifying matches."
-              : "Researching websites and generating personalized emails."}
+              : runProgress?.message ||
+                "Researching websites and generating personalized emails."}
           </p>
+          {mode === "outreach" && runProgress?.total ? (
+            <p className="mt-3 text-xs font-medium text-zinc-500">
+              {runProgress.current ?? 0} / {runProgress.total}
+            </p>
+          ) : null}
           <SkeletonTable />
         </section>
       )}
@@ -962,11 +1123,14 @@ export default function Home() {
                 Generated emails
               </h2>
               <p className="mt-1 text-sm text-zinc-400">
-                {fileName} &middot; {MOCK_RESULTS.length} emails generated
+                {fileName} &middot; {results.length} emails generated
               </p>
             </div>
             <div className="flex gap-2">
-              <button className="inline-flex h-9 items-center gap-2 rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white transition active:scale-[0.97]">
+              <button
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white transition active:scale-[0.97]"
+                onClick={downloadCsv}
+              >
                 <Download size={15} />
                 Download CSV
               </button>
@@ -980,6 +1144,7 @@ export default function Home() {
               <button
                 className="grid size-9 place-items-center rounded-lg border border-zinc-200 text-zinc-400 transition hover:border-zinc-400 hover:text-zinc-900 active:scale-[0.97]"
                 aria-label="Copy to clipboard"
+                onClick={copyAll}
               >
                 <Clipboard size={15} />
               </button>
@@ -988,30 +1153,34 @@ export default function Home() {
 
           <div className="stats-row mt-4 border-b border-zinc-100 pb-4">
             <span>
-              <Counter value={MOCK_RESULTS.length} /> emails
+              <Counter value={results.length} /> emails
             </span>
             <span>
               <Counter
-                value={
-                  MOCK_RESULTS.filter((r) => !r.qualityWarnings).length
-                }
+                value={results.filter((r) => !r.quality_warnings).length}
               />{" "}
               clean
             </span>
             <span>
               <Counter
-                value={
-                  MOCK_RESULTS.filter((r) => r.qualityWarnings).length
-                }
+                value={results.filter((r) => r.quality_warnings).length}
               />{" "}
               warnings
             </span>
           </div>
 
+          {results.length === 0 && (
+            <p className="mt-10 text-center text-sm text-zinc-400">
+              No drafts were produced. Check your leads and provider settings, then run again.
+            </p>
+          )}
+
           <div className="mt-6 space-y-3">
-            {MOCK_RESULTS.map((row, i) => (
+            {results.map((row, i) => {
+              const warned = !!row.quality_warnings;
+              return (
               <div
-                key={row.email}
+                key={`${row.email ?? "row"}-${i}`}
                 className={`result-row rounded-xl border border-zinc-100 overflow-hidden ${openRow === i ? "result-row--open" : ""}`}
                 style={{ animationDelay: `${i * 60}ms` }}
               >
@@ -1019,18 +1188,18 @@ export default function Home() {
                   className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-zinc-50"
                   onClick={() => setOpenRow(openRow === i ? null : i)}
                 >
-                  <span className={`size-2 flex-shrink-0 rounded-full ${row.qualityWarnings ? "bg-amber-400" : "bg-emerald-500"}`} />
+                  <span className={`size-2 flex-shrink-0 rounded-full ${warned ? "bg-amber-400" : "bg-emerald-500"}`} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold truncate">
-                      {row.subject}
+                      {row.generated_subject || "(no subject)"}
                     </p>
                     <p className="mt-0.5 text-xs text-zinc-400">
-                      To: {row.firstName} {row.lastName} &lt;{row.email}&gt;
+                      To: {recipientName(row)} &lt;{row.email}&gt;
                       {" "}&middot;{" "}{row.company}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {row.qualityWarnings && warningBadge(row.qualityWarnings)}
+                    {warned && warningBadge(firstWarning(row.quality_warnings))}
                     <ChevronDown
                       size={14}
                       className={`text-zinc-400 transition-transform ${openRow === i ? "rotate-180" : ""}`}
@@ -1042,26 +1211,26 @@ export default function Home() {
                     <div className="border-t border-zinc-100 px-5 py-5">
                       <div className="flex items-center gap-2 text-xs text-zinc-400">
                         <Mail size={12} />
-                        <span>Subject: <span className="font-medium text-zinc-600">{row.subject}</span></span>
+                        <span>Subject: <span className="font-medium text-zinc-600">{row.generated_subject}</span></span>
                       </div>
                       <pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-relaxed text-zinc-700">
-                        {row.body}
+                        {row.generated_email}
                       </pre>
                       <div className="mt-4 flex gap-2">
-                        <button className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-xs font-medium text-zinc-500 transition hover:border-zinc-400 hover:text-zinc-900 active:scale-[0.97]">
+                        <button
+                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-xs font-medium text-zinc-500 transition hover:border-zinc-400 hover:text-zinc-900 active:scale-[0.97]"
+                          onClick={() => copyText(row.generated_email ?? "")}
+                        >
                           <Clipboard size={12} />
                           Copy
-                        </button>
-                        <button className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-xs font-medium text-zinc-500 transition hover:border-zinc-400 hover:text-zinc-900 active:scale-[0.97]">
-                          <Send size={12} />
-                          Send
                         </button>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
@@ -1251,32 +1420,75 @@ export default function Home() {
               </button>
             </div>
             <div className="mt-6 grid gap-4">
-              {["Host", "Port", "User", "Password", "From address"].map(
-                (label) => (
-                  <label
-                    key={label}
-                    className="text-xs font-medium text-zinc-500"
-                  >
-                    {label}
-                    <input
-                      className="mt-1.5 h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-normal text-zinc-900 outline-none transition placeholder:text-zinc-300 focus:border-zinc-900"
-                      placeholder={label === "Port" ? "587" : ""}
-                      type={label === "Password" ? "password" : "text"}
-                    />
-                  </label>
-                ),
-              )}
+              <label className="text-xs font-medium text-zinc-500">
+                Host
+                <input
+                  className="mt-1.5 h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-normal text-zinc-900 outline-none transition placeholder:text-zinc-300 focus:border-zinc-900"
+                  value={smtpHost}
+                  onChange={(e) => setSmtpHost(e.target.value)}
+                  placeholder="smtp.gmail.com"
+                />
+              </label>
+              <label className="text-xs font-medium text-zinc-500">
+                Port
+                <input
+                  className="mt-1.5 h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-normal text-zinc-900 outline-none transition placeholder:text-zinc-300 focus:border-zinc-900"
+                  value={smtpPort}
+                  onChange={(e) => setSmtpPort(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="587"
+                />
+              </label>
+              <label className="text-xs font-medium text-zinc-500">
+                User
+                <input
+                  className="mt-1.5 h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-normal text-zinc-900 outline-none transition placeholder:text-zinc-300 focus:border-zinc-900"
+                  value={smtpUser}
+                  onChange={(e) => setSmtpUser(e.target.value)}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="text-xs font-medium text-zinc-500">
+                Password
+                <input
+                  className="mt-1.5 h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-normal text-zinc-900 outline-none transition placeholder:text-zinc-300 focus:border-zinc-900"
+                  type="password"
+                  value={smtpPass}
+                  onChange={(e) => setSmtpPass(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </label>
+              <label className="text-xs font-medium text-zinc-500">
+                From address
+                <input
+                  className="mt-1.5 h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-normal text-zinc-900 outline-none transition placeholder:text-zinc-300 focus:border-zinc-900"
+                  value={smtpFrom}
+                  onChange={(e) => setSmtpFrom(e.target.value)}
+                  placeholder="you@company.com"
+                />
+              </label>
             </div>
-            <button className="mt-5 h-10 w-full rounded-lg border border-zinc-200 text-sm font-medium transition hover:border-zinc-400 active:scale-[0.97]">
-              Test connection
+            {smtpTestMsg && (
+              <p className="mt-3 text-xs font-medium text-zinc-500">{smtpTestMsg}</p>
+            )}
+            <button
+              className="mt-5 h-10 w-full rounded-lg border border-zinc-200 text-sm font-medium transition hover:border-zinc-400 active:scale-[0.97] disabled:opacity-40"
+              onClick={doTestSmtp}
+              disabled={smtpTesting || !smtpHost}
+            >
+              {smtpTesting ? "Testing…" : "Test connection"}
             </button>
             <button
-              className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 text-sm font-medium text-white transition active:scale-[0.97]"
+              className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 text-sm font-medium text-white transition active:scale-[0.97] disabled:opacity-40"
               onClick={() => setConfirmOpen(true)}
+              disabled={sendableResults.length === 0}
             >
               <Send size={15} />
-              Send all
+              Send all ({sendableResults.length})
             </button>
+            {sendResult && (
+              <p className="mt-3 text-xs font-medium text-zinc-500">{sendResult}</p>
+            )}
           </aside>
         </div>
       )}
@@ -1309,20 +1521,29 @@ export default function Home() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/20 backdrop-blur-[2px] p-5">
           <div className="w-full max-w-sm rounded-xl border border-zinc-100 bg-white p-6 shadow-2xl">
             <h2 className="text-lg font-semibold tracking-tight">
-              Send 4 emails?
+              Send {sendableResults.length}{" "}
+              {sendableResults.length === 1 ? "email" : "emails"}?
             </h2>
-            <p className="mt-2 text-sm text-zinc-400">
-              One row has no verified email and will be skipped.
-            </p>
+            {skippedCount > 0 && (
+              <p className="mt-2 text-sm text-zinc-400">
+                {skippedCount} row{skippedCount === 1 ? "" : "s"} with no email or a
+                failed draft will be skipped.
+              </p>
+            )}
             <div className="mt-6 grid grid-cols-2 gap-3">
               <button
-                className="h-9 rounded-lg border border-zinc-200 text-sm font-medium active:scale-[0.97]"
+                className="h-9 rounded-lg border border-zinc-200 text-sm font-medium active:scale-[0.97] disabled:opacity-40"
                 onClick={() => setConfirmOpen(false)}
+                disabled={sending}
               >
                 Cancel
               </button>
-              <button className="h-9 rounded-lg bg-zinc-900 text-sm font-medium text-white active:scale-[0.97]">
-                Confirm
+              <button
+                className="h-9 rounded-lg bg-zinc-900 text-sm font-medium text-white active:scale-[0.97] disabled:opacity-40"
+                onClick={doSend}
+                disabled={sending}
+              >
+                {sending ? "Sending…" : "Confirm"}
               </button>
             </div>
           </div>

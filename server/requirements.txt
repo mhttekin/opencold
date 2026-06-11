@@ -1,0 +1,8 @@
+# Server-only dependencies. The `opencold` package itself must ALSO be installed:
+#   dev:    pip install -e .          (from the repo root)
+#   docker: pip install .             (see server/Dockerfile)
+# It is intentionally not pinned here so this file stays buildable before the
+# package is published to PyPI.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2

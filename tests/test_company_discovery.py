@@ -2,8 +2,18 @@
 
 from unittest.mock import patch
 
-from opencold import discovery
+import pytest
+
+from opencold import discovery, icp_expansion, translator
 from opencold.discovery import SearchResult, CandidateCompany
+
+
+@pytest.fixture(autouse=True)
+def _no_translation_network(monkeypatch):
+    # Translation is best-effort and network-backed (Lingva). No-op it by default so
+    # every test is hermetic regardless of a region's languages; tests that assert
+    # translation behaviour re-patch translator.translate inside the test.
+    monkeypatch.setattr(translator, "translate", lambda text, target, source="auto": text)
 
 
 # Bangladesh insurer fixture with rich structured data (the validation target).
@@ -127,6 +137,93 @@ class TestRegionFit:
         assert conflict < in_region
         assert "region_conflict" in reasons
 
+    def test_foreign_address_beats_target_pagetext(self):
+        # Cameroon exporter with an SEO page targeting Turkey: the stated address wins.
+        c = discovery.CompanyContacts(
+            phones=["+237671776559"],
+            address="1310 Avenue De Gaulle, Douala, BP 2667, Cameroon")
+        score, reasons = discovery.region_fit(
+            c, "https://cameroontimberexport.com", "Turkey",
+            pages_text="timber wood supplier turkey best prices")
+        assert score == 0
+        assert "addr_region_match" not in reasons
+        assert "region_conflict:addr:cameroon" in reasons
+
+    def test_uk_address_flags_conflict_for_turkey(self):
+        c = discovery.CompanyContacts(
+            phones=["+442071935609"],
+            address="59 St Martin's Lane, London, WC2N 4JS, United Kingdom")
+        _, reasons = discovery.region_fit(
+            c, "https://wknightconsulting.com", "Turkey",
+            pages_text="UK-based timber wood supplier serving turkey")
+        assert "region_conflict" in reasons
+
+    def test_page_text_target_is_not_an_anchor(self):
+        # A marketplace whose page lists "companies from turkey" is not anchored there.
+        c = discovery.CompanyContacts()
+        score, reasons = discovery.region_fit(
+            c, "https://fordaq.com", "Turkey",
+            pages_text="companies from turkey timber marketplace")
+        assert score == 0
+        assert "addr_region_match" not in reasons
+        assert "page_region_mention" in reasons
+        assert "region_conflict" not in reasons
+
+    def test_genuine_local_with_turkish_city_anchors(self):
+        c = discovery.CompanyContacts(phones=["+902120000000"], address="Istanbul, Turkey")
+        score, reasons = discovery.region_fit(c, "https://example.com", "Turkey")
+        assert score >= 60
+        assert "addr_region_match" in reasons
+        assert "region_conflict" not in reasons
+
+    def test_local_with_foreign_sales_phone_not_rejected(self):
+        c = discovery.CompanyContacts(phones=["+902120000000", "+442079460000"], address="Bursa, Turkey")
+        _, reasons = discovery.region_fit(c, "https://example.com.tr", "Turkey")
+        assert "region_conflict" not in reasons
+
+    def test_hq_prose_anchors_thin_local_site(self):
+        c = discovery.CompanyContacts()
+        score, reasons = discovery.region_fit(
+            c, "https://anatoliawood.com", "Turkey",
+            pages_text="An Istanbul-based timber mill since 1990.")
+        assert "hq_region_match" in reasons
+        assert score >= 20
+
+    def test_foreign_hq_prose_rejected_when_no_anchor(self):
+        c = discovery.CompanyContacts()
+        _, reasons = discovery.region_fit(
+            c, "https://acme.com", "Turkey",
+            pages_text="We are headquartered in Douala, Cameroon.")
+        assert "region_conflict:hq:cameroon" in reasons
+
+    def test_customer_market_prose_not_treated_as_hq(self):
+        c = discovery.CompanyContacts()
+        _, reasons = discovery.region_fit(
+            c, "https://acme.com", "Turkey",
+            pages_text="We supply companies based in Germany.")
+        assert "region_conflict" not in reasons
+
+    def test_foreign_same_language_company_rejected(self):
+        # A French company surfacing in a French-language Morocco search must be
+        # rejected, not verified — even though it shares the search language. Each
+        # foreign signal (ccTLD, stated country, dialing code) trips the conflict.
+        for site, addr, phone in [
+            ("https://recyclage-paris.fr", "Paris, France", "+33142000000"),
+            ("https://dechets.com", "Lyon, France", "+33478000000"),
+            ("https://acme.com", "", "+33100000000"),
+        ]:
+            c = discovery.CompanyContacts(phones=[phone], address=addr)
+            score, reasons = discovery.region_fit(c, site, "Morocco")
+            assert score == 0, site
+            assert "region_conflict" in reasons, site
+
+    def test_local_company_on_shared_language_still_verifies(self):
+        # A genuine Moroccan firm (French-language site) keeps its local anchors.
+        c = discovery.CompanyContacts(phones=["+212522000000"], address="Casablanca, Morocco")
+        score, reasons = discovery.region_fit(c, "https://recyclage.ma", "Morocco")
+        assert score >= 60
+        assert "region_conflict" not in reasons
+
 
 class TestLlmSeeding:
     def test_parse_json_object_tolerates_fences(self):
@@ -180,6 +277,8 @@ class TestEndToEnd:
         }
         with patch("opencold.discovery.discover_company_candidates", return_value=candidates), \
              patch("opencold.discovery.web_search", return_value=[]), \
+             patch("opencold.icp_expansion.expand_icp_grouped",
+                   return_value=icp_expansion.ExpansionResult()), \
              patch("opencold.enricher._fetch_html", _fetch_for(html_by_domain)):
             rows = discovery.discover_company_rows(
                 "insurance companies", "Bangladesh", limit=10, use_llm=False,
@@ -283,6 +382,135 @@ class TestMorphology:
         assert discovery._icp_match({"tech"}, "a fintech and biotech platform") == ["tech"]
 
 
+class TestPhraseAwareGate:
+    """Multi-word ICP cores confirm as a phrase or full co-occurrence — never on a
+    single word, no matter how many same-meaning expansion terms pile onto it."""
+
+    ICP = "Sustainability Consultancy for SMEs"
+    PROV = {"sustainability": {"esg", "duurzaamheid"},
+            "consultancy": {"consulting", "consultant", "advisory"}}
+
+    def _enr(self, summary):
+        return {"website_status": "ok", "company_summary": summary, "personalization_facts": ""}
+
+    def test_single_generic_head_no_longer_confirms(self):
+        # Regression (consultancy.eu): a consulting-news platform matched
+        # "consultancy" + its whole cluster and verified a sustainability ICP.
+        enr = self._enr("The online platform for Europe's consulting industry: news, "
+                        "consultancy rankings and jobs for consultants.")
+        assert not discovery._icp_evidence(
+            self.ICP, enr, weak_terms={"consulting", "consultant", "advisory"},
+            provenance=self.PROV,
+        )
+
+    def test_phrase_hit_confirms(self):
+        enr = self._enr("We are a sustainability consultancy for Dutch SMEs.")
+        assert discovery._icp_evidence(self.ICP, enr, provenance=self.PROV)
+
+    def test_cooccurrence_via_provenance_confirms(self):
+        # "ESG" speaks for sustainability, "consulting" for consultancy: every core
+        # token is covered even though the exact phrase never appears.
+        enr = self._enr("ESG strategy and management consulting for mid-sized firms.")
+        assert discovery._icp_evidence(
+            self.ICP, enr, weak_terms={"esg", "consulting"}, provenance=self.PROV,
+        )
+
+    def test_native_compound_confirms_whole_core(self):
+        prov = {"sustainability": {"duurzaamheidsadvies"},
+                "consultancy": {"duurzaamheidsadvies"}}
+        enr = self._enr("Duurzaamheidsadvies voor het MKB.")
+        assert discovery._icp_evidence(
+            self.ICP, enr, extra_terms={"duurzaamheidsadvies"}, provenance=prov,
+        )
+
+    def test_qualifier_only_never_confirms(self):
+        enr = self._enr("We provide services for SMEs across Europe.")
+        assert not discovery._icp_evidence(self.ICP, enr)
+
+    def test_weak_terms_never_confirm_multiword_core(self):
+        # No weak fallback for multi-word cores: expansion tails are unattributed
+        # noise, and stray matches must not stand in for absent core evidence.
+        enr = self._enr("Carbon footprint reporting and greenhouse gas accounting.")
+        assert not discovery._icp_evidence(
+            self.ICP, enr, weak_terms={"carbon footprint", "greenhouse"},
+            provenance=self.PROV,
+        )
+
+    def test_geo_and_junk_weak_terms_never_verify(self):
+        # Regression (Coffee exporter / Uganda): Datamuse expansion returned
+        # "uganda" and "urn"; a Kampala NEWS site matched both ("urn" inside
+        # "journalism") and two weak hits verified it with zero coffee/exporter
+        # evidence.
+        enr = {"website_status": "ok",
+               "company_summary": "Kampala Post delivers quality journalism covering "
+                                  "politics, business, technology and sports.",
+               "personalization_facts": "Stay informed with the latest news from Uganda."}
+        assert not discovery._icp_evidence(
+            "Coffee exporter", enr, set(),
+            weak_terms={"uganda", "urn", "bean", "export"},
+            provenance={"coffee": {"bean"}, "exporter": {"export"}},
+        )
+        # ...and "urn" no longer matches inside "journalism" anywhere (substring
+        # guard), so it can't even inflate the score.
+        assert discovery._icp_match({"urn"}, "quality journalism") == []
+        assert discovery._icp_match({"urn"}, "a coffee urn supplier") == ["urn"]
+
+    def test_real_trader_confirms_via_cluster(self):
+        # Positive control for the same ICP: a genuine coffee trader co-occurs
+        # through the exporter cluster (trader ∈ provenance[exporter]).
+        enr = {"website_status": "ok",
+               "company_summary": "Volcafe is one of the largest green coffee traders, "
+                                  "providing the beans for 66 billion cups of coffee each year.",
+               "personalization_facts": ""}
+        assert discovery._icp_evidence(
+            "Coffee exporter", enr, set(), weak_terms={"bean", "trader"},
+            provenance={"coffee": {"bean"}, "exporter": {"trader", "export", "importer"}},
+        )
+
+
+class TestPhraseAwareScoring:
+    ICP = "Sustainability Consultancy for SMEs"
+    PROV = {"sustainability": {"esg"}, "consultancy": {"consulting"}}
+
+    def _cand(self):
+        return discovery.CandidateCompany("Acme", "https://acme.test", "src", "search", "search")
+
+    def _enr(self, summary):
+        return {"website_status": "ok", "company_summary": summary, "personalization_facts": ""}
+
+    def test_phrase_beats_cooccurrence_beats_partial(self):
+        phrase, m = discovery.score_company(
+            self._cand(), self._enr("A sustainability consultancy for SMEs."),
+            self.ICP, provenance=self.PROV)
+        cooc, _ = discovery.score_company(
+            self._cand(), self._enr("ESG reporting and management consulting."),
+            self.ICP, weak_terms={"esg", "consulting"}, provenance=self.PROV)
+        partial, _ = discovery.score_company(
+            self._cand(), self._enr("a consultancy for executive coaching"),
+            self.ICP, weak_terms={"esg", "consulting"}, provenance=self.PROV)
+        assert phrase > cooc > partial
+        assert m.startswith("phrase:sustainability consultancy")
+
+    def test_partial_core_scores_like_weak_term(self):
+        hit, matched = discovery.score_company(
+            self._cand(), self._enr("a consultancy platform"), self.ICP)
+        miss, _ = discovery.score_company(
+            self._cand(), self._enr("unrelated topic"), self.ICP)
+        assert hit - miss == 7
+        assert "consultancy" in matched
+
+    def test_attributed_term_credited_once(self):
+        # "consulting" evidences the consultancy token; it must not ALSO count as
+        # an independent weak term.
+        with_prov, _ = discovery.score_company(
+            self._cand(), self._enr("management consulting firm"),
+            self.ICP, weak_terms={"consulting"}, provenance=self.PROV)
+        no_prov, _ = discovery.score_company(
+            self._cand(), self._enr("management consulting firm"),
+            self.ICP, weak_terms={"consulting"})
+        assert with_prov == no_prov == 35 + 7
+
+
 class TestResolutionContext:
     def test_prefer_cc_picks_country_domain(self):
         # Two same-name domains: the UK ccTLD one must win for a UK search.
@@ -298,8 +526,11 @@ class TestResolutionContext:
 
 
 class TestClassification:
-    def _row(self, region_fit="40", country="United Kingdom (UK)"):
-        return {"region_fit": region_fit, "country": country}
+    def _row(self, region_fit="40", country="United Kingdom (UK)", region_anchor=None,
+             is_aggregator=False, is_government=False):
+        anchor = (int(region_fit) > 0) if region_anchor is None else region_anchor
+        return {"region_fit": region_fit, "country": country, "_region_anchor": anchor,
+                "_is_aggregator": is_aggregator, "_is_government": is_government}
 
     def test_region_conflict_is_rejected(self):
         conf, _ = discovery._classify_company(self._row(region_fit="0"), True, True, None)
@@ -328,6 +559,154 @@ class TestClassification:
     def test_no_icp_evidence_is_review(self):
         conf, _ = discovery._classify_company(self._row(), False, False, {"match": "unknown"})
         assert conf == "review"
+
+    def test_no_region_anchor_is_review(self):
+        # A target mention only in marketing text confers no anchor -> not verified.
+        conf, why = discovery._classify_company(
+            self._row(region_fit="0", region_anchor=False), True, False, None)
+        assert conf == "review"
+        assert why == "region_unconfirmed"
+
+    def test_government_site_is_rejected(self):
+        conf, why = discovery._classify_company(self._row(is_government=True), True, False, None)
+        assert conf == "rejected"
+        assert why == "government_site"
+
+    def test_aggregator_routed_to_review(self):
+        conf, why = discovery._classify_company(self._row(is_aggregator=True), True, False, None)
+        assert conf == "review"
+        assert why == "marketplace_directory"
+
+
+class TestCountryDetection:
+    def test_address_country_by_name(self):
+        assert discovery._detect_address_country("..., Douala, Cameroon") == "cameroon"
+        assert discovery._detect_address_country("..., London, United Kingdom") == "united kingdom"
+
+    def test_address_prefers_unambiguous(self):
+        # US state Georgia must not be read as Georgia-the-country.
+        assert discovery._detect_address_country("Atlanta, Georgia, USA") == "united states"
+
+    def test_address_demonym(self):
+        assert discovery._detect_address_country("a UK-based supplier") == "united kingdom"
+
+    def test_address_none(self):
+        assert discovery._detect_address_country("123 Main Street, Suite 4") is None
+
+    def test_phone_country_longest_prefix(self):
+        assert discovery._detect_phone_country("+237671776559") == "cameroon"
+        assert discovery._detect_phone_country("+447549072901") == "united kingdom"
+        assert discovery._detect_phone_country("+902120000000") == "turkey"
+        assert discovery._detect_phone_country("01234") is None
+
+
+class TestDomainCountry:
+    def test_unambiguous_country_in_label(self):
+        assert discovery._detect_domain_country("cameroontimberexport.com") == "cameroon"
+        assert discovery._detect_domain_country("germany-timber.com") == "germany"
+
+    def test_ambiguous_name_ignored(self):
+        assert discovery._detect_domain_country("jordanlumber.com") is None
+
+    def test_generic_tld_label_not_matched(self):
+        assert discovery._detect_domain_country("acme.io") is None
+
+    def test_short_name_substring_not_matched(self):
+        # 'oman' (len<5) must not match inside an unrelated label.
+        assert discovery._detect_domain_country("womanswear.com") is None
+
+
+class TestProseLocation:
+    def test_adjective_form(self):
+        assert discovery._detect_prose_location("a UK-based timber supplier") == "united kingdom"
+        assert discovery._detect_prose_location("an Istanbul-based mill") == "turkey"
+
+    def test_verb_form_city_to_region(self):
+        assert discovery._detect_prose_location("We are headquartered in Douala, Cameroon") == "cameroon"
+
+    def test_customer_subject_excluded(self):
+        assert discovery._detect_prose_location("serving customers based in Turkey") is None
+        assert discovery._detect_prose_location("we supply companies based in Germany") is None
+
+    def test_no_hq_idiom(self):
+        assert discovery._detect_prose_location("top timber supplier turkey best prices") is None
+
+
+class TestAggregator:
+    def test_known_stem(self):
+        assert discovery._is_aggregator("fordaq.com")
+        assert discovery._is_aggregator("europages.com.tr")  # ccTLD variant via stem
+
+    def test_summary_keyword(self):
+        assert discovery._is_aggregator("acme.com", "the leading b2b marketplace for timber")
+
+    def test_real_company_not_flagged(self):
+        assert not discovery._is_aggregator("acme.com", "family-owned timber mill since 1960")
+
+    def test_local_directories_flagged(self):
+        # Moroccan yellow pages / directories that slipped through as "verified"
+        assert discovery._is_aggregator("telecontact.ma")
+        assert discovery._is_aggregator("kerix.net")
+        assert discovery._is_aggregator("goafricaonline.com")
+
+    def test_native_directory_phrasing(self):
+        assert discovery._is_aggregator("acme.ma", "l'annuaire des professionnels du Maroc")
+        assert discovery._is_aggregator("acme.com", "the directory of professionals in Morocco")
+        assert discovery._is_aggregator("acme.com", "your local yellow pages for businesses")
+
+
+class TestPhoneCleaning:
+    def test_real_numbers_kept(self):
+        assert discovery._clean_phone("+212 522 66 28 37") == "+212522662837"
+        assert discovery._clean_phone("05 22 77 71 00") == "0522777100"
+
+    def test_year_spans_rejected(self):
+        # Copyright lines ("2005-2026") and programme ranges ("2021-2030")
+        # regex-match as phones but are not.
+        assert discovery._clean_phone("2005-2026") == ""
+        assert discovery._clean_phone("2021 2030") == ""
+
+    def test_doubled_quad_rejected(self):
+        assert discovery._clean_phone("1000 1000") == ""
+
+    def test_plus_prefix_trusted(self):
+        assert discovery._clean_phone("+20212030") == "+20212030"
+
+
+class TestLinkedinSlugMatch:
+    def test_matching_slugs_accepted(self):
+        assert discovery._linkedin_slug_matches(
+            "https://www.linkedin.com/company/valotrimaroc", "Valotri", "valotri.com")
+        assert discovery._linkedin_slug_matches(
+            "https://www.linkedin.com/company/tadweir-maroc", "Tadweir", "tadweir.com")
+
+    def test_unrelated_slug_rejected(self):
+        assert not discovery._linkedin_slug_matches(
+            "https://www.linkedin.com/company/cotiviti", "Macarpa", "macarpa.com")
+        assert not discovery._linkedin_slug_matches(
+            "https://www.linkedin.com/company/suez", "Metalimpex group", "metalimpexgroup.com")
+
+    def test_tiny_slug_rejected(self):
+        assert not discovery._linkedin_slug_matches(
+            "https://www.linkedin.com/company/t", "Telecontact", "telecontact.ma")
+
+
+class TestGovernment:
+    def test_gov_and_mil(self):
+        assert discovery._is_government_domain("michigan.gov")
+        assert discovery._is_government_domain("x.gov.tr")
+        assert discovery._is_government_domain("army.mil")
+
+    def test_go_second_level_cctld(self):
+        # "go" is the government second level in several ccTLDs.
+        assert discovery._is_government_domain("ugandacoffee.go.ug")
+        assert discovery._is_government_domain("meti.go.jp")
+
+    def test_company_not_flagged(self):
+        assert not discovery._is_government_domain("acme.com")
+        assert not discovery._is_government_domain("governance.com")
+        assert not discovery._is_government_domain("go.com")           # Disney, not gov
+        assert not discovery._is_government_domain("lets.go.example")  # not a ccTLD
 
 
 class TestJudge:
@@ -498,6 +877,32 @@ class TestTranslation:
         assert discovery._region_language("United Kingdom") is None
         assert discovery._region_language("USA") is None
 
+    def test_region_languages_multilingual(self):
+        assert discovery._region_languages("Morocco") == ["fr", "ar"]
+        assert discovery._region_languages("Switzerland") == ["de", "fr", "it"]
+        assert discovery._region_languages("Belgium") == ["nl", "fr"]
+        assert discovery._region_languages("China") == ["zh"]    # derived (was dropped by a stale literal)
+        assert discovery._region_languages("United Kingdom") == []
+        assert discovery._region_languages("USA") == []
+
+    def test_native_queries_for_each_language(self):
+        captured = []
+
+        def fake_search(query, num=10):
+            captured.append(query)
+            return []
+
+        def fake_translate(text, target, source="auto"):
+            return f"{text} ::{target}"
+
+        with patch("opencold.translator.translate", side_effect=fake_translate), \
+             patch("opencold.discovery.web_search", side_effect=fake_search):
+            discovery.discover_companies_by_query("recycling", "Morocco", limit=50,
+                                                  target_langs=["fr", "ar"])
+        assert any(q.endswith("::fr") for q in captured)                 # French searched
+        assert any(q.endswith("::ar") for q in captured)                 # Arabic searched
+        assert any("Morocco" in q and "::" not in q for q in captured)   # English kept
+
     def test_native_queries_appended_for_translatable_region(self):
         captured = []
 
@@ -510,7 +915,7 @@ class TestTranslation:
 
         with patch("opencold.translator.translate", side_effect=fake_translate), \
              patch("opencold.discovery.web_search", side_effect=fake_search):
-            discovery.discover_companies_by_query("timber", "Turkey", limit=50, target_lang="tr")
+            discovery.discover_companies_by_query("timber", "Turkey", limit=50, target_langs=["tr"])
 
         assert "timber companies in Turkey" in captured       # English kept
         assert any(q.endswith("::tr") for q in captured)       # native added
@@ -524,7 +929,7 @@ class TestTranslation:
 
         with patch("opencold.translator.translate", side_effect=AssertionError("must not translate")), \
              patch("opencold.discovery.web_search", side_effect=fake_search):
-            discovery.discover_companies_by_query("timber", "Turkey", limit=50, target_lang=None)
+            discovery.discover_companies_by_query("timber", "Turkey", limit=50, target_langs=None)
 
         assert captured == discovery.region_query_templates("timber", "Turkey")
 
@@ -543,6 +948,64 @@ class TestTranslation:
             terms = discovery._translate_icp_terms("timber", "tr")
         assert "orman" in terms and "ürünleri" in terms
 
+    def test_translate_terms_drops_function_words(self):
+        # "waste management" -> "gestion des déchets": the article "des" matches ANY
+        # French text, so it must never become a matcher term (it made Moroccan
+        # directories "verified" for a Recycling ICP). The full phrase is kept.
+        def fake_translate(text, target, source="auto"):
+            return "gestion des déchets" if text == "waste management" else text
+
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            terms = discovery._translate_terms({"waste management"}, "fr")
+        assert "des" not in terms
+        assert "déchets" in terms
+        assert "gestion des déchets" in terms
+
+    def test_translate_terms_rejects_wrong_roundtrip(self):
+        # MyMemory returns a wrong translation-memory match for recycling->ar
+        # ("water treatment", match=0.99). The round trip exposes it.
+        def fake_translate(text, target, source="auto"):
+            if text == "recycling" and target == "ar":
+                return "معالجة المياه"
+            if text == "معالجة المياه" and target == "en":
+                return "water treatment"
+            return text
+
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            assert discovery._translate_terms({"recycling"}, "ar") == set()
+
+    def test_translate_terms_roundtrip_unavailable_keeps_term(self):
+        def fake_translate(text, target, source="auto"):
+            if text == "recycling" and target == "fr":
+                return "recyclage"
+            return text  # back-translation echoes input (provider down)
+
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            assert discovery._translate_terms({"recycling"}, "fr") == {"recyclage"}
+
+    def test_translate_terms_collapses_alternative_lists(self):
+        # Providers sometimes return every alternative slash-separated.
+        def fake_translate(text, target, source="auto"):
+            if text == "waste" and target == "fr":
+                return "gaspillage/gaspiller /perdre /gâcher / déchet/déchets/tricher"
+            if target == "en":
+                return "wastage"
+            return text
+
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            terms = discovery._translate_terms({"waste"}, "fr")
+        # Only the first alternative is considered; generic verbs never leak in.
+        assert "tricher" not in terms and "perdre" not in terms
+
+    def test_weak_only_evidence_needs_two_matches(self):
+        # One half-weight expansion hit is not verification-grade evidence...
+        thin = {"company_summary": "annuaire des professionnels du Maroc", "personalization_facts": ""}
+        assert not discovery._icp_evidence("recycling", thin, set(), {"gestion", "valorisation"})
+        # ...two weak hits are, and one strong (ICP/native) hit always is.
+        real = {"company_summary": "collecte et valorisation, gestion des déchets", "personalization_facts": ""}
+        assert discovery._icp_evidence("recycling", real, set(), {"gestion", "valorisation"})
+        assert discovery._icp_evidence("recycling", thin, {"annuaire"}, set()) is True
+
     def test_localize_translates_facts_on_english_miss(self):
         enrichment = {
             "company_summary": "kaliteli kereste ve tomruk tedariki",
@@ -553,13 +1016,103 @@ class TestTranslation:
             return "quality timber and log supply"
 
         with patch("opencold.translator.translate", side_effect=fake_translate):
-            out = discovery._localize_enrichment(enrichment, "timber", "tr", set())
+            out = discovery._localize_enrichment(enrichment, "timber", set())
         assert "timber" in out["company_summary"].lower()
         assert discovery._icp_evidence("timber", out)
 
     def test_localize_is_noop_when_evidence_present(self):
         enrichment = {"company_summary": "premium timber supplier", "personalization_facts": ""}
         with patch("opencold.translator.translate") as tr:
-            out = discovery._localize_enrichment(enrichment, "timber", "tr", set())
+            out = discovery._localize_enrichment(enrichment, "timber", set())
         tr.assert_not_called()      # already-English sites cost no translation
         assert out == enrichment
+
+
+class TestTranslateProfile:
+    def test_core_phrase_compound_attributed_to_all_tokens(self):
+        # Dutch compounds the core phrase into ONE word that per-token translation
+        # can never produce; that word co-evidences the whole chunk.
+        def fake_translate(text, target, source="auto"):
+            return {
+                "sustainability": "duurzaamheid",
+                "consultancy": "adviesbureau",
+                "sustainability consultancy": "duurzaamheidsadvies",
+            }.get(text, text)  # unknown inputs echo (round-trip keeps the term)
+
+        profile = discovery.icp_phrases.parse_icp("Sustainability Consultancy for SMEs")
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            strong, weak, prov = discovery._translate_profile(profile, "nl")
+        assert {"duurzaamheid", "adviesbureau", "duurzaamheidsadvies"} <= strong
+        assert "duurzaamheidsadvies" in prov["sustainability"]
+        assert "duurzaamheidsadvies" in prov["consultancy"]
+        assert "duurzaamheid" in prov["sustainability"]
+        assert "duurzaamheid" not in prov.get("consultancy", set())
+
+    def test_qualifier_translations_are_weak(self):
+        def fake_translate(text, target, source="auto"):
+            return {"plumbing": "loodgieterswerk", "dentists": "tandartsen"}.get(text, text)
+
+        profile = discovery.icp_phrases.parse_icp("Plumbing for dentists")
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            strong, weak, prov = discovery._translate_profile(profile, "nl")
+        assert "loodgieterswerk" in strong
+        assert "tandartsen" in weak and "tandartsen" not in strong
+        assert "tandartsen" in prov["dentists"]
+
+    def test_multiword_phrase_result_attributes_only_full_phrase(self):
+        # A leaked token like "gestion" must never co-evidence the OTHER core token;
+        # only the full native phrase speaks for the whole chunk.
+        def fake_translate(text, target, source="auto"):
+            return {
+                "waste": "déchets",
+                "management": "gestion",
+                "waste management": "gestion des déchets",
+            }.get(text, text)
+
+        profile = discovery.icp_phrases.parse_icp("Waste Management")
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            strong, weak, prov = discovery._translate_profile(profile, "fr")
+        assert "gestion des déchets" in strong
+        assert "gestion des déchets" in prov["waste"]
+        assert "gestion des déchets" in prov["management"]
+        assert "gestion" not in prov["waste"]          # leaked token stays put
+        assert {"gestion", "déchets"} <= weak
+
+
+class TestTranslateExpansionTerms:
+    def test_multiword_result_attribution_safe_as_phrase_only(self):
+        # Regression (censo.nl): "professional services" (consultancy cluster) ->
+        # "zakelijke dienstverlening"; the leaked token "zakelijke" (plain Dutch
+        # "business") evidenced the consultancy token and verified an energy
+        # installer for a sustainability-consultancy ICP.
+        def fake_translate(text, target, source="auto"):
+            return {"professional services": "zakelijke dienstverlening",
+                    "plywood": "kontrplak"}.get(text, text)
+
+        with patch("opencold.translator.translate", side_effect=fake_translate):
+            flat, safe = discovery._translate_expansion_terms(
+                {"professional services", "plywood"}, "nl")
+        assert {"zakelijke", "dienstverlening", "zakelijke dienstverlening", "kontrplak"} <= flat
+        assert "zakelijke dienstverlening" in safe   # full phrase: precise
+        assert "kontrplak" in safe                   # single-word result: precise
+        assert "zakelijke" not in safe               # leaked token: weak only
+
+    def test_leaked_token_no_longer_coevidences_core(self):
+        enr = {"website_status": "ok",
+               "company_summary": "Censo gaat voorop in het verduurzamen van zakelijk Nederland.",
+               "personalization_facts": ""}
+        icp = "Sustainability Consultancy for SMEs"
+        prov = {"sustainability": {"duurzame", "duurzaamheid"},
+                "consultancy": {"zakelijke dienstverlening"}}   # phrase-only attribution
+        weak = {"duurzame", "zakelijke", "zakelijke dienstverlening"}
+        assert not discovery._icp_evidence(icp, enr, set(), weak, prov)
+
+
+class TestQuotedPhraseQuery:
+    def test_multiword_core_adds_quoted_template(self):
+        queries = discovery.region_query_templates("Sustainability Consultancy for SMEs", "Netherlands")
+        assert '"sustainability consultancy" Netherlands' in queries
+
+    def test_single_word_icp_unchanged(self):
+        queries = discovery.region_query_templates("timber", "Turkey")
+        assert not any(q.startswith('"') for q in queries)

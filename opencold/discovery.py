@@ -22,7 +22,11 @@ from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 from bs4 import BeautifulSoup
 
 from opencold import enricher
+from opencold import icp_phrases
+from opencold import regions_data as rd
 from opencold import translator
+# Re-exported names: tests and icp_expansion resolve these via opencold.discovery.
+from opencold.icp_phrases import GENERIC_ICP_TERMS, stem as _stem
 
 
 BLOCKED_DOMAINS = {
@@ -92,19 +96,6 @@ INTERNAL_DETAIL_HINTS = (
     "/tool/",
     "/tools/",
 )
-
-GENERIC_ICP_TERMS = {
-    "startup",
-    "startups",
-    "company",
-    "companies",
-    "tool",
-    "tools",
-    "early",
-    "software",
-    "platform",
-    "business",
-}
 
 ROLE_PREFIXES = {
     "contact",
@@ -455,6 +446,49 @@ def _is_blocked_host(host: str) -> bool:
 def _company_from_domain(domain: str) -> str:
     stem = domain.split(".")[0]
     return stem.replace("-", " ").replace("_", " ").title()
+
+
+# B2B marketplaces / directories: they list one company per page but are not a single
+# company in any one country. Matched by stem so ccTLD variants (europages.com.tr) also
+# hit. Routed to 'review', never 'verified'.
+_AGGREGATOR_DOMAINS = {
+    "fordaq.com", "europages.com", "kompass.com", "go4worldbusiness.com",
+    "globalwood.org", "bulurum.com", "isdunyasirehberi.net", "tradeindia.com",
+    "exporthub.com", "alibaba.com", "made-in-china.com", "globalsources.com",
+    "indiamart.com", "thomasnet.com", "ec21.com", "tradekey.com", "yellowpages.com",
+    "telecontact.ma", "kerix.net", "kerix-export.net", "goafricaonline.com",
+    "enfrecycling.com",
+}
+_AGGREGATOR_STEMS = {d.split(".")[0] for d in _AGGREGATOR_DOMAINS}
+_AGGREGATOR_RE = re.compile(
+    r"\b(?:b2b (?:marketplace|platform)|marketplace for|business directory|"
+    r"company directory|trade directory|suppliers? and buyers?|buyers? and suppliers?|"
+    r"list of (?:companies|suppliers|manufacturers)|connect(?:s|ing)? (?:buyers|businesses)|"
+    # directory phrasing in other languages / translated summaries
+    r"directory of (?:professionals|companies|businesses|suppliers|manufacturers)|"
+    r"yellow ?pages|pages jaunes|annuaire|directorio de empresas|firmenverzeichnis|"
+    r"firma rehberi)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_aggregator(domain: str, summary: str = "") -> bool:
+    """True for B2B marketplaces/directories (by known stem or summary phrasing)."""
+    d = (domain or "").lower()
+    if d and d.split(".")[0] in _AGGREGATOR_STEMS:
+        return True
+    return bool(summary and _AGGREGATOR_RE.search(summary))
+
+
+def _is_government_domain(domain: str) -> bool:
+    """True for government/military sites: .gov/.mil, or gov./govt./go./mil. under a
+    ccTLD ("go" is the government second level in .go.jp/.go.ke/.go.ug/.go.id/...)."""
+    parts = (domain or "").lower().split(".")
+    if len(parts) < 2:
+        return False
+    if parts[-1] in ("gov", "mil"):
+        return True
+    return len(parts) >= 3 and parts[-2] in ("gov", "govt", "go", "mil") and len(parts[-1]) == 2
 
 
 def _company_from_anchor(text: str, domain: str) -> str:
@@ -1859,42 +1893,25 @@ def _icp_terms(icp: str) -> set[str]:
     }
 
 
-# Common inflectional suffixes, longest-first so "landscapers" -> "ers" (not "er"+"s").
-_STEM_SUFFIXES = ("ings", "ing", "ers", "er", "ed", "es", "s")
-
-
-def _stem(word: str) -> str:
-    """Light inflectional stemmer so morphological variants of an ICP term collapse
-    to one form: landscape / landscaping / landscaper / landscapes / landscaped ->
-    'landscap'. Deliberately conservative — only strips a common suffix when ≥4 stem
-    characters remain (guards short words like 'caring'->'car'), then normalises a
-    trailing 'e'. Not a full Porter stemmer; predictability beats coverage here."""
-    w = word.lower()
-    for suf in _STEM_SUFFIXES:
-        if w.endswith(suf) and len(w) - len(suf) >= 4:
-            w = w[: -len(suf)]
-            break
-    if len(w) >= 5 and w.endswith("e"):
-        w = w[:-1]
-    return w
-
-
 def _icp_match(terms: set[str], text: str) -> list[str]:
     """ICP terms evidenced in `text`. Additive over the old literal-substring test:
     a term matches if its stem equals a whole-word stem in the text (morphology:
-    'landscape' ~ 'landscaping') OR the literal term is a substring (back-compat for
-    hyphenated/compound terms like 'tech' in 'fintech'). Returns the original term
+    'landscape' ~ 'landscaping') OR a ≥4-char literal term is a substring
+    (hyphenated/compound terms like 'tech' in 'fintech' — shorter terms like
+    Datamuse's 'urn' would match inside 'journalism'). Returns the original term
     spellings, sorted, so callers can display them as before."""
     if not terms or not text:
         return []
     low = text.lower()
     word_stems = {_stem(tok) for tok in re.findall(r"[a-z0-9]+", low)}
-    matched = [t for t in terms if _stem(t) in word_stems or t in low]
+    matched = [t for t in terms if _stem(t) in word_stems or (len(t) >= 4 and t in low)]
     return sorted(matched)
 
 
 def score_company(
-    company: CandidateCompany, enrichment: dict, icp: str, extra_terms: set[str] | None = None
+    company: CandidateCompany, enrichment: dict, icp: str,
+    extra_terms: set[str] | None = None, weak_terms: set[str] | None = None,
+    provenance: dict[str, set[str]] | None = None,
 ) -> tuple[int, str]:
     # NOTE: company.discovery_reason is deliberately excluded — for LLM/search
     # candidates it echoes our own query (e.g. "llm seed: landscape in UK"), so
@@ -1902,63 +1919,241 @@ def score_company(
     # the company's own name and crawled content only.
     # extra_terms: native-language ICP terms (e.g. "kereste" for "timber") so a
     # home-language site matches without us translating its text first.
-    terms = _icp_terms(icp) | (extra_terms or set())
+    # weak_terms: semantic-expansion terms (e.g. "sawmill" for "timber") — counted at
+    # half weight so a related-only hit never outranks a true ICP / native-term hit.
+    # provenance: derived term -> the ICP core token it evidences (see icp_phrases).
+    # A derived term that matched is credited ONCE, through its token — otherwise a
+    # cluster of same-meaning words (consultancy/consulting/consultant) piles up
+    # points for one concept.
+    profile = icp_phrases.parse_icp(icp)
+    extras = extra_terms or set()
+    icp_tokens = set(profile.core_tokens) | set(profile.qualifier_tokens) | _icp_terms(icp)
+    weak = (weak_terms or set()) - extras - icp_tokens
+    prov_terms = set().union(*provenance.values()) if provenance else set()
     haystack = " ".join([
         company.company,
         enrichment.get("company_summary", ""),
         enrichment.get("personalization_facts", ""),
     ]).lower()
-    matched = _icp_match(terms, haystack)
+
+    core = icp_phrases.evidence_core(profile, haystack, provenance)
+    matched_extra = _icp_match(extras, haystack)
+    matched_weak = _icp_match(weak, haystack)
+
     base = 35 if enrichment.get("website_status") == "ok" else 15
-    match_bonus = min(len(matched) * 14, 50)
-    score = min(100, base + match_bonus)
-    return score, enricher.FACT_SEPARATOR.join(matched)
+    # Phrase hit > full core co-occurrence > partial core (half weight). A core
+    # token is worth 14 only when the WHOLE core is evidenced; a lone generic
+    # head ("consultancy" without "sustainability") scores like a weak term.
+    bonus = 18 * len(core.phrase_chunks)
+    if core.confirmed:
+        bonus += 14 * len(core.required)
+    else:
+        bonus += 7 * len(core.evidenced)
+    bonus += 14 * sum(1 for t in matched_extra if t not in prov_terms)
+    bonus += 7 * len(core.matched_qualifiers)
+    bonus += 7 * sum(1 for t in matched_weak if t not in prov_terms)
+    score = min(100, base + min(bonus, 50))
+
+    display = sorted(set(matched_extra) | set(matched_weak)
+                     | core.evidenced | set(core.matched_qualifiers))
+    parts = [f"phrase:{' '.join(c)}" for c in core.phrase_chunks] + display
+    return score, enricher.FACT_SEPARATOR.join(parts)
 
 
-def _icp_evidence(icp: str, enrichment: dict, extra_terms: set[str] | None = None) -> bool:
-    """True when ICP terms appear in the company's own crawled content.
+def _icp_evidence(
+    icp: str, enrichment: dict,
+    extra_terms: set[str] | None = None, weak_terms: set[str] | None = None,
+    provenance: dict[str, set[str]] | None = None,
+) -> bool:
+    """True when the ICP's CORE CONCEPT is evidenced in the company's own crawled
+    content.
 
     Content-only (no company name, no discovery_reason): this is the evidence
     used to gate leads, so it must reflect what the site actually says — a company
     literally named 'X Landscapes' should still have to prove it on its pages.
 
+    A multi-word core ("sustainability consultancy") confirms only as a phrase or
+    when EVERY required core token is evidenced — each token via its own form, a
+    native translation, or an expansion term attributed to it (provenance). A
+    partial hit never confirms: matching "consultancy" alone (or its whole
+    consulting/advisory cluster) must not verify a sustainability ICP. Qualifier
+    tokens ("for SMEs") never confirm on their own.
+
     extra_terms adds native-language ICP terms, so a home-language site that says
-    "kereste" counts as evidence for an English "timber" ICP.
+    "kereste" counts as evidence for an English "timber" ICP. weak_terms (semantic
+    expansion) mirror their half-weight in scoring: for single-token cores,
+    weak-only evidence needs at least two distinct hits. Multi-word cores get NO
+    weak fallback at all — expansion tails are unattributed noise (Datamuse gave
+    "uganda" and "urn" for "coffee exporter"), and two stray matches on a Ugandan
+    news page must never verify a lead whose core concept has zero evidence.
     """
-    terms = _icp_terms(icp) | (extra_terms or set())
-    if not terms:
-        return False
+    profile = icp_phrases.parse_icp(icp)
+    extras = extra_terms or set()
+    icp_tokens = set(profile.core_tokens) | set(profile.qualifier_tokens) | _icp_terms(icp)
+    weak = (weak_terms or set()) - extras - icp_tokens
     content = " ".join([
         enrichment.get("company_summary", ""),
         enrichment.get("personalization_facts", ""),
     ])
-    return bool(_icp_match(terms, content))
+    core = icp_phrases.evidence_core(profile, content, provenance)
+    if core.confirmed:
+        return True
+    if len(core.required) >= 2:
+        return False
+    # Single-token or all-generic core: legacy semantics — one native/strong hit
+    # confirms, else two weak hits.
+    if _icp_match(extras, content):
+        return True
+    return len(_icp_match(weak, content)) >= 2
 
 
-def _translate_icp_terms(icp: str, target_lang: str) -> set[str]:
-    """Native-language ICP terms for matching home-language sites: translate each
-    English ICP token (e.g. "timber" -> "kereste") and keep the result tokens.
-    Best-effort and cached; returns an empty set if translation is unavailable."""
+# Function words that phrase translations leak as standalone tokens ("waste
+# management" -> "gestion DES déchets"). A leaked article/preposition matches any
+# text in that language, so it must never become a matcher term. Tokens under 4
+# chars are dropped outright; this list covers the common >=4-char leaks.
+_NATIVE_FUNCTION_WORDS = {
+    "pour", "avec", "dans", "sans", "sous", "chez", "leur", "elles", "vers",
+    "para", "como", "sobre", "entre", "desde", "hasta", "unas", "unos",
+    "della", "delle", "degli", "dello", "dalla", "nella", "alla",
+    "eine", "einer", "eines", "einem", "einen", "nach", "über", "unter",
+    "voor", "naar", "deze", "onder", "için", "veya",
+}
+
+
+def _translated_term_ok(term: str, translated: str, target_lang: str) -> bool:
+    """Round-trip validation of one term translation. Keyless providers sometimes
+    return a wrong translation-memory match ("recycling" -> ar "water treatment"):
+    translate the result back to English and require a shared stem with the original
+    term. When the round trip is unavailable (provider down / echoes its input), keep
+    the term — this tier is best-effort, and a dead provider must not erase it."""
+    back = translator.translate(translated, "en", source=target_lang)
+    if not back or back.strip().lower() == translated.strip().lower():
+        return True
+    back_stems = {_stem(w) for w in re.findall(r"[a-z0-9]+", back.lower())}
+    return any(_stem(w) in back_stems for w in re.findall(r"[a-z0-9]+", term.lower()))
+
+
+def _translate_one(term: str, target_lang: str) -> tuple[list[str], str]:
+    """One English term -> (kept native tokens, full native phrase or ""). The
+    phrase is non-empty only for multi-word results with at least one kept token
+    ("waste management" -> "gestion des déchets"). Precision-filtered: alternative
+    lists ("gaspillage/gaspiller/perdre/...") collapse to their first entry,
+    >3-token results are provider noise and dropped, a round-trip check kills wrong
+    translation-memory matches, and short/function-word tokens are dropped — a
+    leaked article like "des" matches every text in its language."""
+    translated = translator.translate(term, target_lang, source="en")
+    if not translated or translated.lower() == term:
+        return [], ""
+    translated = re.split(r"[/;|]", translated)[0].strip()
+    tokens = re.findall(r"\w[\w\-]{2,}", translated.lower(), re.UNICODE)
+    if not tokens or len(tokens) > 3:
+        return [], ""
+    if not _translated_term_ok(term, translated, target_lang):
+        return [], ""
+    kept = [t for t in tokens if len(t) >= 4 and t not in _NATIVE_FUNCTION_WORDS]
+    phrase = " ".join(tokens) if len(tokens) > 1 and kept else ""
+    return kept, phrase
+
+
+def _translate_terms(terms: set[str], target_lang: str) -> set[str]:
+    """Native-language forms of an English term set: translate each term and keep the
+    result tokens plus, for multi-word results, the full phrase (matched via the
+    literal-substring branch). Best-effort and cached; returns an empty set when
+    translation is unavailable. Unicode-aware so native tokens stay intact (e.g.
+    "ürünleri")."""
     out: set[str] = set()
-    for term in _icp_terms(icp):
-        translated = translator.translate(term, target_lang, source="en")
-        if not translated or translated.lower() == term:
-            continue
-        # Unicode-aware: keep native tokens intact (e.g. "ürünleri"). The matcher's
-        # literal-substring branch (`t in low`) handles non-ASCII terms directly.
-        for token in re.findall(r"\w[\w\-]{2,}", translated.lower(), re.UNICODE):
-            out.add(token)
+    for term in terms:
+        kept, phrase = _translate_one(term, target_lang)
+        out.update(kept)
+        if phrase:
+            out.add(phrase)
     return out
 
 
+def _translate_icp_terms(icp: str, target_lang: str) -> set[str]:
+    """Native-language ICP terms for matching home-language sites (e.g. "timber" ->
+    "kereste"), so a home-language site matches without translating its text first."""
+    return _translate_terms(_icp_terms(icp), target_lang)
+
+
+def _translate_profile(
+    profile: "icp_phrases.IcpProfile", target_lang: str
+) -> tuple[set[str], set[str], dict[str, set[str]]]:
+    """Native-language matcher terms for one ICP profile, with attribution:
+    (strong flat, weak flat, token -> native terms).
+
+    Core tokens translate to strong terms attributed to themselves; qualifier
+    tokens ("for SMEs") translate to weak terms only — an audience word must not
+    verify an industry. Each multi-token core phrase is ALSO translated whole:
+    languages like Dutch compound it into one word ("sustainability consultancy"
+    -> "duurzaamheidsadvies") that per-token translation can never produce, and
+    that single word co-evidences the entire chunk. A multi-word phrase result
+    keeps multi-token attribution only as the full phrase; its individual tokens
+    go weak — a leaked "advies" must never co-evidence "sustainability"."""
+    strong: set[str] = set()
+    weak: set[str] = set()
+    provenance: dict[str, set[str]] = {}
+
+    def attribute(token: str, terms: set[str]) -> None:
+        if terms:
+            provenance.setdefault(token, set()).update(terms)
+
+    for token in profile.core_tokens:
+        kept, phrase = _translate_one(token, target_lang)
+        native = set(kept) | ({phrase} if phrase else set())
+        strong |= native
+        attribute(token, native)
+    for token in profile.qualifier_tokens:
+        kept, phrase = _translate_one(token, target_lang)
+        native = set(kept) | ({phrase} if phrase else set())
+        weak |= native
+        attribute(token, native)
+    for chunk in profile.core_phrases:
+        required = [t for t in chunk if t in profile.core_tokens]
+        kept, phrase = _translate_one(" ".join(chunk), target_lang)
+        if phrase:
+            # Multi-word native phrase: only the whole phrase speaks for the chunk.
+            strong.add(phrase)
+            weak.update(kept)
+            for token in required:
+                attribute(token, {phrase})
+        elif len(kept) == 1:
+            # Single native compound: one word covers the whole concept.
+            strong.update(kept)
+            for token in required:
+                attribute(token, set(kept))
+    return strong, weak, provenance
+
+
+def _translate_expansion_terms(terms: set[str], target_lang: str) -> tuple[set[str], set[str]]:
+    """Native forms of expansion-cluster terms: (all forms, attribution-safe subset).
+    A multi-word native result is attribution-safe only as the full phrase — its
+    individual tokens are common words ("professional services" -> "zakelijke
+    dienstverlening" leaks "zakelijke" = plain "business") that would let any site
+    in that language co-evidence a core token. Cluster terms are already one
+    semantic hop from the ICP; their translations must not drift further."""
+    flat: set[str] = set()
+    safe: set[str] = set()
+    for term in terms:
+        kept, phrase = _translate_one(term, target_lang)
+        flat.update(kept)
+        if phrase:
+            flat.add(phrase)
+            safe.add(phrase)
+        else:
+            safe.update(kept)
+    return flat, safe
+
+
 def _localize_enrichment(
-    enrichment: dict, icp: str, target_lang: str, extra_terms: set[str] | None
+    enrichment: dict, icp: str, extra_terms: set[str] | None,
+    provenance: dict[str, set[str]] | None = None,
 ) -> dict:
     """Translate-on-miss: when neither English nor native ICP terms are evidenced
     (likely a home-language site the English path missed), translate this company's
     distilled facts into English in place, so downstream matching, the LLM judge,
     and the CSV all read English. Facts are short and cached, so volume stays low."""
-    if _icp_evidence(icp, enrichment, extra_terms):
+    if _icp_evidence(icp, enrichment, extra_terms, provenance=provenance):
         return enrichment
     summary = enrichment.get("company_summary", "")
     facts = enrichment.get("personalization_facts", "")
@@ -2467,42 +2662,42 @@ _SOCIAL_HOSTS = (
 # ("United Kingdom (UK)", "uk", "England") is resolved to a canonical key via
 # _resolve_region_key before lookup, so the signals actually fire regardless of
 # how the region was phrased. Easily extensible.
-_REGION_CCTLD = {
-    "bangladesh": "bd", "india": "in", "pakistan": "pk", "turkey": "tr",
-    "germany": "de", "france": "fr", "united kingdom": "uk", "united states": "us",
-    "nigeria": "ng", "kenya": "ke", "indonesia": "id", "brazil": "br", "mexico": "mx",
-}
-_REGION_PHONE = {
-    "bangladesh": "+880", "india": "+91", "pakistan": "+92", "turkey": "+90",
-    "germany": "+49", "france": "+33", "united kingdom": "+44", "united states": "+1",
-    "nigeria": "+234", "kenya": "+254", "indonesia": "+62", "brazil": "+55", "mexico": "+52",
-}
-_REGION_CITIES = {
-    "bangladesh": ["dhaka", "chattogram", "chittagong", "khulna", "sylhet", "rajshahi"],
-    "united kingdom": [
-        "london", "manchester", "birmingham", "leeds", "glasgow", "edinburgh",
-        "bristol", "liverpool", "sheffield", "surrey", "england", "scotland", "wales",
-    ],
-    "united states": ["new york", "san francisco", "los angeles", "chicago", "boston", "austin", "seattle"],
-    "germany": ["berlin", "munich", "hamburg", "frankfurt", "cologne"],
-    "france": ["paris", "lyon", "marseille", "toulouse"],
-    "india": ["mumbai", "delhi", "bengaluru", "bangalore", "hyderabad", "chennai", "pune"],
-}
+# Region lookup tables are DERIVED from regions_data.COUNTRIES (the single source of
+# truth) so widening coverage means editing one file. Names are kept stable for the
+# rest of this module.
+_REGION_CCTLD = {k: v["cctld"] for k, v in rd.COUNTRIES.items() if v.get("cctld")}
+_REGION_PHONE = {k: v["phone"] for k, v in rd.COUNTRIES.items() if v.get("phone")}
+_REGION_CITIES = {k: v["cities"] for k, v in rd.COUNTRIES.items() if v.get("cities")}
+_REGION_LANGS = {k: v["langs"] for k, v in rd.COUNTRIES.items() if v.get("langs")}
 
 # Freeform aliases -> canonical region key. Short aliases (<=3 chars) are matched
-# on word boundaries; longer ones as substrings (longest first).
-_REGION_ALIASES = {
-    "united kingdom": "united kingdom", "great britain": "united kingdom",
-    "britain": "united kingdom", "england": "united kingdom", "scotland": "united kingdom",
-    "wales": "united kingdom", "uk": "united kingdom", "gb": "united kingdom",
-    "united states": "united states", "america": "united states", "usa": "united states",
-    "us": "united states",
-    "bangladesh": "bangladesh", "india": "india", "pakistan": "pakistan",
-    "turkey": "turkey", "türkiye": "turkey", "turkiye": "turkey",
-    "germany": "germany", "deutschland": "germany", "france": "france",
-    "nigeria": "nigeria", "kenya": "kenya", "indonesia": "indonesia",
-    "brazil": "brazil", "brasil": "brazil", "mexico": "mexico", "méxico": "mexico",
-}
+# on word boundaries; longer ones as substrings (longest first). See _resolve_region_key.
+_REGION_ALIASES = {a: k for k, v in rd.COUNTRIES.items() for a in v["aliases"]}
+
+# Foreign-country detection tables. _COUNTRY_NAMES maps any name/variant to its
+# canonical key; _COUNTRY_DEMONYMS maps adjectives ("british"); _AMBIGUOUS holds keys
+# whose NAME doubles as a common word / US place (never trigger a reject, excluded from
+# domain matching). _PHONE_CC maps an E.164 calling code to a country (first listed
+# owner wins for shared codes; +1/+7 pinned to the dominant economy).
+_COUNTRY_NAMES = dict(_REGION_ALIASES)
+_COUNTRY_DEMONYMS = {d: k for k, v in rd.COUNTRIES.items() for d in v.get("demonyms", [])}
+_AMBIGUOUS = {k for k, v in rd.COUNTRIES.items() if v.get("ambiguous")}
+
+
+def _build_phone_cc() -> dict:
+    out: dict[str, str] = {}
+    for key, val in rd.COUNTRIES.items():
+        code = val.get("phone")
+        if code and code not in out:
+            out[code] = key
+    out["+1"] = "united states"
+    out["+7"] = "russia"
+    return out
+
+
+_PHONE_CC = _build_phone_cc()
+_COUNTRY_NAMES_BY_LEN = sorted(_COUNTRY_NAMES, key=len, reverse=True)
+_COUNTRY_DEMONYMS_BY_LEN = sorted(_COUNTRY_DEMONYMS, key=len, reverse=True)
 
 
 def _resolve_region_key(region: str) -> str | None:
@@ -2517,19 +2712,131 @@ def _resolve_region_key(region: str) -> str | None:
     return None
 
 
-# Region -> primary business language (ISO code) for translation. Regions where
-# English is the de-facto business web language are deliberately omitted, so
-# translation no-ops there (None) and behaviour is unchanged: united kingdom,
-# united states, india, pakistan, bangladesh, nigeria, kenya.
-_REGION_LANG = {
-    "turkey": "tr", "germany": "de", "france": "fr",
-    "brazil": "pt", "mexico": "es", "indonesia": "id",
-}
+# Cap the number of business languages a single region is searched in, so a
+# many-language market (e.g. switzerland: de/fr/it) doesn't explode the query count.
+# Matching still uses every language; only SEARCH is capped. Most regions have ≤2.
+MAX_SEARCH_LANGS = 3
+
+
+def _region_languages(region: str) -> list[str]:
+    """Business-web languages to ALSO search/translate into for `region` (most-
+    productive first), or [] where English is the de-facto business language. Derived
+    from regions_data.COUNTRIES; multilingual markets (morocco -> ["fr","ar"]) return
+    several. Foreign same-language companies are dropped later by region_fit."""
+    return list(_REGION_LANGS.get(_resolve_region_key(region) or "", []))
 
 
 def _region_language(region: str) -> str | None:
-    """Local language to translate into for `region`, or None to stay English."""
-    return _REGION_LANG.get(_resolve_region_key(region) or "")
+    """Primary local language for `region` (first of _region_languages), or None to
+    stay English. Kept for single-language callers and the status line."""
+    langs = _region_languages(region)
+    return langs[0] if langs else None
+
+
+def _target_region_tokens(region_key: str | None, region: str) -> list[str]:
+    """Anchor vocabulary for the TARGET region: canonical key + its longer aliases +
+    known cities. Used to decide whether the target is actually named in an address."""
+    if not region_key:
+        r = (region or "").strip().lower()
+        return [r] if r else []
+    toks = {region_key}
+    toks.update(a for a, k in _REGION_ALIASES.items() if k == region_key and len(a) > 3)
+    toks.update(_REGION_CITIES.get(region_key, []))
+    return [t for t in toks if t]
+
+
+def _resolve_place(place: str) -> str | None:
+    """Resolve a free-text place (country name/variant, demonym, or city) to a
+    canonical region key, or None."""
+    p = (place or "").lower().strip()
+    if not p:
+        return None
+    for name in _COUNTRY_NAMES_BY_LEN:
+        if re.search(r"\b" + re.escape(name) + r"\b", p):
+            return _COUNTRY_NAMES[name]
+    for dem in _COUNTRY_DEMONYMS_BY_LEN:
+        if re.search(r"\b" + re.escape(dem) + r"\b", p):
+            return _COUNTRY_DEMONYMS[dem]
+    for rk, cities in _REGION_CITIES.items():
+        if any(re.search(r"\b" + re.escape(c) + r"\b", p) for c in cities):
+            return rk
+    return None
+
+
+def _detect_address_country(text: str) -> str | None:
+    """Detect the country a free-form ADDRESS declares (its stated domicile).
+
+    Prefers an unambiguous country when several names appear, so "Atlanta, Georgia,
+    USA" resolves to united states rather than Georgia-the-country."""
+    if not text:
+        return None
+    low = text.lower()
+    found: list[str] = []
+    for name in _COUNTRY_NAMES_BY_LEN:
+        if re.search(r"\b" + re.escape(name) + r"\b", low):
+            found.append(_COUNTRY_NAMES[name])
+    for dem in _COUNTRY_DEMONYMS_BY_LEN:
+        if re.search(r"\b" + re.escape(dem) + r"(?:-based)?\b", low):
+            found.append(_COUNTRY_DEMONYMS[dem])
+    if not found:
+        return None
+    unambiguous = [f for f in found if f not in _AMBIGUOUS]
+    return unambiguous[0] if unambiguous else found[0]
+
+
+# HQ-statement idioms: "based/headquartered/registered in <place>" (verb form captures
+# the place after "in", stopping at a comma) and "<place>-based" (adjective form).
+_HQ_PLACE = r"([^\W\d_][^\d\n,;:|]{1,38})"
+_HQ_VERB_RE = re.compile(
+    r"\b(?:based|headquarter(?:ed|s)?|head\s*offices?|hq|registered|incorporated)\s+in\s+" + _HQ_PLACE,
+    re.IGNORECASE,
+)
+_HQ_ADJ_RE = re.compile(r"\b([^\W\d_][^\d\n,;:|]{0,28}?)[ \-]based\b", re.IGNORECASE)
+# A market/customer subject immediately before an HQ idiom means the place is where the
+# company SELLS, not where it IS ("serving customers based in Turkey"). Self-referential
+# singulars ("our company based in X") are deliberately NOT listed, only market plurals.
+_HQ_CUSTOMER_RE = re.compile(
+    r"\b(?:customers?|clients?|buyers?|partners?|distributors?|importers?|resellers?|"
+    r"companies|businesses|firms|manufacturers|suppliers|organi[sz]ations|enterprises|brands)\W*$",
+    re.IGNORECASE,
+)
+
+
+def _detect_prose_location(text: str) -> str | None:
+    """Detect a company's self-stated HQ from prose, ignoring market/customer subjects.
+    Returns a canonical region key or None."""
+    if not text:
+        return None
+    low = text.lower()
+    for rx in (_HQ_VERB_RE, _HQ_ADJ_RE):
+        for m in rx.finditer(low):
+            if _HQ_CUSTOMER_RE.search(low[max(0, m.start() - 45):m.start()]):
+                continue
+            rk = _resolve_place(m.group(1))
+            if rk:
+                return rk
+    return None
+
+
+def _detect_domain_country(domain: str) -> str | None:
+    """Detect an UNAMBIGUOUS country named in the registrable domain LABEL (never the
+    URL path). Matches names >=5 chars as a prefix/suffix/hyphen-segment, so 'oman'
+    inside 'romania' or a brand like 'jordan' never fires."""
+    label = (domain.split(".")[0] if domain else "").lower()
+    if not label:
+        return None
+    segments = set(re.split(r"[^a-zà-ÿ]+", label))
+    for name in _COUNTRY_NAMES_BY_LEN:
+        rk = _COUNTRY_NAMES[name]
+        if rk in _AMBIGUOUS:
+            continue
+        n = name.replace(" ", "")
+        if len(n) < 5:
+            continue
+        if n in segments or label.startswith(n) or label.endswith(n):
+            return rk
+    return None
+
 
 _SIZE_BAND_RE = re.compile(r"(\d[\d,\.]*)\s*\+?\s*(?:employees|staff|people|team members)", re.IGNORECASE)
 _SME_HINT_RE = re.compile(
@@ -2576,10 +2883,14 @@ _SEED_SYSTEM = (
 )
 
 
-def _build_seed_prompt(icp: str, region: str, count: int) -> str:
+def _build_seed_prompt(icp: str, region: str, count: int, related: set[str] | None = None) -> str:
+    hint = ""
+    if related:
+        hint = f"Related terms (same industry, treat as in-scope): {', '.join(sorted(related)[:8])}\n"
     return (
         f"Target profile: {icp}\n"
-        f"Region/country: {region}\n\n"
+        f"Region/country: {region}\n"
+        f"{hint}\n"
         f"Return up to {count} real, currently-operating companies that match the "
         f"target profile and are based in or serve that region. Prefer local small "
         f"and mid-size companies over global multinationals.\n"
@@ -2614,7 +2925,8 @@ def _parse_json_object(text: str) -> dict:
 
 
 def seed_companies_via_llm(
-    icp: str, region: str, count: int = 30, provider_config: dict | None = None
+    icp: str, region: str, count: int = 30, provider_config: dict | None = None,
+    related: set[str] | None = None,
 ) -> dict:
     """Ask an LLM for known companies + local directories for (ICP, region).
 
@@ -2627,7 +2939,7 @@ def seed_companies_via_llm(
         return {"companies": [], "local_directories": []}
     try:
         from opencold import generator as _gen
-        raw = _gen.complete(prov, _SEED_SYSTEM, _build_seed_prompt(icp, region, count), max_tokens=1024)
+        raw = _gen.complete(prov, _SEED_SYSTEM, _build_seed_prompt(icp, region, count, related), max_tokens=1024)
     except Exception:
         return {"companies": [], "local_directories": []}
     data = _parse_json_object(raw)
@@ -2653,6 +2965,13 @@ def region_query_templates(icp: str, region: str) -> list[str]:
         f"{icp} {region} contact email",
         f"{icp} association {region} members",
     ]
+    # One exact-phrase query per multi-word core chunk ("sustainability
+    # consultancy"): search engines treat the quoted form as adjacency, which
+    # finds companies the bare bag-of-words queries bury under generic matches.
+    templates += [
+        f'"{" ".join(chunk)}" {region}'
+        for chunk in icp_phrases.parse_icp(icp).core_phrases
+    ]
     return [q for q in templates if q.strip()]
 
 
@@ -2673,21 +2992,46 @@ def _candidate_from_result(result: SearchResult, reason: str) -> CandidateCompan
     )
 
 
+def _interleave_translations(texts: list[str], langs: list[str]) -> list[str]:
+    """Round-robin interleave native translations (one list per business language)
+    with the English originals, native-first, dropping blanks/dupes while preserving
+    order. So Morocco [fr, ar] yields fr[0], ar[0], en[0], fr[1], ar[1], en[1], … —
+    no single language starves the pool."""
+    if not texts:
+        return []
+    lists: list[list[str]] = []
+    for lang in langs:
+        nat = [q for q in translator.translate_many(texts, lang, source="en") if q and q.strip()]
+        if nat:
+            lists.append(nat)
+    lists.append(list(texts))  # English last so native languages take priority slots
+    seen: set[str] = set()
+    out: list[str] = []
+    for tup in zip_longest(*lists):
+        for q in tup:
+            if q and q not in seen:
+                seen.add(q)
+                out.append(q)
+    return out
+
+
 def discover_companies_by_query(
     icp: str, region: str, limit: int = 50, extra_queries: list[str] | None = None,
-    target_lang: str | None = None,
+    target_langs: list[str] | None = None,
 ) -> list[CandidateCompany]:
     base = region_query_templates(icp, region)
-    if target_lang:
-        # Native-language queries ("Türkiye'deki kereste firmaları") surface real
-        # local SMEs that English queries bury under English directory spam (and
-        # avoid "timber turkey" pulling US turkey-hunting noise). Interleave
-        # native-first so the local channel isn't starved by the English pool cap.
-        native = [q for q in translator.translate_many(base, target_lang, source="en") if q and q.strip()]
-        queries = [q for pair in zip_longest(native, base) for q in pair if q]
+    extra = list(extra_queries or [])
+    langs = list(target_langs or [])[:MAX_SEARCH_LANGS]
+    if langs:
+        # Native-language queries ("Türkiye'deki kereste firmaları" / "entreprises de
+        # recyclage au Maroc") surface real local SMEs that English queries bury under
+        # English directory spam. The region name is in every template, so a foreign
+        # same-language result (a French firm in a French Morocco search) is region-
+        # bounded here and rejected downstream by region_fit.
+        queries = _interleave_translations(base, langs)
+        queries += _interleave_translations(extra, langs)
     else:
-        queries = list(base)
-    queries += list(extra_queries or [])
+        queries = list(base) + extra
     candidates: dict[str, CandidateCompany] = {}
     for query in queries:
         for result in web_search(query, num=10):
@@ -2977,6 +3321,8 @@ def discover_company_candidates(
     seed_count: int = 30,
     use_wiki: bool = True,
     use_translation: bool = True,
+    expansion: set[str] | None = None,
+    use_expansion: bool = True,
 ) -> list[CandidateCompany]:
     """Collect candidate companies from LLM seeding (A), Wikipedia lists (A2),
     search harvest (B), and an optional manual sources file (C). Deduped by
@@ -2986,7 +3332,7 @@ def discover_company_candidates(
     so every request is served by search harvest at minimum, with LLM/Wikipedia
     layering curated names on top."""
     candidates: dict[str, CandidateCompany] = {}
-    target_lang = _region_language(region) if use_translation else None
+    target_langs = _region_languages(region) if use_translation else []
 
     def _add(cand: CandidateCompany, channel: str) -> None:
         domain = normalize_domain(cand.website)
@@ -3001,13 +3347,19 @@ def discover_company_candidates(
     if use_llm:
         prov = _resolve_llm_provider()
         if prov:
-            seed = seed_companies_via_llm(icp, region, count=seed_count, provider_config=prov)
+            seed = seed_companies_via_llm(icp, region, count=seed_count, provider_config=prov, related=expansion)
             extra_queries = [f"{d} {region}" for d in seed.get("local_directories", [])]
             for name, url in _resolve_names(seed.get("companies", []), icp, region, workers):
                 _add(CandidateCompany(
                     company=name, website=url, discovery_source_url=url,
                     discovery_reason=f"llm seed: {icp} in {region}",
                 ), "llm")
+
+    # Bounded expansion queries (top-N related terms, ONE template each) appended to
+    # the search-harvest extras — capped in expansion_queries to avoid a query explosion.
+    if use_expansion and expansion:
+        from opencold import icp_expansion
+        extra_queries += icp_expansion.expansion_queries(expansion, region)
 
     # Channel A2: Wikipedia "List of ..." names (deterministic, no LLM). Additive.
     if use_wiki:
@@ -3021,7 +3373,7 @@ def discover_company_candidates(
 
     # Channel B: search harvest (always runs).
     for cand in discover_companies_by_query(
-        icp, region, limit=limit, extra_queries=extra_queries, target_lang=target_lang
+        icp, region, limit=limit, extra_queries=extra_queries, target_langs=target_langs
     ):
         _add(cand, "search")
 
@@ -3056,7 +3408,47 @@ def _clean_phone(raw: str) -> str:
     digits = re.sub(r"\D", "", cleaned)
     if len(digits) < 7 or len(digits) > 15:
         return ""
+    # Year spans ("2005-2026" copyright lines, "2021-2030" programme ranges) and
+    # doubled quads ("1000 1000") regex-match as phones; a "+" marks a real number.
+    if "+" not in cleaned and len(digits) == 8:
+        first, second = digits[:4], digits[4:]
+        if first == second:
+            return ""
+        if all(1900 <= int(half) <= 2099 for half in (first, second)):
+            return ""
     return cleaned
+
+
+def _detect_phone_country(phones_joined: str) -> str | None:
+    """Map a leading E.164 calling code to a canonical region key (longest prefix
+    wins, so +1 and +880 disambiguate correctly), or None."""
+    p = (phones_joined or "").replace(" ", "")
+    if not p.startswith("+"):
+        return None
+    for code in sorted(_PHONE_CC, key=len, reverse=True):
+        if p.startswith(code):
+            return _PHONE_CC[code]
+    return None
+
+
+def _detected_country(contacts: CompanyContacts, website: str, summary: str = "") -> str:
+    """Best-effort detected country for the `country` column, in trust order:
+    stated address > phone code > ccTLD > HQ prose > domain label. "" if unknown."""
+    by_addr = _detect_address_country(contacts.address)
+    if by_addr:
+        return by_addr
+    by_phone = _detect_phone_country("".join(contacts.phones).replace(" ", ""))
+    if by_phone:
+        return by_phone
+    domain = normalize_domain(website)
+    tld = domain.rsplit(".", 1)[-1] if "." in domain else ""
+    for name, cc in _REGION_CCTLD.items():
+        if cc not in rd.GENERIC_TLDS and (tld == cc or domain.endswith("." + cc)):
+            return name
+    by_hq = _detect_prose_location(summary)
+    if by_hq:
+        return by_hq
+    return _detect_domain_country(domain) or ""
 
 
 def _register_social(contacts: CompanyContacts, url: str) -> None:
@@ -3198,11 +3590,15 @@ def extract_company_contacts(website: str, max_pages: int = 5) -> CompanyContact
                     seen_emails.add(el)
                     contacts.emails.append((el, url))
 
-    # Phone regex fallback from the home page text.
+    # Phone regex fallback from the home page text. Weakest source, so require the
+    # raw match to LOOK like a displayed phone: a "+" prefix or >=2 separator chars
+    # ("05 22 77 71 00") — bare digit runs are usually IDs, years, or counters.
     if not contacts.phones and home_text:
         match = _PHONE_RE.search(home_text)
         if match:
-            tel = _clean_phone(match.group(1))
+            raw = match.group(1)
+            formatted = raw.lstrip().startswith("+") or len(re.findall(r"[\s().\-]", raw)) >= 2
+            tel = _clean_phone(raw) if formatted else ""
             if tel:
                 contacts.phones.append(tel)
 
@@ -3242,14 +3638,35 @@ def pick_company_email(emails: list, domain: str) -> tuple[str, str, str]:
     return best[1], best[2], best[3]
 
 
+def _linkedin_slug_matches(url: str, company: str, domain: str) -> bool:
+    """Does a linkedin.com/company/<slug> plausibly belong to this company?
+
+    Search results for small companies are noisy — without this check the first
+    hit wins, attaching unrelated profiles (e.g. /company/cotiviti to "Macarpa").
+    Compares the slug against the company-name tokens and the domain stem; tiny
+    slugs (e.g. /company/t) can match anything, so they never pass.
+    """
+    slug = url.rstrip("/").rsplit("/", 1)[-1].lower()
+    slug_compact = re.sub(r"[^a-z0-9]", "", slug)
+    if len(slug_compact) < 3:
+        return False
+    stem = re.sub(r"[^a-z0-9]", "", domain.split(".")[0].lower())
+    candidates = {stem, "".join(_company_tokens(company))}
+    candidates |= {t for t in _company_tokens(company) if len(t) >= 4}
+    return any(c and (c in slug_compact or slug_compact in c) for c in candidates if len(c) >= 3)
+
+
 def find_company_linkedin(company: str, contacts: CompanyContacts, domain: str) -> str:
     if contacts.linkedin_company_url:
         return contacts.linkedin_company_url
     try:
         for result in web_search(f'"{company}" site:linkedin.com/company', num=5):
             match = _LINKEDIN_COMPANY_RE.search(result.url)
-            if match:
-                return match.group(0).split("?")[0]
+            if not match:
+                continue
+            url = match.group(0).split("?")[0]
+            if _linkedin_slug_matches(url, company, domain):
+                return url
     except Exception:
         pass
     return ""
@@ -3260,11 +3677,15 @@ def find_company_linkedin(company: str, contacts: CompanyContacts, domain: str) 
 # ---------------------------------------------------------------------------
 
 def region_fit(contacts: CompanyContacts, website: str, region: str, pages_text: str = "") -> tuple[int, str]:
-    """Score how strongly a company is anchored in the target region (0-100).
+    """Score how strongly a company is anchored in the target region (0-100), and
+    flag a region_conflict when it is clearly domiciled elsewhere.
 
-    Cheap deterministic signals: ccTLD, phone country code, address/text mentions
-    of the region or its major cities. Lets genuine locals outrank a multinational's
-    localized page.
+    Anchors (additive): target ccTLD, local phone code, target named in the company's
+    own address, or a self-stated HQ. A target mention only in marketing/page text is
+    recorded (`page_region_mention`) but scores nothing. When no anchor exists, a
+    foreign ccTLD / address country / dialing code / HQ / domain-label adds a
+    `region_conflict:<src>` reason (the caller rejects on it). Lets genuine locals
+    outrank a multinational's localized page without rejecting locals that export.
     """
     if not (region or "").strip():
         return 0, ""
@@ -3283,25 +3704,49 @@ def region_fit(contacts: CompanyContacts, website: str, region: str, pages_text:
     if target_code and target_code in phones_joined:
         score += 35
         reasons.append(f"phone:{target_code}")
-    haystack = (contacts.address + " " + pages_text).lower()
-    tokens = [region_key or region.lower()] + (_REGION_CITIES.get(region_key, []) if region_key else [])
-    if any(tok and tok in haystack for tok in tokens):
+
+    # A target mention in the company's OWN address (or self-stated HQ) anchors it to
+    # the region; the same word in marketing/SEO page text does NOT (exporters' pages
+    # say "...supplier turkey" constantly), so it scores nothing.
+    addr_low = (contacts.address or "").lower()
+    pages_low = (pages_text or "").lower()
+    tokens = _target_region_tokens(region_key, region)
+    addr_anchor = any(t and t in addr_low for t in tokens)
+    hq = _detect_prose_location(pages_text)
+    if addr_anchor:
         score += 25
         reasons.append("addr_region_match")
+    elif hq and hq == region_key:
+        score += 20
+        reasons.append("hq_region_match")
+    elif any(t and t in pages_low for t in tokens):
+        reasons.append("page_region_mention")
 
-    # Conflict: a clearly different known country (a wrong-country namesake).
-    # Only checked against regions we have signals for, to avoid false flags.
+    # Conflicts only matter when NOTHING anchors the company to the target (score == 0):
+    # any genuine target signal (ccTLD / local phone / target address or HQ) is trusted
+    # over a foreign mention, so a local that merely lists export markets is never
+    # rejected. A foreign ccTLD, stated address country, or dialing code is
+    # domicile-grade; a foreign HQ-prose or domain-label name is a weaker last resort.
     conflict = ""
-    if target_cc:
+    if region_key and not score:
         for cc in set(_REGION_CCTLD.values()):
-            if cc != target_cc and (tld == cc or domain.endswith("." + cc)):
+            if cc != target_cc and cc not in rd.GENERIC_TLDS and (tld == cc or domain.endswith("." + cc)):
                 conflict = f".{cc}"
                 break
-    if not conflict and target_code and score == 0:
-        for code in set(_REGION_PHONE.values()):
-            if code != target_code and phones_joined.startswith(code):
-                conflict = code
-                break
+        if not conflict:
+            ac = _detect_address_country(contacts.address)
+            if ac and ac != region_key and ac not in _AMBIGUOUS:
+                conflict = f"addr:{ac}"
+        if not conflict:
+            pc = _detect_phone_country(phones_joined)
+            if pc and pc != region_key:
+                conflict = f"phone:{pc}"
+        if not conflict and hq and hq != region_key and hq not in _AMBIGUOUS:
+            conflict = f"hq:{hq}"
+        if not conflict:
+            dc = _detect_domain_country(domain)
+            if dc and dc != region_key:
+                conflict = f"domain:{dc}"
     if conflict:
         reasons.append(f"region_conflict:{conflict}")
 
@@ -3413,23 +3858,28 @@ def judge_companies(rows: list[dict], icp: str, region: str, provider_config: di
 def _classify_company(row: dict, icp_evidence: bool, region_conflict: bool, llm: dict | None) -> tuple[str, str]:
     """Combine deterministic evidence with the (optional) LLM verdict.
 
-    Authority split: deterministic signals own REGION (ccTLD/phone are hard facts
-    the model can't override); the LLM owns INDUSTRY semantics. The model deferring
-    ("unknown") never rejects — we fall back to deterministic. Disagreements land in
-    'review', not silently trusted. Returns (confidence, reason).
+    Authority split: deterministic signals own REGION (ccTLD/phone/address are hard
+    facts the model can't override); the LLM owns INDUSTRY semantics. The model
+    deferring ("unknown") never rejects — we fall back to deterministic. A foreign
+    domicile or a government site is rejected; a B2B marketplace/directory is routed to
+    'review' (never verified). Disagreements land in 'review'. Returns (confidence,
+    reason).
     """
-    region_fit_score = int(row.get("region_fit") or 0)
     llm = llm or {}
     llm_match = llm.get("match", "unknown")
 
     if region_conflict:
         return "rejected", "region_conflict"
+    if row.get("_is_government"):
+        return "rejected", "government_site"
     if llm_match == "no":
         detail = llm.get("industry") or llm.get("country") or "different company"
         return "rejected", f"llm_mismatch:{detail}"
+    if row.get("_is_aggregator"):
+        return "review", "marketplace_directory"
 
     industry_ok = icp_evidence or llm_match == "yes"
-    region_ok = region_fit_score > 0 or _country_matches(row.get("country", ""), llm.get("country", ""))
+    region_ok = bool(row.get("_region_anchor")) or _country_matches(row.get("country", ""), llm.get("country", ""))
 
     if industry_ok and region_ok:
         suffix = "+llm" if llm_match == "yes" else ""
@@ -3524,10 +3974,15 @@ def build_company_row(
     region: str,
     max_pages: int = 4,
     find_people: bool = False,
-    target_lang: str | None = None,
+    target_langs: list[str] | None = None,
     extra_terms: set[str] | None = None,
+    weak_terms: set[str] | None = None,
+    provenance: dict[str, set[str]] | None = None,
 ) -> dict | None:
     domain = normalize_domain(company.website)
+    # Union of native (full-weight) + expansion (half-weight) terms for the boolean
+    # evidence/localize checks, where weighting does not matter.
+    all_extra = (extra_terms or set()) | (weak_terms or set())
     pages = crawl_company_pages(company.website, max_pages=max_pages)
     pages = _merge_pages(pages, search_company_pages(company))
     facts = enricher.extract_facts(pages)
@@ -3541,19 +3996,27 @@ def build_company_row(
     }
     # Translate a home-language site's facts into English when the English/native
     # ICP terms find no evidence, so matching, the judge, and the CSV read English.
-    if target_lang:
-        enrichment = _localize_enrichment(enrichment, icp, target_lang, extra_terms)
+    if target_langs:
+        enrichment = _localize_enrichment(enrichment, icp, all_extra, provenance)
     pages_text = " ".join(f"{p.title} {p.description} {p.text}" for p in pages)
 
     contacts = extract_company_contacts(company.website, max_pages=max_pages)
     name = company.company
-    if contacts.company_name and (not name or name == _company_from_domain(domain)):
+    if contacts.company_name and not _bad_company_name(contacts.company_name) and (
+        not name or name == _company_from_domain(domain) or _bad_company_name(name)
+    ):
         name = contacts.company_name
+    if _bad_company_name(name):
+        # Anchor/title scrape produced junk (SEO keyword stuffing, 100-char titles)
+        # and the site offered nothing structured — the domain stem beats garbage.
+        name = _company_from_domain(domain)
 
     email, email_type, _email_src = pick_company_email(contacts.emails, domain)
     linkedin = find_company_linkedin(name, contacts, domain)
     rfit, rfit_reasons = region_fit(contacts, company.website, region, pages_text)
     region_conflict = "region_conflict" in rfit_reasons
+    region_anchor = any(a in rfit_reasons for a in ("cctld:", "phone:", "addr_region_match", "hq_region_match"))
+    detected = _detected_country(contacts, company.website, enrichment.get("company_summary", ""))
     tier = size_tier(pages_text, contacts)
 
     if contacts.partnership_url:
@@ -3563,7 +4026,8 @@ def build_company_row(
     else:
         partnership = ""
 
-    icp_score, matched_terms = score_company(company, enrichment, icp, extra_terms)
+    icp_score, matched_terms = score_company(company, enrichment, icp, extra_terms, weak_terms,
+                                             provenance)
     if rfit_reasons:
         matched_terms = (matched_terms + (enricher.FACT_SEPARATOR if matched_terms else "") + rfit_reasons)
 
@@ -3572,7 +4036,7 @@ def build_company_row(
         "name": "",
         "company": name,
         "website": company.website,
-        "country": region,
+        "country": detected.title() if detected else region,
         "region_fit": str(rfit),
         "company_email": email,
         "email_type": email_type,
@@ -3596,8 +4060,14 @@ def build_company_row(
     row["lead_score_reasons"] = lead_reasons
     # Carried for verification/classification; underscore keys are not written to
     # CSV (DictWriter uses fixed fieldnames + extrasaction="ignore").
-    row["_icp_evidence"] = _icp_evidence(icp, enrichment, extra_terms)
+    row["_icp_evidence"] = _icp_evidence(icp, enrichment, extra_terms, weak_terms, provenance)
     row["_region_conflict"] = region_conflict
+    row["_region_anchor"] = region_anchor
+    row["_is_aggregator"] = _is_aggregator(domain, " ".join([
+        enrichment.get("company_summary", ""),
+        enrichment.get("personalization_facts", ""),
+    ]))
+    row["_is_government"] = _is_government_domain(domain)
 
     if find_people:
         people = search_linkedin_contacts(name, domain)
@@ -3622,6 +4092,7 @@ def discover_company_rows(
     progress_callback: object = None,
     use_wiki: bool = True,
     use_translation: bool = True,
+    use_expansion: bool = True,
 ) -> list[dict]:
     """Discover companies for (ICP, region) with a durable contact bundle.
 
@@ -3636,14 +4107,55 @@ def discover_company_rows(
     # Crawl more than `limit` so rejected namesakes can be replaced by verified
     # ones — but cap the pool so latency stays bounded.
     pool = min(max(limit * 2, limit + 8), 40)
-    # Resolve the target language once, and translate the ICP terms once, so the
-    # native-language matcher terms are reused across every company (not per row).
-    target_lang = _region_language(region) if use_translation else None
-    extra_terms = _translate_icp_terms(icp, target_lang) if target_lang else set()
+    # Resolve the target language(s) once, and translate the ICP profile once per
+    # language, so the native-language matcher terms are reused across every company
+    # (not per row). Multilingual markets (morocco -> fr+ar) get every language.
+    # `provenance` maps each ICP token to the derived terms (native translations,
+    # expansion-cluster members) that evidence it — the phrase-aware gate needs the
+    # attribution, not just the flat sets.
+    profile = icp_phrases.parse_icp(icp)
+    target_langs = _region_languages(region) if use_translation else []
+    extra_terms: set[str] = set()
+    weak_terms: set[str] = set()
+    provenance: dict[str, set[str]] = {}
+
+    def _attribute(token: str, terms: set[str]) -> None:
+        if terms:
+            provenance.setdefault(token, set()).update(terms)
+
+    for lang in target_langs:
+        strong_nat, weak_nat, prov_nat = _translate_profile(profile, lang)
+        extra_terms |= strong_nat
+        weak_terms |= weak_nat
+        for token, terms in prov_nat.items():
+            _attribute(token, terms)
+    # Semantic ICP expansion (e.g. "timber" -> sawmill/plywood), computed once and
+    # reused across every company: English terms widen matching directly; their native
+    # translations widen home-language matching; a bounded few also drive extra search
+    # queries (inside discover_company_candidates).
+    expansion: set[str] = set()
+    if use_expansion:
+        from opencold import icp_expansion
+        grouped = icp_expansion.expand_icp_grouped(
+            icp, use_llm=use_llm, provider=_resolve_llm_provider() if use_llm else None,
+        )
+        expansion = grouped.flat
+        weak_terms |= grouped.flat
+        for token, terms in grouped.by_token.items():
+            _attribute(token, terms)
+        # Translate ONLY curated terms to native (plywood -> kontrplak), per language,
+        # token by token so the native forms stay attributed. Datamuse-tail
+        # translations spawn generic native words (e.g. "alan") that match.
+        curated_grouped = icp_expansion.curated_terms_grouped(icp)
+        for lang in target_langs:
+            for token, terms in curated_grouped.items():
+                native, safe = _translate_expansion_terms(terms & expansion, lang)
+                weak_terms |= native
+                _attribute(token, safe)
     candidates = discover_company_candidates(
         icp, region, sources=sources, limit=pool,
         workers=workers, use_llm=use_llm, seed_count=seed_count, use_wiki=use_wiki,
-        use_translation=use_translation,
+        use_translation=use_translation, expansion=expansion, use_expansion=use_expansion,
     )
     # Dedupe by domain up front (channels already dedupe, but be safe).
     seen: set[str] = set()
@@ -3665,7 +4177,7 @@ def discover_company_rows(
         future_to_company = {
             executor.submit(
                 build_company_row, company, icp, region, max_pages, find_people,
-                target_lang, extra_terms,
+                target_langs, extra_terms, weak_terms, provenance,
             ): company
             for company in candidates
         }
