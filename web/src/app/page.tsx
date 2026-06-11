@@ -24,7 +24,7 @@ import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 
-import DiscoveryTree from "@/components/DiscoveryTree";
+import DiscoveryGraph from "@/components/DiscoveryGraph";
 import WorldMap from "@/components/WorldMap";
 
 /* ── types ── */
@@ -349,7 +349,7 @@ export default function Home() {
   };
 
   return (
-    <main className="relative flex min-h-screen flex-col bg-[#fcfcfb] text-zinc-900">
+    <main className="relative flex min-h-screen flex-col bg-[#FAFAF7] text-zinc-900">
       {/* notebook grid background */}
       <div
         className={`grid-field ${stage !== "drop" ? "grid-field--fade" : ""}`}
@@ -385,7 +385,7 @@ export default function Home() {
 
       {/* ── STAGE: DROP ── */}
       {stage === "drop" && (
-        <div className="relative z-10">
+        <div className="relative z-10 flex flex-1 flex-col">
           <div className="flex justify-center px-6 pt-2 sm:pt-4">
             <ModeSelector
               mode={mode}
@@ -395,8 +395,10 @@ export default function Home() {
           </div>
           {mode === "discovery" ? (
             <DiscoveryHero
-              onStart={() => setStage("configure")}
-              onOutreach={goOutreach}
+              onStart={(icpText) => {
+                if (icpText) setIcp(icpText);
+                setStage("configure");
+              }}
             />
           ) : (
             <DropHero
@@ -1668,99 +1670,151 @@ function SidebarToggle({
 
 function DiscoveryHero({
   onStart,
-  onOutreach,
 }: {
-  onStart: () => void;
-  onOutreach: () => void;
+  onStart: (icp?: string) => void;
 }) {
+  const [draft, setDraft] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const submit = () => onStart(draft.trim() || undefined);
+
+  const copyInstall = () => {
+    navigator.clipboard?.writeText("pip install opencold");
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  };
+
   return (
-    <section className="relative z-10 mx-auto grid min-h-[calc(100vh-170px)] w-full max-w-6xl items-center gap-10 px-6 py-10 sm:px-10 lg:grid-cols-[0.95fr_1.25fr] lg:gap-6">
-      {/* ── LEFT: copy + CTAs ── */}
-      <div>
-        <motion.h1
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-          className="text-left text-[clamp(2rem,4.5vw,3.5rem)] font-normal leading-[1.08] tracking-tight"
-        >
-          Two words in.
-          <br />
-          <span className="relative inline-block">
-            {/* marker swipe under "Verified companies" */}
-            <motion.span
-              aria-hidden
-              initial={{ scaleX: 0 }}
-              animate={{ scaleX: 1 }}
-              transition={{
-                delay: 1.05,
-                duration: 0.55,
-                ease: [0.22, 1, 0.36, 1],
-              }}
-              className="absolute -inset-x-1 bottom-[6%] h-[34%] origin-left -rotate-[0.4deg] rounded-[3px] bg-emerald-200/50"
-            />
-            <span className="relative">Verified companies</span>
-          </span>{" "}
-          out.
-        </motion.h1>
-
-        <motion.p
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-          className="mt-6 max-w-md text-left text-base leading-relaxed text-zinc-500"
-        >
-          Describe who you sell to and where. OpenCold expands it into every
-          local language, searches where those companies actually live, and
-          verifies each match with facts from their own websites.
-        </motion.p>
-
-        <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-          className="mt-8 flex flex-wrap items-center gap-3"
-        >
-          <button
-            className="group inline-flex h-11 items-center gap-2 rounded-lg bg-zinc-900 px-6 text-sm font-medium text-white transition hover:bg-zinc-700 active:scale-[0.97]"
-            onClick={onStart}
-          >
-            <Compass size={15} />
-            Run discovery
-            <ArrowRight
-              size={15}
-              className="transition-transform group-hover:translate-x-0.5"
-            />
-          </button>
-          <button
-            className="inline-flex h-11 items-center gap-2 rounded-lg border border-zinc-200 bg-white/70 px-5 text-sm font-medium text-zinc-600 transition hover:border-zinc-400 hover:text-zinc-900 active:scale-[0.97]"
-            onClick={onOutreach}
-          >
-            <FileSpreadsheet size={15} />
-            I already have a list
-          </button>
-        </motion.div>
-
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6, duration: 0.8 }}
-          className="font-code mt-7 text-[11px] text-zinc-400"
-        >
-          no API key needed · open source · searches in any language
-        </motion.p>
+    <section className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col justify-end px-6 pb-8 pt-4 sm:px-10 lg:min-h-[540px] lg:pb-12">
+      {/* ambient discovery graph — full-bleed canvas on desktop, its own
+          block below the copy on mobile so nodes never sit behind text */}
+      <div className="relative order-last mt-10 h-[330px] w-full lg:absolute lg:inset-0 lg:order-none lg:mt-0 lg:h-auto">
+        <DiscoveryGraph />
       </div>
 
-      {/* ── CENTER-RIGHT: the branching discovery tree ── */}
-      <div className="w-full">
-        <DiscoveryTree />
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.4, duration: 0.8 }}
-          className="font-code mt-3 text-center text-[10px] italic tracking-wide text-zinc-400"
-        >
-          fig. 01 — one discovery run, end to end
-        </motion.p>
+      {/* warm lower wash — an atmospheric stage for the copy, not a
+          container: an ellipse anchored at the bottom that dissolves before
+          reaching any of its own edges (top, left, and right all fade) */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute bottom-0 left-[-8%] hidden h-[62%] w-[90%] lg:block"
+        style={{
+          background:
+            "radial-gradient(ellipse 72% 95% at 38% 100%, rgba(248,244,234,0.78), rgba(248,244,234,0.38) 52%, transparent 76%)",
+        }}
+      />
+
+      {/* editorial poster row: copy bottom-left, CTAs bottom-right */}
+      <div className="relative z-10 flex flex-col gap-9 lg:flex-row lg:items-end lg:justify-between lg:gap-12">
+        <div className="relative max-w-2xl">
+          <motion.h1
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            className="text-left text-[clamp(2.1rem,4.5vw,3.4rem)] font-normal leading-[1.08] tracking-tight"
+          >
+            Two words in.
+            <br />
+            {/* one soft highlight hugging the full second line; clones per
+                line if it ever wraps on small screens */}
+            <motion.span
+              initial={{ backgroundSize: "0% 30%" }}
+              animate={{ backgroundSize: "100% 30%" }}
+              transition={{
+                delay: 1.0,
+                duration: 0.6,
+                ease: [0.22, 1, 0.36, 1],
+              }}
+              className="bg-no-repeat [-webkit-box-decoration-break:clone] [box-decoration-break:clone] sm:whitespace-nowrap"
+              style={{
+                backgroundImage:
+                  "linear-gradient(rgb(167 243 208 / 0.5), rgb(167 243 208 / 0.5))",
+                backgroundPosition: "0 88%",
+              }}
+            >
+              Verified companies out.
+            </motion.span>
+          </motion.h1>
+
+          <motion.p
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              delay: 0.25,
+              duration: 0.7,
+              ease: [0.22, 1, 0.36, 1],
+            }}
+            className="mt-5 max-w-md text-left text-[15px] leading-relaxed text-zinc-500"
+          >
+            Describe your ICP once. OpenCold expands it into local search
+            terms, finds real companies, and verifies every match from their
+            own websites.
+          </motion.p>
+        </div>
+
+        <div className="flex w-full max-w-sm flex-col gap-2.5">
+          {/* primary CTA — a command/prompt bar: type an ICP, run discovery.
+              opacity-only entrance: animating transform here triggers a
+              subpixel re-raster snap on retina when the GPU layer is demoted
+              at animation end (reads as a one-frame flicker + tiny shift) */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            className="flex h-[52px] w-full items-center gap-2.5 rounded-2xl border border-zinc-200 bg-white/80 pl-4 pr-2.5 transition-colors focus-within:border-zinc-400"
+          >
+            <Compass size={14} className="shrink-0 text-zinc-300" />
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submit();
+              }}
+              placeholder="Describe your ICP…"
+              aria-label="Describe your ideal customer profile"
+              className="h-full w-full bg-transparent font-sans text-[12.5px] text-zinc-900 outline-none placeholder:text-zinc-400"
+            />
+            <button
+              onClick={submit}
+              aria-label="Run discovery"
+              className="grid size-8 shrink-0 place-items-center rounded-full bg-zinc-900 text-white transition hover:bg-zinc-700 active:scale-[0.95]"
+            >
+              <ArrowRight size={14} />
+            </button>
+          </motion.div>
+
+          {/* secondary — run it locally instead */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.55, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            className="flex h-9 w-full items-center justify-between rounded-lg border border-zinc-200/70 bg-zinc-100/60 pl-3.5 pr-1 font-code text-[11.5px] text-zinc-500"
+          >
+            <span>
+              <span className="text-zinc-400">$ </span>pip install opencold
+            </span>
+            <button
+              onClick={copyInstall}
+              aria-label="Copy install command"
+              className="grid size-7 shrink-0 place-items-center rounded-md text-zinc-400 transition hover:text-zinc-900"
+            >
+              {copied ? (
+                <Check size={13} className="text-emerald-600" />
+              ) : (
+                <Clipboard size={13} />
+              )}
+            </button>
+          </motion.div>
+
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.7, duration: 0.8 }}
+            className="font-code text-[10.5px] text-zinc-400"
+          >
+            no API key needed · open source · searches in any language
+          </motion.p>
+        </div>
       </div>
     </section>
   );
