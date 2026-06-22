@@ -6,6 +6,7 @@ Data model:
 """
 
 import json
+import os
 import random
 from pathlib import Path
 
@@ -182,9 +183,47 @@ def get_all_api_keys() -> dict:
     return dict(load_config().get("api_keys", {}))
 
 
+_DOTENV_LOADED = False
+
+
+def load_dotenv(path: str | None = None) -> None:
+    """Load KEY=VALUE pairs from a .env file into os.environ.
+
+    Does not override variables already set in the environment. Idempotent and
+    fail-silent, no third-party dependency. With no path, searches the cwd and
+    its parents for a `.env` (so it works from a subdirectory of the repo).
+    """
+    global _DOTENV_LOADED
+    if _DOTENV_LOADED and path is None:
+        return
+    if path is not None:
+        candidates = [Path(path)]
+    else:
+        cwd = Path.cwd()
+        candidates = [d / ".env" for d in [cwd, *cwd.parents]]
+        _DOTENV_LOADED = True  # mark attempted so we don't rescan on every call
+    env_file = next((p for p in candidates if p.is_file()), None)
+    if not env_file:
+        return
+    try:
+        for raw in env_file.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            if line.lower().startswith("export "):
+                line = line[7:]
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = val
+    except Exception:
+        pass
+
+
 # ── providers ────────────────────────────────────────────────────────────────
 
-PROVIDER_TYPES = ("anthropic", "openai", "proxy", "serper")
+PROVIDER_TYPES = ("anthropic", "openai", "proxy", "serper", "companies_house", "google_places")
 
 DEFAULT_MODELS = {
     "anthropic": "claude-sonnet-4-6",
@@ -220,8 +259,8 @@ def add_provider(name: str, provider_type: str, api_key: str,
     cfg.setdefault("providers", {})[name] = entry
     # Also write to legacy api_keys for backward compat
     cfg.setdefault("api_keys", {})[name] = api_key
-    # Set as default if it's the first LLM provider (not serper)
-    if not cfg.get("default_provider") and provider_type != "serper":
+    # Set as default if it's the first LLM provider (not a key-only service)
+    if not cfg.get("default_provider") and provider_type not in ("serper", "companies_house", "google_places"):
         cfg["default_provider"] = name
     save_config(cfg)
 
