@@ -309,6 +309,66 @@ def _select_proxy_provider(proxy_providers: dict) -> str | None:
     return names[result]
 
 
+_ROLE_CHOICES = [("manufacture", "Manufacturer"), ("wholesale", "Wholesaler"), ("retail", "Retailer")]
+
+
+def _select_roles() -> list[str]:
+    """Interactive business-type picker: ←/→ move, Space tick (multiple allowed),
+    Enter confirm, Esc = all. Returns the selected role keys (empty = no filter,
+    ranked manufacture > wholesale > retail). Returns [] when not a TTY."""
+    if not sys.stdin.isatty():
+        return []
+    pos = [0]
+    picked: set[str] = set()
+
+    kb = KeyBindings()
+
+    @kb.add("left")
+    @kb.add("h")
+    def _left(event):
+        pos[0] = (pos[0] - 1) % len(_ROLE_CHOICES)
+
+    @kb.add("right")
+    @kb.add("l")
+    def _right(event):
+        pos[0] = (pos[0] + 1) % len(_ROLE_CHOICES)
+
+    @kb.add("space")
+    def _toggle(event):
+        key = _ROLE_CHOICES[pos[0]][0]
+        if key in picked:
+            picked.discard(key)
+        else:
+            picked.add(key)
+
+    @kb.add("enter")
+    def _accept(event):
+        event.app.exit(result=[k for k, _ in _ROLE_CHOICES if k in picked])
+
+    @kb.add("escape")
+    @kb.add("c-c")
+    def _all(event):
+        event.app.exit(result=[])
+
+    def _get_text():
+        lines = [
+            ("", "\n"), ("bold", "  Business type?  "),
+            ("fg:ansibrightblack", "(←/→ move, Space tick, Enter confirm, Esc = all)\n\n  "),
+        ]
+        for i, (key, label) in enumerate(_ROLE_CHOICES):
+            mark = "x" if key in picked else " "
+            style = "fg:cyan bold" if i == pos[0] else ""
+            lines.append((style, f"[{mark}] {label}"))
+            lines.append(("", "    "))
+        lines.append(("", "\n"))
+        return FormattedText(lines)
+
+    control = FormattedTextControl(_get_text)
+    layout = Layout(Window(content=control, always_hide_cursor=True))
+    result = Application(layout=layout, key_bindings=kb, full_screen=False).run()
+    return result or []
+
+
 def _select_csv_file() -> str | None:
     """Interactive file selector for CSV files with arrow keys."""
     csv_files = _list_csv_files()
@@ -378,7 +438,7 @@ def _select_csv_file() -> str | None:
 class _ReplCompleter(Completer):
     """Tab-completer for the REPL: completes commands and file paths."""
 
-    _TOP_COMMANDS = ["discover", "run", "prepare", "draft", "review", "send", "verify", "smtp", "config", "profile", "provider", "help", "exit", "q"]
+    _TOP_COMMANDS = ["discover", "smearch", "run", "prepare", "draft", "review", "send", "verify", "smtp", "config", "profile", "provider", "help", "exit", "q"]
     _CONFIG_SUBS = ["init", "set-key"]
     _PROFILE_SUBS = ["list", "create", "use", "delete"]
     _PROVIDER_SUBS = ["list", "add", "delete", "default"]
@@ -1895,6 +1955,191 @@ def discover(
     )
 
 
+def do_smearch(
+    icp: str = "",
+    output: str = "smes.csv",
+    limit: int = 50,
+    location: str = "",
+    status: str = "active",
+    company_type: str = "",
+    sic: str = "",
+    role: str = "",
+    max_sics: int = 5,
+    min_score: float = 1.0,
+    use_llm: bool = True,
+    use_expansion: bool = True,
+    dry_run: bool = False,
+    sandbox: bool = False,
+    include_dormant: bool = False,
+    top_n: int = 10,
+    enrich: bool = True,
+    size: str = "",
+) -> None:
+    """Match an ICP to UK SIC codes and pull ranked SMEs from Companies House."""
+    from opencold import smearch as sm
+    from opencold import companies_house as ch
+    from opencold import sic_match
+
+    typer.echo(f"\n  {YELLOW}[experimental]{RESET} SME search (Companies House) — review before outreach")
+
+    sic_codes = [c.strip() for c in sic.split(",") if c.strip()] if sic else None
+    if not icp.strip() and not sic_codes:
+        typer.echo(f"  {RED}Error:{RESET} provide an ICP (e.g. smearch \"timber merchants\") or --sic CODES")
+        return
+
+    provider = discovery._resolve_llm_provider() if (use_expansion and use_llm) else None
+
+    # Resolve the business role (manufacture/wholesale/retail). Explicit --role
+    # wins; else detect from the ICP wording ("... manufacturers"); else, only
+    # when it's genuinely absent, ask via the interactive picker.
+    roles = sic_match.detect_icp_roles(role) if role.strip() else sic_match.detect_icp_roles(icp)
+    if not roles and not sic_codes and sys.stdin.isatty():
+        roles = _select_roles()
+
+    # "factory" intent (a subset of manufacture) gates results on real production
+    # evidence during enrichment; --size optionally filters by accounts size.
+    factory = sic_match.is_factory_intent(role) or sic_match.is_factory_intent(icp)
+    size_filter = [s.strip() for s in size.split(",") if s.strip()] or None
+
+    # 1) Resolve SIC codes (offline; no API key needed) and report.
+    match = sm.plan_matches(
+        icp, sic_codes=sic_codes, roles=roles, use_expansion=use_expansion,
+        use_llm=use_llm, provider=provider, max_sics=max_sics, min_score=min_score,
+    )
+    if match.status == "generic":
+        typer.echo(f"  {YELLOW}⚠ ICP looks generic{RESET} — no specific industry term in \"{icp}\".")
+        typer.echo(f"  {DIM}Narrow it (e.g. 'furniture manufacturing', 'metal fabrication') or pass --sic CODES.{RESET}")
+    if not match.matches:
+        typer.echo(f"  {RED}No SIC codes matched.{RESET} Try a clearer/broader ICP, a lower --min-score, or --sic CODES.")
+        return
+    if match.status == "relaxed":
+        typer.echo(f"  {YELLOW}⚠ No strong SIC match{RESET} — using best-effort (low-confidence) codes:")
+    elif match.status == "generic":
+        typer.echo(f"  {DIM}Best-effort SIC codes (broad ICP):{RESET}")
+    else:
+        typer.echo(f"  {GREEN}✓{RESET} Matched {len(match.matches)} SIC code(s):")
+    if roles:
+        typer.echo(f"  {DIM}business type: {' + '.join(roles)}{RESET}")
+    elif not sic_codes:
+        typer.echo(f"  {DIM}no business type given — ranked manufacture > wholesale > retail (use --role){RESET}")
+    for m in match.matches:
+        tag = m.role or "other"
+        extra = f"  {DIM}(score {m.score:g}; {', '.join(m.matched_terms[:6])}){RESET}" if m.matched_terms else ""
+        typer.echo(f"      {BOLD}{m.code}{RESET}  {m.description}  {DIM}[{tag}]{RESET}{extra}")
+
+    if dry_run:
+        typer.echo(f"\n  {CYAN}ℹ{RESET} Dry run — no Companies House query made.")
+        return
+
+    if sandbox:
+        ch.use_sandbox()
+
+    # 2) API key gate (only needed for the live query).
+    key = ch.get_companies_house_key()
+    if not key:
+        typer.echo(f"\n  {RED}Error:{RESET} no Companies House API key.")
+        typer.echo(f"  Add {BOLD}COMPANIES_HOUSE_API_KEY{RESET} to a .env file, or run {BOLD}config set-key companies_house{RESET}.")
+        return
+
+    types = tuple(t.strip() for t in company_type.split(",") if t.strip()) or None
+    typer.echo(f"\n  Querying Companies House (active SMEs, limit {limit})… {DIM}[{ch.base_url()}]{RESET}")
+
+    def _progress(i: int, total: int) -> None:
+        typer.echo(f"\r  {DIM}enriching {i}/{total}…{RESET}", nl=False)
+
+    try:
+        rows = sm.collect_smes(
+            match.matches, api_key=key, limit=limit, location=location,
+            status=status, company_types=types, progress=_progress,
+            exclude_dormant=not include_dormant, factory=factory, size_filter=size_filter,
+        )
+    except ch.CompaniesHouseAuthError:
+        typer.echo(f"\n  {RED}Invalid Authorization (HTTP 401){RESET} from {ch.base_url()}.")
+        typer.echo(f"  {DIM}If this is a sandbox/test key, add --sandbox. For real UK data, use a Live application key.{RESET}")
+        return
+    except ch.CompaniesHouseRequestError as e:
+        typer.echo(f"\n  {RED}Companies House rejected the query.{RESET} {DIM}{e}{RESET}")
+        typer.echo(f"  {DIM}Often an unsupported --company-type or --status value.{RESET}")
+        return
+    typer.echo("")  # end the progress line
+    if not rows:
+        typer.echo(f"  {YELLOW}⚠{RESET} No companies returned (check key, filters, or network).")
+        return
+
+    top = rows[:top_n]  # default: top-N ranked (factory mode reselects below)
+    if enrich:
+        from opencold import smearch_enrich as se
+        from opencold import google_places
+        places_key = google_places.get_places_key()
+        enrich_provider = discovery._resolve_llm_provider() if use_llm else None
+        if not places_key:
+            typer.echo(f"  {DIM}no GOOGLE_PLACES_API_KEY — Places website/phone fallback disabled{RESET}")
+
+        if factory:
+            typer.echo(f"\n  {CYAN}factory mode{RESET} — keeping only companies with production/facility evidence (scanning ranked pool)…")
+
+            def _fprog(kept: int, total: int, cname: str) -> None:
+                typer.echo(f"\r  {DIM}factory {kept}/{total} (scanning {cname[:28]:28}){RESET}", nl=False)
+
+            top, scanned = se.enrich_top_factories(
+                rows, target=top_n, ch_key=key, use_llm=use_llm,
+                provider=enrich_provider, places_key=places_key, progress=_fprog,
+            )
+            typer.echo("")
+            typer.echo(f"  {DIM}scanned {scanned} to find {len(top)} factor{'y' if len(top) == 1 else 'ies'}{RESET}")
+        else:
+            typer.echo(f"\n  Enriching top {len(top)} (officers, website, contacts)…")
+
+            def _eprog(i: int, total: int, cname: str) -> None:
+                typer.echo(f"\r  {DIM}enriching {i}/{total}: {cname[:32]:32}{RESET}", nl=False)
+
+            se.enrich_rows(
+                top, ch_key=key, use_llm=use_llm, provider=enrich_provider,
+                places_key=places_key, progress=_eprog,
+            )
+            typer.echo("")
+
+    if not top:
+        typer.echo(f"  {YELLOW}⚠{RESET} No matching companies after enrichment "
+                   f"({'no factory evidence found in pool' if factory else 'check filters'}).")
+        return
+    sm.write_smes_csv(top, output)
+    note = "" if include_dormant else f" {DIM}(dormant excluded){RESET}"
+    typer.echo(f"  Found {len(rows)} compan{'y' if len(rows) == 1 else 'ies'}; "
+               f"{'enriched + ' if enrich else ''}saved {len(top)} to {BOLD}{output}{RESET}.{note}")
+
+
+@app.command()
+def smearch(
+    icp: str = typer.Argument("", help="Ideal Customer Profile, e.g. \"timber merchants\""),
+    output: str = typer.Option("smes.csv", "-o", "--output", help="Output CSV path"),
+    limit: int = typer.Option(50, "--limit", help="Max companies to collect & rank"),
+    location: str = typer.Option("", "--location", help="Filter on registered office (e.g. \"London\")"),
+    status: str = typer.Option("active", "--status", help="Company status filter"),
+    company_type: str = typer.Option("", "--company-type", help="Comma list of company types (default: SME-friendly forms)"),
+    sic: str = typer.Option("", "--sic", help="Explicit SIC code(s), comma-separated — skips ICP→SIC matching"),
+    role: str = typer.Option("", "--role", help="Business type: manufacturer / wholesaler / retailer (comma for several). Default: detect from ICP, else ask."),
+    max_sics: int = typer.Option(5, "--max-sics", help="Max SIC codes to match & query"),
+    min_score: float = typer.Option(1.0, "--min-score", help="Minimum ICP→SIC match score"),
+    no_llm: bool = typer.Option(False, "--no-llm", help="Deterministic ICP expansion only — no LLM"),
+    no_expand: bool = typer.Option(False, "--no-expand", help="Disable semantic ICP expansion"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview matched SIC codes without querying Companies House"),
+    sandbox: bool = typer.Option(False, "--sandbox", help="Use the Companies House sandbox/test API base (for test keys)"),
+    include_dormant: bool = typer.Option(False, "--include-dormant", help="Keep dormant (non-trading) companies (excluded by default)"),
+    top_n: int = typer.Option(10, "--top-n", help="How many top-ranked companies to enrich and write"),
+    no_enrich: bool = typer.Option(False, "--no-enrich", help="Skip enrichment (website, contacts, officers)"),
+    size: str = typer.Option("", "--size", help="Filter by accounts size: comma list of micro/small/medium"),
+) -> None:
+    """[Experimental] Find UK SMEs via Companies House by matching an ICP to SIC codes."""
+    do_smearch(
+        icp, output=output, limit=limit, location=location, status=status,
+        company_type=company_type, sic=sic, role=role, max_sics=max_sics,
+        min_score=min_score, use_llm=not no_llm, use_expansion=not no_expand,
+        dry_run=dry_run, sandbox=sandbox, include_dormant=include_dormant,
+        top_n=top_n, enrich=not no_enrich, size=size,
+    )
+
+
 @app.command()
 def run(
     input_csv: str = typer.Argument(help="Path to input CSV file"),
@@ -1979,6 +2224,23 @@ SHELL_HELP = f"""\
       --limit <number>            Max companies (default: 10)
       --workers <number>          Parallel company workers, max 8 (default: 8)
       {DIM}people mode adds: [sources.txt] --source-limit --guess-role-email{RESET}
+
+  {GREEN}smearch{RESET} <icp> [options]      Find UK SMEs by ICP→SIC (Companies House)
+      --sic <codes>               Explicit SIC code(s), comma-sep (skips matching)
+      --role <type>               manufacturer / wholesaler / retailer (else asked)
+      -o, --output <path>         Output CSV (default: smes.csv)
+      --limit <number>            Max companies to rank (default: 50)
+      --location <text>           Filter on registered office (e.g. London)
+      --company-type <types>      Comma list (default: SME-friendly forms)
+      --max-sics <number>         Max SIC codes to match (default: 5)
+      --min-score <number>        Min ICP→SIC score (default: 1.0)
+      --no-llm / --no-expand      Limit / disable ICP expansion
+      --include-dormant           Keep dormant (non-trading) companies
+      --top-n <number>            Companies to enrich + output (default: 10)
+      --no-enrich                 Skip website/contacts/officers enrichment
+      --size <m,s,med>            Filter by accounts size (micro/small/medium)
+      --dry-run                   Preview matched SICs without querying
+      {DIM}'… factories' keeps only sites with production/facility evidence{RESET}
 
   {GREEN}run{RESET} <file.csv> [options]     Raw CSV: prepare + draft. Prepared CSV: draft again.
       -o, --output <path>         Output path (default: output.csv)
@@ -2139,6 +2401,62 @@ def _parse_discover_args(tokens: list[str]) -> dict:
     return args
 
 
+def _parse_smearch_args(tokens: list[str]) -> dict:
+    """Parse smearch subcommand arguments from REPL tokens."""
+    args: dict = {
+        "icp": "", "output": "smes.csv", "limit": 50, "location": "",
+        "status": "active", "company_type": "", "sic": "", "max_sics": 5,
+        "min_score": 1.0, "use_llm": True, "use_expansion": True, "dry_run": False,
+        "sandbox": False, "role": "", "include_dormant": False,
+        "top_n": 10, "enrich": True, "size": "",
+    }
+    positional = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok in ("-o", "--output") and i + 1 < len(tokens):
+            args["output"] = tokens[i + 1]; i += 2
+        elif tok == "--limit" and i + 1 < len(tokens):
+            args["limit"] = int(tokens[i + 1]); i += 2
+        elif tok == "--location" and i + 1 < len(tokens):
+            args["location"] = tokens[i + 1]; i += 2
+        elif tok == "--status" and i + 1 < len(tokens):
+            args["status"] = tokens[i + 1]; i += 2
+        elif tok == "--company-type" and i + 1 < len(tokens):
+            args["company_type"] = tokens[i + 1]; i += 2
+        elif tok == "--sic" and i + 1 < len(tokens):
+            args["sic"] = tokens[i + 1]; i += 2
+        elif tok == "--role" and i + 1 < len(tokens):
+            args["role"] = tokens[i + 1]; i += 2
+        elif tok == "--max-sics" and i + 1 < len(tokens):
+            args["max_sics"] = int(tokens[i + 1]); i += 2
+        elif tok == "--min-score" and i + 1 < len(tokens):
+            args["min_score"] = float(tokens[i + 1]); i += 2
+        elif tok == "--no-llm":
+            args["use_llm"] = False; i += 1
+        elif tok == "--no-expand":
+            args["use_expansion"] = False; i += 1
+        elif tok == "--dry-run":
+            args["dry_run"] = True; i += 1
+        elif tok == "--sandbox":
+            args["sandbox"] = True; i += 1
+        elif tok == "--include-dormant":
+            args["include_dormant"] = True; i += 1
+        elif tok == "--top-n" and i + 1 < len(tokens):
+            args["top_n"] = int(tokens[i + 1]); i += 2
+        elif tok == "--no-enrich":
+            args["enrich"] = False; i += 1
+        elif tok == "--size" and i + 1 < len(tokens):
+            args["size"] = tokens[i + 1]; i += 2
+        else:
+            positional.append(tok); i += 1
+    # Join all positional tokens so an unquoted multi-word ICP keeps its words
+    # ("smearch metal manufacturers" -> "metal manufacturers", so the role is
+    # detected and the picker doesn't fire).
+    args["icp"] = " ".join(positional)
+    return args
+
+
 def _parse_prepare_args(tokens: list[str]) -> dict:
     """Parse prepare subcommand arguments from REPL tokens."""
     args: dict = {"output": "enriched.csv", "max_pages": 4, "workers": 8}
@@ -2230,6 +2548,15 @@ def _run_shell() -> None:
                         typer.echo(f"  {DIM}ICP and region are required for companies mode.{RESET}")
                         continue
                 do_discover(**args)
+
+            elif cmd == "smearch":
+                args = _parse_smearch_args(rest)
+                if not args.get("icp") and not args.get("sic"):
+                    args["icp"] = _ask("Ideal Customer Profile? (e.g. timber merchants)")
+                    if not args.get("icp"):
+                        typer.echo(f"  {DIM}An ICP (or --sic) is required.{RESET}")
+                        continue
+                do_smearch(**args)
 
             elif cmd == "run":
                 args = _parse_run_args(rest)
@@ -2369,6 +2696,7 @@ def callback(ctx: typer.Context) -> None:
 
 
 def main() -> None:
+    config.load_dotenv()
     app()
 
 
