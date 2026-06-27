@@ -250,12 +250,64 @@ def _size_matches(account_type: str, size_filter: list[str]) -> bool:
     return any(tok.lower() in at for tok in size_filter if tok)
 
 
+def page_to_start_index(page: int, limit: int) -> int:
+    """Map a 1-based --page to a Companies House search offset: page 1 starts at
+    0, each page advances by `limit`. The reusable pagination primitive other
+    smearch functionality can share (page <-> index). Page <= 1 clamps to 0."""
+    return max(0, (max(1, page) - 1) * limit)
+
+
+# How many pages gather_fresh_pages will walk past fully-seen ones before giving
+# up -- a backstop so a heavily-used seen-DB can't spin the search forever.
+DEFAULT_MAX_PAGE_WALK = 10
+
+
+@dataclass
+class FreshPages:
+    rows: list[dict] = field(default_factory=list)   # fresh (unseen) ranked rows
+    pages_walked: int = 0
+    skipped_seen: int = 0      # rows dropped because already recorded
+    saw_any: bool = False      # did any page return companies at all?
+
+
+def gather_fresh_pages(collect, *, start_page: int = 1, target: int = 10,
+                       is_seen=None,
+                       max_pages: int = DEFAULT_MAX_PAGE_WALK) -> FreshPages:
+    """Walk pages from `start_page` accumulating ranked rows not already seen,
+    until `target` fresh rows are gathered or the result set / page budget runs
+    out. This is how smearch keeps surfacing *new* companies across runs.
+
+    `collect(page)` returns that page's ranked rows (`[]` once CH is exhausted)
+    and owns any user-facing progress messaging. `is_seen(rows)` returns the set
+    of already-recorded company numbers to drop; pass None to keep everything --
+    the `--no-db` path, which then stops after a single page (old behaviour).
+    """
+    out = FreshPages()
+    page = max(1, start_page)
+    while len(out.rows) < target and out.pages_walked < max_pages:
+        rows = collect(page)
+        out.pages_walked += 1
+        if not rows:
+            break  # CH ran out of companies
+        out.saw_any = True
+        if is_seen is None:
+            out.rows.extend(rows)
+            break  # no dedup -> single page (respects --page; old behaviour)
+        seen = is_seen(rows)
+        fresh = [r for r in rows if r.get("company_number") not in seen]
+        out.skipped_seen += len(rows) - len(fresh)
+        out.rows.extend(fresh)
+        page += 1
+    return out
+
+
 def collect_smes(matches: list[sic_match.SicMatch], *, api_key: str, limit: int = 50,
                  location: str = "", status: str = "active",
                  company_types: tuple[str, ...] | list[str] | None = None,
                  this_year: int | None = None, progress=None,
                  exclude_dormant: bool = True, factory: bool = False,
-                 size_filter: list[str] | None = None) -> list[dict]:
+                 size_filter: list[str] | None = None,
+                 start_index: int = 0) -> list[dict]:
     """Search Companies House for the matched SICs, enrich each company, drop
     dormant ones (default), and return rows ranked strongest-SME-first.
 
@@ -264,7 +316,9 @@ def collect_smes(matches: list[sic_match.SicMatch], *, api_key: str, limit: int 
     enriching (2 calls each) once `limit` companies are collected, so dropping
     dormant ones still fills the limit. `factory` reorders by factory-plausible
     accounts size (small/medium first); `size_filter` keeps only matching sizes.
-    For factory mode the caller walks this whole pool to backfill.
+    For factory mode the caller walks this whole pool to backfill. `start_index`
+    offsets the underlying CH search -- smearch's --page cursor (see
+    `page_to_start_index`).
     """
     if this_year is None:
         this_year = datetime.date.today().year
@@ -273,6 +327,7 @@ def collect_smes(matches: list[sic_match.SicMatch], *, api_key: str, limit: int 
         [m.code for m in matches], api_key=api_key, limit=pool,
         location=location, company_status=status,
         company_types=company_types or ch.DEFAULT_SME_TYPES,
+        start_index=start_index,
     )
     enriched: list[EnrichedCompany] = []
     for item in items:
@@ -311,9 +366,11 @@ def run_smearch(icp: str, *, output: str = "smes.csv", api_key: str | None = Non
                 company_types: tuple[str, ...] | list[str] | None = None,
                 this_year: int | None = None,
                 exclude_dormant: bool = True, factory: bool = False,
-                size_filter: list[str] | None = None) -> SmearchResult:
+                size_filter: list[str] | None = None,
+                start_index: int = 0) -> SmearchResult:
     """Library convenience: plan -> collect -> write. The CLI orchestrates the
-    same steps itself so it can interleave user messaging (and the factory walk)."""
+    same steps itself so it can interleave user messaging (and the factory walk).
+    `start_index` offsets the CH search for pagination (see `page_to_start_index`)."""
     match = plan_matches(
         icp, sic_codes=sic_codes, roles=roles, use_expansion=use_expansion,
         use_llm=use_llm, provider=provider, max_sics=max_sics, min_score=min_score,
@@ -324,6 +381,7 @@ def run_smearch(icp: str, *, output: str = "smes.csv", api_key: str | None = Non
         match.matches, api_key=api_key, limit=limit, location=location,
         status=status, company_types=company_types, this_year=this_year,
         exclude_dormant=exclude_dormant, factory=factory, size_filter=size_filter,
+        start_index=start_index,
     )
     if output:
         write_smes_csv(rows, output)
