@@ -1959,6 +1959,7 @@ def do_smearch(
     icp: str = "",
     output: str = "smes.csv",
     limit: int = 50,
+    page: int = 1,
     location: str = "",
     status: str = "active",
     company_type: str = "",
@@ -1974,6 +1975,7 @@ def do_smearch(
     top_n: int = 10,
     enrich: bool = True,
     size: str = "",
+    no_db: bool = False,
 ) -> None:
     """Match an ICP to UK SIC codes and pull ranked SMEs from Companies House."""
     from opencold import smearch as sm
@@ -2042,17 +2044,46 @@ def do_smearch(
         return
 
     types = tuple(t.strip() for t in company_type.split(",") if t.strip()) or None
-    typer.echo(f"\n  Querying Companies House (active SMEs, limit {limit})… {DIM}[{ch.base_url()}]{RESET}")
+
+    # Default action: skip companies already surfaced (recorded in the seen-DB)
+    # so every run returns fresh ones, walking past fully-seen pages. --no-db is
+    # a stateless test run -- no dedup, no record, just the requested page.
+    db = None
+    if not no_db:
+        try:
+            from opencold import smearch_db
+            db = smearch_db.connect()
+        except Exception as e:  # a broken/locked DB shouldn't block the search
+            typer.echo(f"  {YELLOW}⚠{RESET} seen-DB unavailable ({e}); running without dedup.")
+            db = None
 
     def _progress(i: int, total: int) -> None:
-        typer.echo(f"\r  {DIM}enriching {i}/{total}…{RESET}", nl=False)
+        typer.echo(f"\r  {DIM}scoring {i}/{total}…{RESET}", nl=False)
 
-    try:
-        rows = sm.collect_smes(
+    def _collect(pg: int) -> list[dict]:
+        si = sm.page_to_start_index(pg, limit)
+        if pg == max(1, page):
+            note = f", page {pg}" if si else ""
+            typer.echo(f"\n  Querying Companies House (active SMEs, limit {limit}{note})… {DIM}[{ch.base_url()}]{RESET}")
+        else:
+            typer.echo(f"  {DIM}page {pg - 1} already enriched — fetching page {pg}…{RESET}")
+        page_rows = sm.collect_smes(
             match.matches, api_key=key, limit=limit, location=location,
             status=status, company_types=types, progress=_progress,
-            exclude_dormant=not include_dormant, factory=factory, size_filter=size_filter,
+            exclude_dormant=not include_dormant, factory=factory,
+            size_filter=size_filter, start_index=si,
         )
+        typer.echo("")  # end the progress line
+        return page_rows
+
+    _seen = (lambda rws: smearch_db.seen_numbers(
+        db, [r.get("company_number") for r in rws])) if db is not None else None
+    # Factory mode scans a page-worth of candidates for production evidence; the
+    # plain path only needs top_n fresh rows to enrich.
+    target = limit if factory else top_n
+    try:
+        gathered = sm.gather_fresh_pages(_collect, start_page=page, target=target,
+                                         is_seen=_seen)
     except ch.CompaniesHouseAuthError:
         typer.echo(f"\n  {RED}Invalid Authorization (HTTP 401){RESET} from {ch.base_url()}.")
         typer.echo(f"  {DIM}If this is a sandbox/test key, add --sandbox. For real UK data, use a Live application key.{RESET}")
@@ -2061,12 +2092,17 @@ def do_smearch(
         typer.echo(f"\n  {RED}Companies House rejected the query.{RESET} {DIM}{e}{RESET}")
         typer.echo(f"  {DIM}Often an unsupported --company-type or --status value.{RESET}")
         return
-    typer.echo("")  # end the progress line
-    if not rows:
-        typer.echo(f"  {YELLOW}⚠{RESET} No companies returned (check key, filters, or network).")
+
+    fresh = gathered.rows
+    if not fresh:
+        if gathered.skipped_seen:
+            typer.echo(f"  {YELLOW}⚠{RESET} Every company on the scanned page(s) was already enriched — "
+                       f"nothing new. Try {BOLD}--page N{RESET}, a broader ICP, or {BOLD}--no-db{RESET}.")
+        else:
+            typer.echo(f"  {YELLOW}⚠{RESET} No companies returned (check key, filters, or network).")
         return
 
-    top = rows[:top_n]  # default: top-N ranked (factory mode reselects below)
+    top = fresh[:top_n]  # default: top-N fresh (factory mode reselects below)
     if enrich:
         from opencold import smearch_enrich as se
         from opencold import google_places
@@ -2082,7 +2118,7 @@ def do_smearch(
                 typer.echo(f"\r  {DIM}factory {kept}/{total} (scanning {cname[:28]:28}){RESET}", nl=False)
 
             top, scanned = se.enrich_top_factories(
-                rows, target=top_n, ch_key=key, use_llm=use_llm,
+                fresh, target=top_n, ch_key=key, use_llm=use_llm,
                 provider=enrich_provider, places_key=places_key, progress=_fprog,
             )
             typer.echo("")
@@ -2104,9 +2140,19 @@ def do_smearch(
                    f"({'no factory evidence found in pool' if factory else 'check filters'}).")
         return
     sm.write_smes_csv(top, output)
-    note = "" if include_dormant else f" {DIM}(dormant excluded){RESET}"
-    typer.echo(f"  Found {len(rows)} compan{'y' if len(rows) == 1 else 'ies'}; "
-               f"{'enriched + ' if enrich else ''}saved {len(top)} to {BOLD}{output}{RESET}.{note}")
+
+    # Record what we surfaced so the next run skips it (default action only).
+    if db is not None:
+        try:
+            smearch_db.mark_enriched(db, top, icp=icp)
+        except Exception:
+            pass
+
+    dorm = "" if include_dormant else f" {DIM}(dormant excluded){RESET}"
+    skip = f" {DIM}(skipped {gathered.skipped_seen} already-enriched){RESET}" if gathered.skipped_seen else ""
+    test = f" {DIM}(test run — not recorded){RESET}" if no_db else ""
+    typer.echo(f"  {'Enriched + ' if enrich else ''}saved {len(top)} fresh "
+               f"compan{'y' if len(top) == 1 else 'ies'} to {BOLD}{output}{RESET}.{skip}{dorm}{test}")
 
 
 @app.command()
@@ -2114,6 +2160,7 @@ def smearch(
     icp: str = typer.Argument("", help="Ideal Customer Profile, e.g. \"timber merchants\""),
     output: str = typer.Option("smes.csv", "-o", "--output", help="Output CSV path"),
     limit: int = typer.Option(50, "--limit", help="Max companies to collect & rank"),
+    page: int = typer.Option(1, "-p", "--page", help="Result page (1-based); each page is --limit companies"),
     location: str = typer.Option("", "--location", help="Filter on registered office (e.g. \"London\")"),
     status: str = typer.Option("active", "--status", help="Company status filter"),
     company_type: str = typer.Option("", "--company-type", help="Comma list of company types (default: SME-friendly forms)"),
@@ -2129,14 +2176,15 @@ def smearch(
     top_n: int = typer.Option(10, "--top-n", help="How many top-ranked companies to enrich and write"),
     no_enrich: bool = typer.Option(False, "--no-enrich", help="Skip enrichment (website, contacts, officers)"),
     size: str = typer.Option("", "--size", help="Filter by accounts size: comma list of micro/small/medium"),
+    no_db: bool = typer.Option(False, "--no-db", help="Stateless test run: don't skip/record already-seen companies"),
 ) -> None:
     """[Experimental] Find UK SMEs via Companies House by matching an ICP to SIC codes."""
     do_smearch(
-        icp, output=output, limit=limit, location=location, status=status,
+        icp, output=output, limit=limit, page=page, location=location, status=status,
         company_type=company_type, sic=sic, role=role, max_sics=max_sics,
         min_score=min_score, use_llm=not no_llm, use_expansion=not no_expand,
         dry_run=dry_run, sandbox=sandbox, include_dormant=include_dormant,
-        top_n=top_n, enrich=not no_enrich, size=size,
+        top_n=top_n, enrich=not no_enrich, size=size, no_db=no_db,
     )
 
 
@@ -2230,6 +2278,7 @@ SHELL_HELP = f"""\
       --role <type>               manufacturer / wholesaler / retailer (else asked)
       -o, --output <path>         Output CSV (default: smes.csv)
       --limit <number>            Max companies to rank (default: 50)
+      -p, --page <number>         Result page, 1-based; each page is --limit (default: 1)
       --location <text>           Filter on registered office (e.g. London)
       --company-type <types>      Comma list (default: SME-friendly forms)
       --max-sics <number>         Max SIC codes to match (default: 5)
@@ -2239,7 +2288,9 @@ SHELL_HELP = f"""\
       --top-n <number>            Companies to enrich + output (default: 10)
       --no-enrich                 Skip website/contacts/officers enrichment
       --size <m,s,med>            Filter by accounts size (micro/small/medium)
+      --no-db                     Test run: don't skip/record already-seen companies
       --dry-run                   Preview matched SICs without querying
+      {DIM}default: skips companies seen in past runs; pages on when all seen{RESET}
       {DIM}'… factories' keeps only sites with production/facility evidence{RESET}
 
   {GREEN}run{RESET} <file.csv> [options]     Raw CSV: prepare + draft. Prepared CSV: draft again.
@@ -2404,11 +2455,11 @@ def _parse_discover_args(tokens: list[str]) -> dict:
 def _parse_smearch_args(tokens: list[str]) -> dict:
     """Parse smearch subcommand arguments from REPL tokens."""
     args: dict = {
-        "icp": "", "output": "smes.csv", "limit": 50, "location": "",
+        "icp": "", "output": "smes.csv", "limit": 50, "page": 1, "location": "",
         "status": "active", "company_type": "", "sic": "", "max_sics": 5,
         "min_score": 1.0, "use_llm": True, "use_expansion": True, "dry_run": False,
         "sandbox": False, "role": "", "include_dormant": False,
-        "top_n": 10, "enrich": True, "size": "",
+        "top_n": 10, "enrich": True, "size": "", "no_db": False,
     }
     positional = []
     i = 0
@@ -2418,6 +2469,8 @@ def _parse_smearch_args(tokens: list[str]) -> dict:
             args["output"] = tokens[i + 1]; i += 2
         elif tok == "--limit" and i + 1 < len(tokens):
             args["limit"] = int(tokens[i + 1]); i += 2
+        elif tok in ("-p", "--page") and i + 1 < len(tokens):
+            args["page"] = int(tokens[i + 1]); i += 2
         elif tok == "--location" and i + 1 < len(tokens):
             args["location"] = tokens[i + 1]; i += 2
         elif tok == "--status" and i + 1 < len(tokens):
@@ -2446,6 +2499,8 @@ def _parse_smearch_args(tokens: list[str]) -> dict:
             args["top_n"] = int(tokens[i + 1]); i += 2
         elif tok == "--no-enrich":
             args["enrich"] = False; i += 1
+        elif tok == "--no-db":
+            args["no_db"] = True; i += 1
         elif tok == "--size" and i + 1 < len(tokens):
             args["size"] = tokens[i + 1]; i += 2
         else:

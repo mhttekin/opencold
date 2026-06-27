@@ -121,13 +121,16 @@ def _get_json(url: str, api_key: str, *, strict: bool = False) -> dict:
 
 def search_companies(sic_codes: list[str], *, api_key: str, limit: int = 50,
                      location: str = "", company_status: str = "active",
-                     company_types: tuple[str, ...] | list[str] | None = DEFAULT_SME_TYPES
+                     company_types: tuple[str, ...] | list[str] | None = DEFAULT_SME_TYPES,
+                     start_index: int = 0,
                      ) -> list[dict]:
     """Advanced search filtered by SIC code(s) (OR-matched) + SME company types.
 
     Paginates size+start_index until `limit` items or the server runs out of
-    hits. Any HTTP/parse error stops pagination and returns what was gathered so
-    far (the caller handles the empty case). Items are raw CH dicts.
+    hits. `start_index` is the CH offset of the first hit to fetch -- the raw
+    pagination cursor that smearch's --page rides on. Any HTTP/parse error stops
+    pagination and returns what was gathered so far (the caller handles the empty
+    case). Items are raw CH dicts.
     """
     if not sic_codes:
         return []
@@ -140,7 +143,7 @@ def search_companies(sic_codes: list[str], *, api_key: str, limit: int = 50,
         base["location"] = location
 
     items: list[dict] = []
-    start = 0
+    start = max(0, start_index)
     while len(items) < limit:
         page_size = min(_PAGE_SIZE, limit - len(items))
         params = {**base, "size": page_size, "start_index": start}

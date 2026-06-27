@@ -20,6 +20,7 @@ from opencold import google_places
 from opencold import sic_categories
 from opencold import sic_match
 from opencold import smearch as sm
+from opencold import smearch_db as sdb
 from opencold import smearch_enrich as se
 
 
@@ -267,6 +268,24 @@ class TestSearchCompanies:
             items = ch.search_companies(["16100"], api_key="K", limit=1)
         assert len(items) == 1
 
+    def test_start_index_offsets_first_fetch(self):
+        # Pagination cursor: the first request starts at the given offset, then
+        # advances by the page size as usual.
+        urls = []
+        pages = [
+            _FakeResp({"hits": 200, "items": [{"company_number": "51"}]}),
+            _FakeResp({"hits": 200, "items": [{"company_number": "52"}]}),
+        ]
+
+        def _fake(req, timeout=None):
+            urls.append(req.full_url)
+            return pages.pop(0)
+
+        with patch("urllib.request.urlopen", side_effect=_fake):
+            items = ch.search_companies(["16100"], api_key="K", limit=2, start_index=50)
+        assert [i["company_number"] for i in items] == ["51", "52"]
+        assert "start_index=50" in urls[0] and "start_index=51" in urls[1]
+
     def test_empty_items_stops(self):
         with patch("urllib.request.urlopen", return_value=_FakeResp({"hits": 0, "items": []})):
             assert ch.search_companies(["16100"], api_key="K", limit=10) == []
@@ -474,6 +493,197 @@ class TestPipeline:
                                 output=str(tmp_path / "x.csv"))
         assert result.rows == []
         assert result.match.matches[0].code == "16100"
+
+
+class TestPagination:
+    """--page rides on a CH start_index cursor; page 1 starts at 0, each page
+    advances by --limit. The page<->index map is the reusable primitive."""
+
+    def test_page_to_start_index(self):
+        assert sm.page_to_start_index(1, 50) == 0
+        assert sm.page_to_start_index(2, 50) == 50
+        assert sm.page_to_start_index(3, 20) == 40
+        # Page <= 1 (and junk) clamps to the first page.
+        assert sm.page_to_start_index(0, 50) == 0
+        assert sm.page_to_start_index(-4, 50) == 0
+
+    def test_run_smearch_forwards_start_index(self):
+        # The cursor reaches the CH advanced-search query unchanged.
+        urls = []
+
+        def _fake(req, timeout=None):
+            urls.append(req.full_url)
+            return _FakeResp({"hits": 0, "items": []})
+
+        with patch("urllib.request.urlopen", side_effect=_fake):
+            sm.run_smearch("", sic_codes=["16100"], api_key="K", output="",
+                           limit=10, start_index=20, this_year=2026)
+        assert urls and "start_index=20" in urls[0]
+
+
+class TestSmearchDb:
+    """The seen-companies store backing smearch's default 'always fresh' action."""
+
+    def test_roundtrip_and_dedup(self, tmp_path):
+        conn = sdb.connect(tmp_path / "seen.db")
+        rows = [{"company_number": "A", "company_name": "Alpha", "sic_codes": "16100"},
+                {"company_number": "B", "company_name": "Bravo", "sic_codes": "16100"},
+                {"company_number": "", "company_name": "NoNumber"}]  # no number -> skipped
+        assert sdb.mark_enriched(conn, rows, icp="timber") == 2
+        assert sdb.seen_numbers(conn, ["A", "B", "C"]) == {"A", "B"}
+
+    def test_mark_is_idempotent(self, tmp_path):
+        conn = sdb.connect(tmp_path / "seen.db")
+        sdb.mark_enriched(conn, [{"company_number": "A"}])
+        # Re-recording A is a no-op; only B is newly inserted.
+        assert sdb.mark_enriched(conn, [{"company_number": "A"}, {"company_number": "B"}]) == 1
+        assert sdb.seen_numbers(conn, ["A", "B"]) == {"A", "B"}
+
+    def test_persists_across_connections(self, tmp_path):
+        path = tmp_path / "seen.db"
+        c1 = sdb.connect(path)
+        sdb.mark_enriched(c1, [{"company_number": "A"}])
+        c1.close()
+        assert sdb.seen_numbers(sdb.connect(path), ["A"]) == {"A"}
+
+    def test_default_path_honours_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("OPENCOLD_SMEARCH_DB", str(tmp_path / "custom.db"))
+        assert sdb.default_db_path() == tmp_path / "custom.db"
+
+
+class TestGatherFreshPages:
+    """Page-walk that keeps surfacing unseen companies (smearch's default)."""
+
+    @staticmethod
+    def _rows(*nums):
+        return [{"company_number": n} for n in nums]
+
+    def test_no_dedup_is_single_page(self):
+        calls = []
+
+        def collect(pg):
+            calls.append(pg)
+            return self._rows("A", "B", "C")
+
+        g = sm.gather_fresh_pages(collect, start_page=1, target=2, is_seen=None)
+        assert [r["company_number"] for r in g.rows] == ["A", "B", "C"]
+        assert calls == [1] and g.skipped_seen == 0  # is_seen=None -> exactly one page
+
+    def test_whole_page_seen_advances(self):
+        pages = {1: self._rows("A", "B"), 2: self._rows("C", "D")}
+        # Page 1 (A,B) is entirely seen -> walk on to page 2.
+        g = sm.gather_fresh_pages(lambda pg: pages.get(pg, []), start_page=1,
+                                  target=2, is_seen=lambda rows: {"A", "B"})
+        assert [r["company_number"] for r in g.rows] == ["C", "D"]
+        assert g.pages_walked == 2 and g.skipped_seen == 2
+
+    def test_partial_page_tops_up_from_next(self):
+        pages = {1: self._rows("A", "B"), 2: self._rows("C", "D")}
+        g = sm.gather_fresh_pages(lambda pg: pages.get(pg, []), start_page=1,
+                                  target=3, is_seen=lambda rows: {"A"})
+        assert [r["company_number"] for r in g.rows] == ["B", "C", "D"]
+        assert g.pages_walked == 2
+
+    def test_empty_page_stops(self):
+        g = sm.gather_fresh_pages(lambda pg: self._rows("A") if pg == 1 else [],
+                                  start_page=1, target=5, is_seen=lambda rows: set())
+        assert [r["company_number"] for r in g.rows] == ["A"] and g.saw_any
+
+    def test_max_pages_caps_the_walk(self):
+        calls = []
+
+        def collect(pg):
+            calls.append(pg)
+            return self._rows("X")  # always the same, always-seen row
+
+        g = sm.gather_fresh_pages(collect, start_page=1, target=5,
+                                  is_seen=lambda rows: {"X"}, max_pages=3)
+        assert g.rows == [] and len(calls) == 3 and g.skipped_seen == 3
+
+
+class TestSmearchDedupCli:
+    """do_smearch's default action surfaces fresh companies each run (recording
+    the ones it outputs); --no-db is a stateless test run."""
+
+    _COMPANIES = [
+        {"company_number": "C1", "company_name": "Alpha Ltd", "company_status": "active",
+         "company_type": "ltd", "date_of_creation": "2020-01-01", "sic_codes": ["16100"],
+         "registered_office_address": {"locality": "Leeds"}},
+        {"company_number": "C2", "company_name": "Bravo Ltd", "company_status": "active",
+         "company_type": "ltd", "date_of_creation": "2020-01-01", "sic_codes": ["16100"],
+         "registered_office_address": {"locality": "Hull"}},
+        {"company_number": "C3", "company_name": "Charlie Ltd", "company_status": "active",
+         "company_type": "ltd", "date_of_creation": "2020-01-01", "sic_codes": ["16100"],
+         "registered_office_address": {"locality": "York"}},
+        {"company_number": "C4", "company_name": "Delta Ltd", "company_status": "active",
+         "company_type": "ltd", "date_of_creation": "2020-01-01", "sic_codes": ["16100"],
+         "registered_office_address": {"locality": "Hull"}},
+    ]
+    # Distinct account sizes give a stable rank C1>C2>C3>C4 (date/officers equal),
+    # independent of the real clock.
+    _PROFILES = {
+        "C1": {"accounts": {"last_accounts": {"type": "micro-entity"}}},
+        "C2": {"accounts": {"last_accounts": {"type": "small"}}},
+        "C3": {"accounts": {"last_accounts": {"type": "medium"}}},
+        "C4": {"accounts": {"last_accounts": {"type": "full"}}},
+    }
+
+    def _router(self):
+        def _fake(req, timeout=None):
+            url = req.full_url
+            if "/advanced-search/" in url:  # page 1 has the companies; later pages are empty
+                items = self._COMPANIES if "start_index=0" in url else []
+                return _FakeResp({"hits": len(self._COMPANIES), "items": items})
+            num = url.split("/company/")[1].split("?")[0].split("/")[0]
+            if "/officers" in url:
+                return _FakeResp({"active_count": 2})
+            return _FakeResp(self._PROFILES.get(num, {}))
+        return _fake
+
+    @staticmethod
+    def _nums(path):
+        with open(path) as f:
+            return [r["company_number"] for r in csv.DictReader(f)]
+
+    def test_repeat_runs_surface_fresh_companies(self, tmp_path, monkeypatch, capsys):
+        from opencold import cli
+        monkeypatch.setenv("COMPANIES_HOUSE_API_KEY", "K")
+        monkeypatch.delenv("OPENCOLD_SMEARCH_DB", raising=False)  # use isolated CONFIG_DIR
+        out = str(tmp_path / "smes.csv")
+
+        with patch("urllib.request.urlopen", side_effect=self._router()):
+            cli.do_smearch(sic="16100", output=out, top_n=2, enrich=False,
+                           use_llm=False, use_expansion=False)
+            run1 = self._nums(out)
+            cli.do_smearch(sic="16100", output=out, top_n=2, enrich=False,
+                           use_llm=False, use_expansion=False)
+            run2 = self._nums(out)
+            # Third run: every company already enriched -> nothing new, CSV untouched.
+            cli.do_smearch(sic="16100", output=out, top_n=2, enrich=False,
+                           use_llm=False, use_expansion=False)
+            run3 = self._nums(out)
+
+        assert run1 == ["C1", "C2"]                 # top-2 ranked
+        assert run2 == ["C3", "C4"]                 # the next two -- all different
+        assert set(run1).isdisjoint(run2)
+        assert run3 == ["C3", "C4"]                 # unchanged (nothing fresh written)
+        assert "already enriched" in capsys.readouterr().out
+
+    def test_no_db_is_stateless(self, tmp_path, monkeypatch):
+        from opencold import cli
+        monkeypatch.setenv("COMPANIES_HOUSE_API_KEY", "K")
+        monkeypatch.delenv("OPENCOLD_SMEARCH_DB", raising=False)
+        out = str(tmp_path / "smes.csv")
+
+        with patch("urllib.request.urlopen", side_effect=self._router()):
+            cli.do_smearch(sic="16100", output=out, top_n=2, enrich=False,
+                           use_llm=False, use_expansion=False, no_db=True)
+            first = self._nums(out)
+            cli.do_smearch(sic="16100", output=out, top_n=2, enrich=False,
+                           use_llm=False, use_expansion=False, no_db=True)
+            second = self._nums(out)
+
+        assert first == ["C1", "C2"] and second == ["C1", "C2"]  # nothing recorded -> same
 
 
 class TestDormantFilter:
