@@ -6,7 +6,7 @@ relevant section before changing discovery, smearch, or pipeline code.
 
 ## Commands
 - Install: `pip install -e ".[dev]"` (src layout: `src/opencold`)
-- Use the project venv (.venv), not conda base. Fish: source .venv/bin/activate.fish
+- Scripts find .venv themselves. For ad-hoc commands use .venv/bin/python -m <tool>; never rely on conda base.
 - Check everything: ./scripts/check.sh (format, lint, tests). Run before finishing any task.
 - Testing edits from another checkout/worktree: prefix `PYTHONPATH=<checkout>/src`,
   otherwise the installed copy runs.
