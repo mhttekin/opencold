@@ -126,19 +126,69 @@ threading, progress callback contents and exception boundaries.
    Lower discovery.py's ratchet number to its new line count and
    add the new module (under 400 lines) to the ratchet. Never raise a ratchet.
    Inspect the generated eval JSON, since eval.sh reports deltas without failing
-   on regressions. Preserve all existing assertions and strict xfails.
+   on regressions. Move the generated, untracked report into `.agent-logs/` after
+   comparing it so it does not leave the tree dirty. Preserve all existing
+   assertions and strict xfails.
 5. Stage explicit paths and run `.agents/skills/review/SKILL.md` on the staged diff.
    Fix FAIL findings or record why not. Re-review substantive corrections.
 6. Set `passes: true` and append to progress.md: unit id, agent used, starting
    commit, wall-clock duration, tokens/cost (`unavailable`; the operator fills it
    in), number of check.sh runs, golden/eval comparison, reviewer verdict, and any
    retries or surprises. Commit the unit's code AND the progress/status update in
-   ONE commit, push, and confirm CI is green on all Python versions. Then STOP.
+   ONE commit, push to `origin/main`, and confirm CI is green on all Python
+   versions. Use the commands below when running under `run_units.sh`. Then STOP.
    Never use --no-verify. Use the resulting commit/CI run as the ending reference;
    do not create a separate log/status commit to record its own hash or CI result.
 7. If a unit turns out bigger than planned, split it in features.json, update this
    dependency map, commit the plan change, and stop. Report judgement calls with
    options/evidence; do not choose behavior changes for Mehmet.
+
+## Running multiple sessions
+
+```sh
+scripts/run_units.sh --agent codex --max-units 3 --dry-run
+scripts/run_units.sh --agent claude --max-units 3 --timeout-min 20
+```
+
+Use the project `.venv` and authenticate the selected agent CLI, Git, and `gh`
+before running. Dry-run checks the next pending unit against the local and live
+remote `main` and prints the starting state without launching a session or writing
+logs. A live run starts one fresh session per unit and defaults to 20 minutes per
+session. Only one runner can operate on the checkout at a time.
+
+- Codex uses `exec --json`, workspace-write with shell networking disabled, and
+  approval policy `never`. Trust this project's `.codex` layer using Codex's
+  normal trust flow so `.codex/rules/discovery-split.rules` is active. Stage
+  explicit paths with `git add -- <paths>`. Run the fixed commit and push aliases
+  below, and use `gh run list`, `view`, and `watch` directly. The commit alias
+  takes one message and runs normal hooks. The push alias takes no arguments and
+  pushes `origin main`. Existing user and managed Codex rules still apply.
+  [Codex CLI](https://learn.chatgpt.com/docs/developer-commands#codex-exec) ·
+  [Codex command rules](https://learn.chatgpt.com/docs/agent-configuration/rules)
+
+  ```sh
+  git -c 'alias.discovery-commit=!f() { test "$#" -eq 1 && git commit -m "$1"; }; f' discovery-commit 'Extract discovery module'
+  git -c 'alias.discovery-push=!f() { test "$#" -eq 0 && git push origin main; }; f' discovery-push
+  ```
+
+- Claude uses `-p --output-format json`, `dontAsk`, and the Bash sandbox with
+  unsandboxed retries disabled. The only runner-provided sandbox exceptions are
+  `git push origin main` and the same read-only `gh run` commands. Run them as
+  standalone commands. The invocation loads project settings and managed policy.
+  [Claude CLI](https://code.claude.com/docs/en/cli-reference) ·
+  [Claude sandbox](https://code.claude.com/docs/en/sandboxing)
+
+Each `.agent-logs/<unit>-<timestamp>/` directory contains the starting commit,
+passes count, discovery line count, and SHA-256 hashes of both golden snapshots
+in `before.json`. It also holds agent stdout (`stdout.jsonl` for Codex or
+`stdout.json` for Claude), `stderr.log`, and `checks.log` for validation output.
+The ignored `.agent-logs/usage.csv` records elapsed seconds and any token counts
+reported by the CLI. Input and cache counts retain each CLI's accounting convention.
+
+The runner stops at the first failed check and prints the log location. Inspect
+the agent's stdout, stderr and available check output before deciding how to
+proceed. A stopped session may already have committed or pushed. The runner
+leaves that state available for inspection and never retries a unit automatically.
 
 ## Runtime characterization golden
 

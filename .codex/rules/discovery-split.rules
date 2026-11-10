@@ -1,0 +1,12 @@
+# Workspace-write protects Git metadata and blocks shell networking.
+# The fixed aliases validate their arguments before invoking Git outside it.
+prefix_rule(pattern = ["git", "add", "--"], decision = "allow")
+prefix_rule(
+    pattern = ["git", "-c", 'alias.discovery-commit=!f() { test "$#" -eq 1 && git commit -m "$1"; }; f', "discovery-commit"],
+    decision = "allow",
+)
+prefix_rule(
+    pattern = ["git", "-c", 'alias.discovery-push=!f() { test "$#" -eq 0 && git push origin main; }; f', "discovery-push"],
+    decision = "allow",
+)
+prefix_rule(pattern = ["gh", "run", ["list", "view", "watch"]], decision = "allow")
