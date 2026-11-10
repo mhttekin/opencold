@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-socket", "ruff==0.17.4"]
+dev = ["pytest>=8.0", "pytest-socket", "ruff==0.17.4", "pre-commit"]
 # Future: optional embeddings relevance-filter for ICP expansion (re-ranks
 # candidates; keyless lexicon + Datamuse already cover the default path).
 # expansion = ["sentence-transformers>=2.2"]

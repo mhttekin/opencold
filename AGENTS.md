@@ -6,8 +6,7 @@ relevant section before changing discovery, smearch, or pipeline code.
 
 ## Commands
 - Install: `pip install -e ".[dev]"` (src layout: `src/opencold`)
-- Test: `pytest` (CI runs `pytest -v` on 3.11–3.13). Run after every change.
-- Lint: `ruff check . && ruff format --check .` (fix with `ruff check . --fix && ruff format .`)
+- Check everything: ./scripts/check.sh (format, lint, tests). Run before finishing any task.
 - Testing edits from another checkout/worktree: prefix `PYTHONPATH=<checkout>/src`,
   otherwise the installed copy runs.
 
@@ -38,3 +37,6 @@ relevant section before changing discovery, smearch, or pipeline code.
 - Logic modules stay under ~400 lines (data modules exempt). `cli.py` and `discovery.py`
   are already over, so split before growing them.
 - README stays terse: one short entry per feature, no mechanism explanations.
+
+## Git
+- Never use git commit --no-verify.

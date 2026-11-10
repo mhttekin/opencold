@@ -38,5 +38,7 @@ output.csv
 # Auto-downloaded binaries
 vendor/
 
-# Claude Code
-.claude/
+# Claude Code (shared settings + hooks are tracked; local settings are not)
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
