@@ -1,0 +1,459 @@
+{
+  "date": "2026-11-10",
+  "git_sha": "9d4bd91",
+  "sic": {
+    "metrics": {
+      "cases": 6,
+      "abstain": 0,
+      "top1_accuracy": 0.6666666666666666,
+      "top1_lenient": 0.6666666666666666,
+      "recall_at_5": 1.0,
+      "sibling_confusion": 0
+    },
+    "cases": [
+      {
+        "icp": "pallet manufacturers",
+        "status": "ok",
+        "top5": [
+          {
+            "code": "16240",
+            "score": 2.5,
+            "role": "manufacture",
+            "description": "Manufacture of wooden containers"
+          },
+          {
+            "code": "22290",
+            "score": 2.5,
+            "role": "manufacture",
+            "description": "Manufacture of other plastic products"
+          },
+          {
+            "code": "25990",
+            "score": 2.5,
+            "role": "manufacture",
+            "description": "Manufacture of other fabricated metal products n.e.c."
+          },
+          {
+            "code": "28220",
+            "score": 2.5,
+            "role": "manufacture",
+            "description": "Manufacture of lifting and handling equipment"
+          },
+          {
+            "code": "77390",
+            "score": 2.5,
+            "role": null,
+            "description": "Renting and leasing of other machinery, equipment and tangible goods n.e.c."
+          }
+        ],
+        "abstain": false,
+        "top1_correct": true,
+        "top1_lenient": true,
+        "recall_at_5": 1.0,
+        "sibling_confusion": false
+      },
+      {
+        "icp": "Wood pallet",
+        "status": "ok",
+        "top5": [
+          {
+            "code": "16240",
+            "score": 3.0901390664671204,
+            "role": "manufacture",
+            "description": "Manufacture of wooden containers"
+          },
+          {
+            "code": "16210",
+            "score": 2.6467655483352255,
+            "role": "manufacture",
+            "description": "Manufacture of veneer sheets and wood-based panels"
+          },
+          {
+            "code": "46130",
+            "score": 2.370285561468723,
+            "role": "wholesale",
+            "description": "Agents involved in the sale of timber and building materials"
+          },
+          {
+            "code": "16100",
+            "score": 2.3467655483352257,
+            "role": null,
+            "description": "Sawmilling and planing of wood"
+          },
+          {
+            "code": "46730",
+            "score": 2.199274722549824,
+            "role": "wholesale",
+            "description": "Wholesale of wood, construction materials and sanitary equipment"
+          }
+        ],
+        "abstain": false,
+        "top1_correct": true,
+        "top1_lenient": true,
+        "recall_at_5": 1.0,
+        "sibling_confusion": false
+      },
+      {
+        "icp": "Plastic pallet manufacturer",
+        "status": "ok",
+        "top5": [
+          {
+            "code": "22290",
+            "score": 3.5,
+            "role": "manufacture",
+            "description": "Manufacture of other plastic products"
+          },
+          {
+            "code": "28960",
+            "score": 2.7070973138108148,
+            "role": "manufacture",
+            "description": "Manufacture of plastics and rubber machinery"
+          },
+          {
+            "code": "20160",
+            "score": 2.315014411066591,
+            "role": "manufacture",
+            "description": "Manufacture of plastics in primary forms"
+          },
+          {
+            "code": "22210",
+            "score": 2.315014411066591,
+            "role": "manufacture",
+            "description": "Manufacture of plastic plates, sheets, tubes and profiles"
+          },
+          {
+            "code": "22220",
+            "score": 2.2070973138108148,
+            "role": "manufacture",
+            "description": "Manufacture of plastic packing goods"
+          }
+        ],
+        "abstain": false,
+        "top1_correct": true,
+        "top1_lenient": true,
+        "recall_at_5": 1.0,
+        "sibling_confusion": false
+      },
+      {
+        "icp": "Wood pellet manufacturer",
+        "status": "ok",
+        "top5": [
+          {
+            "code": "16210",
+            "score": 2.83942756610561,
+            "role": "manufacture",
+            "description": "Manufacture of veneer sheets and wood-based panels"
+          },
+          {
+            "code": "16290",
+            "score": 2.636900779691638,
+            "role": "manufacture",
+            "description": "Manufacture of other products of wood; manufacture of articles of cork, straw and plaiting materials"
+          },
+          {
+            "code": "16100",
+            "score": 2.33942756610561,
+            "role": null,
+            "description": "Sawmilling and planing of wood"
+          },
+          {
+            "code": "16240",
+            "score": 2.33942756610561,
+            "role": "manufacture",
+            "description": "Manufacture of wooden containers"
+          },
+          {
+            "code": "10611",
+            "score": 2.012068725845085,
+            "role": "manufacture",
+            "description": "Grain milling"
+          }
+        ],
+        "abstain": false,
+        "top1_correct": false,
+        "top1_lenient": false,
+        "recall_at_5": 1.0,
+        "sibling_confusion": false
+      },
+      {
+        "icp": "sawmilling",
+        "status": "ok",
+        "top5": [
+          {
+            "code": "16100",
+            "score": 4.0,
+            "role": null,
+            "description": "Sawmilling and planing of wood"
+          },
+          {
+            "code": "16210",
+            "score": 1.3,
+            "role": "manufacture",
+            "description": "Manufacture of veneer sheets and wood-based panels"
+          }
+        ],
+        "abstain": false,
+        "top1_correct": true,
+        "top1_lenient": true,
+        "recall_at_5": 1.0,
+        "sibling_confusion": false
+      },
+      {
+        "icp": "Construction timber / Timber building components",
+        "status": "ok",
+        "top5": [
+          {
+            "code": "23610",
+            "score": 3.596764475209322,
+            "role": "manufacture",
+            "description": "Manufacture of concrete products for construction purposes"
+          },
+          {
+            "code": "41201",
+            "score": 3.3303908020771713,
+            "role": null,
+            "description": "Construction of commercial buildings"
+          },
+          {
+            "code": "41202",
+            "score": 3.3303908020771713,
+            "role": null,
+            "description": "Construction of domestic buildings"
+          },
+          {
+            "code": "23320",
+            "score": 3.2194125863111935,
+            "role": "manufacture",
+            "description": "Manufacture of bricks, tiles and construction products, in baked clay"
+          },
+          {
+            "code": "16230",
+            "score": 3.088049026603713,
+            "role": "manufacture",
+            "description": "Manufacture of other builders' carpentry and joinery"
+          }
+        ],
+        "abstain": false,
+        "top1_correct": false,
+        "top1_lenient": false,
+        "recall_at_5": 1.0,
+        "sibling_confusion": false
+      }
+    ]
+  },
+  "discover": {
+    "output": "/Users/mehmettekin/projects/opencold/evals/artifacts/discover_tr_pallets_2026-11-10.csv",
+    "metrics": {
+      "output_rows": 17,
+      "verified": 7,
+      "unlabelled_rows": 0,
+      "precision": 1.0,
+      "recall": 0.6363636363636364,
+      "no_match_verified": 0,
+      "exclude_verified": 0,
+      "exclude_leakage": 5,
+      "exclude_total": 5,
+      "name_accuracy": 0.16666666666666666,
+      "invalid_emails": 1,
+      "phones_valid_e164": 7,
+      "phones_local_unnormalized": 4,
+      "phones_garbage": 1
+    },
+    "invalid_emails": [
+      "consalti@example.com"
+    ],
+    "phones": {
+      "valid_e164": [
+        "+902122902929",
+        "+902247141826",
+        "+902563476925",
+        "+905324088233",
+        "+905324798344",
+        "+905333277373",
+        "+905356501938"
+      ],
+      "local_unnormalized": [
+        "02169994998",
+        "05333932020",
+        "05380503181",
+        "08507750850"
+      ],
+      "garbage": [
+        "1779228338"
+      ]
+    },
+    "name_mismatches": [
+      {
+        "domain": "sahinlerpalet.com.tr",
+        "got": "Sahinlerpalet",
+        "expected": "Şahinler Palet"
+      },
+      {
+        "domain": "incirpalet.com.tr",
+        "got": "Ana Sayfa - İncir Palet",
+        "expected": "İncir Palet"
+      },
+      {
+        "domain": "turkiyepalet.com",
+        "got": "Turkiyepalet",
+        "expected": "Türkiye Palet"
+      },
+      {
+        "domain": "ozturepalet.com",
+        "got": "Ozturepalet",
+        "expected": "Öztüre Palet"
+      },
+      {
+        "domain": "ecopal.com.tr",
+        "got": "Ecopal Orman Ürünleri Geri Dönüşüm",
+        "expected": "Ecopal"
+      },
+      {
+        "domain": "ozenpalet.com",
+        "got": "Ahşap Palet & Euro Palet | Özen Palet",
+        "expected": "Özen Palet"
+      },
+      {
+        "domain": "omegapalet.com.tr",
+        "got": "Anasayfa - Omega Palet",
+        "expected": "Omega Palet"
+      },
+      {
+        "domain": "glopalet.com",
+        "got": "Glopal Pallet Compan",
+        "expected": "Glopal Pallet Company"
+      },
+      {
+        "domain": "epalturkiye.com",
+        "got": "Epalturkiye",
+        "expected": "EPAL Türkiye"
+      },
+      {
+        "domain": "sahrapalet.com",
+        "got": "Sahrapalet",
+        "expected": "Sahra Palet"
+      }
+    ],
+    "rows": [
+      {
+        "domain": "abatineva.com.tr",
+        "label": "match",
+        "confidence": "verified",
+        "company": "Abatıneva",
+        "expected_name": "Abatıneva"
+      },
+      {
+        "domain": "accio.com",
+        "label": "exclude",
+        "confidence": "review",
+        "company": "Accio",
+        "expected_name": ""
+      },
+      {
+        "domain": "balorman.com",
+        "label": "match",
+        "confidence": "review",
+        "company": "Balorman",
+        "expected_name": "Balorman"
+      },
+      {
+        "domain": "bulurum.com",
+        "label": "exclude",
+        "confidence": "review",
+        "company": "Bulurum",
+        "expected_name": ""
+      },
+      {
+        "domain": "ecopal.com.tr",
+        "label": "match",
+        "confidence": "verified",
+        "company": "Ecopal Orman Ürünleri Geri Dönüşüm",
+        "expected_name": "Ecopal"
+      },
+      {
+        "domain": "ensun.io",
+        "label": "exclude",
+        "confidence": "review",
+        "company": "Ensun",
+        "expected_name": ""
+      },
+      {
+        "domain": "epalturkiye.com",
+        "label": "no_match",
+        "confidence": "review",
+        "company": "Epalturkiye",
+        "expected_name": "EPAL Türkiye"
+      },
+      {
+        "domain": "fordaq.com",
+        "label": "exclude",
+        "confidence": "review",
+        "company": "Fordaq",
+        "expected_name": ""
+      },
+      {
+        "domain": "glopalet.com",
+        "label": "match",
+        "confidence": "review",
+        "company": "Glopal Pallet Compan",
+        "expected_name": "Glopal Pallet Company"
+      },
+      {
+        "domain": "incirpalet.com.tr",
+        "label": "match",
+        "confidence": "verified",
+        "company": "Ana Sayfa - İncir Palet",
+        "expected_name": "İncir Palet"
+      },
+      {
+        "domain": "listofcompaniesin.com",
+        "label": "exclude",
+        "confidence": "review",
+        "company": "Listofcompaniesin",
+        "expected_name": ""
+      },
+      {
+        "domain": "omegapalet.com.tr",
+        "label": "match",
+        "confidence": "review",
+        "company": "Anasayfa - Omega Palet",
+        "expected_name": "Omega Palet"
+      },
+      {
+        "domain": "ozenpalet.com",
+        "label": "match",
+        "confidence": "verified",
+        "company": "Ahşap Palet & Euro Palet | Özen Palet",
+        "expected_name": "Özen Palet"
+      },
+      {
+        "domain": "ozturepalet.com",
+        "label": "match",
+        "confidence": "verified",
+        "company": "Ozturepalet",
+        "expected_name": "Öztüre Palet"
+      },
+      {
+        "domain": "sahinlerpalet.com.tr",
+        "label": "match",
+        "confidence": "verified",
+        "company": "Sahinlerpalet",
+        "expected_name": "Şahinler Palet"
+      },
+      {
+        "domain": "sahrapalet.com",
+        "label": "match",
+        "confidence": "review",
+        "company": "Sahrapalet",
+        "expected_name": "Sahra Palet"
+      },
+      {
+        "domain": "turkiyepalet.com",
+        "label": "match",
+        "confidence": "verified",
+        "company": "Turkiyepalet",
+        "expected_name": "Türkiye Palet"
+      }
+    ]
+  }
+}

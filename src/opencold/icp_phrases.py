@@ -232,7 +232,8 @@ def _term_in_text(term: str, stem_set: set[str], low_text: str) -> bool:
     ≥4-char literal substring (hyphenated/compound terms and multi-word phrases
     like "gestion des déchets"). Derived terms are machine-generated, so short
     ones never substring-match — "urn" sits inside "journalism". Mirrors
-    discovery._icp_match for a single term."""
+    discovery._icp_match for a single term. The term is folded like the text."""
+    term = fold(term)
     return stem(term) in stem_set or (len(term) >= 4 and term in low_text)
 
 
@@ -248,7 +249,7 @@ def token_evidenced(
     tokenizer never produced shorter terms, and 2-char tokens like "ai" would
     match inside unrelated words), a bare-plural fallback the stemmer is too
     conservative for ("SMEs" ~ "SME"), or any term derived from this token
-    (native translations, expansion-cluster members)."""
+    (native translations, expansion-cluster members). `low_text` must be fold()ed."""
     if stem(token) in stem_set:
         return True
     if len(token) >= 3 and token in low_text:

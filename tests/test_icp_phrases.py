@@ -13,6 +13,7 @@ from opencold.icp_phrases import (
     text_words,
     token_evidenced,
 )
+from opencold.textnorm import fold
 
 
 def _chunks(icp):
@@ -136,7 +137,7 @@ class TestPhraseHit:
 class TestTokenEvidenced:
     def _ev(self, token, text, derived=None):
         words = text_words(text)
-        return token_evidenced(token, set(words), {stem(w) for w in words}, text.lower(), derived)
+        return token_evidenced(token, set(words), {stem(w) for w in words}, fold(text), derived)
 
     def test_stem_match(self):
         assert self._ev("consultancy", "consultancy services since 1990")

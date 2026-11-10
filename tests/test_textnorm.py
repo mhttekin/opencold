@@ -35,3 +35,16 @@ def test_domain_matches_company_with_dotless_i():
     assert discovery._domain_matches_company(
         "abatineva.com.tr", discovery._company_tokens("Abatıneva")
     )
+
+
+def test_native_provenance_terms_evidence_core_tokens():
+    """Regression (found in the live TR run): folding only the TEXT side made
+    "üretici" never match the folded page text, so "manufacturers" lost its
+    Turkish evidence and every TR pallet maker dropped to icp_unconfirmed."""
+    from opencold import icp_phrases
+
+    profile = icp_phrases.parse_icp("pallet manufacturers")
+    match = icp_phrases.evidence_core(
+        profile, "Palet ÜRETİCİSİ firmamız", {"manufacturers": {"üretici"}, "pallet": {"palet"}}
+    )
+    assert match.confirmed
