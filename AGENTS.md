@@ -16,10 +16,10 @@ relevant section before changing discovery, smearch, or pipeline code.
 - Verification: the LLM owns industry judgement, deterministic signals own region.
   LLM `unknown` defers to deterministic and never rejects.
 - `pipeline.py` is headless so it can be embedded in an API: no disk config, prompts,
-  printing, or file writes. Progress goes out via callback of plain dicts, never secrets.
+  printing, or file writes. Progress goes out via callback of plain dicts, never secrets. (enforced: tests/test_invariants.py)
 - Tests never touch real config: use `tmp_config` / `seeded_config` (tests/conftest.py).
 - Tests never hit the network (enforced by pytest-socket via `addopts`).
-- Output CSV columns are a contract. Renaming one means updating README and tests together.
+- Output CSV columns are a contract. Renaming one means updating README and tests together. (enforced: tests/test_invariants.py)
 - Respect rate limits. Never add CAPTCHA solving or anti-bot evasion.
 
 ## Gotchas
@@ -34,8 +34,8 @@ relevant section before changing discovery, smearch, or pipeline code.
 - `vendor/bin/` holds the auto-downloaded Reacher binary. Don't edit or commit it.
 
 ## Conventions
-- Logic modules stay under ~400 lines (data modules exempt). `cli.py` and `discovery.py`
-  are already over, so split before growing them.
+- Logic modules stay under ~400 lines (data modules exempt), enforced by a ratchet in
+  tests/test_invariants.py; lower the number when you shrink a file.
 - README stays terse: one short entry per feature, no mechanism explanations.
 
 ## Git
