@@ -46,3 +46,6 @@ vendor/
 
 # reviewer eval scratch (neutral patch copies)
 evals/reviewer/.work/
+
+# Shared agent check logs
+.agent-logs/

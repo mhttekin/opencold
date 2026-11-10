@@ -4,7 +4,7 @@
 
 Each case in evals/reviewer/cases/ is a unified diff whose filename states the
 expected result: `r<N>_*.patch` must be caught as rule N; `clean_*.patch` must PASS.
-Every run is a fresh, headless Claude Code session (`claude -p`) with read-only tools,
+Every run is a fresh, headless session (AGENT_CLI=claude|codex) with read-only tools,
 given a NEUTRALLY named copy of the patch so the filename can't leak the answer.
 Inferential sensors are non-deterministic, so each case runs `--runs` times and
 disagreements between runs are reported.
@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -23,13 +22,14 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from scripts.reviewer_agent import run as run_agent
+from scripts.reviewer_agent import selected_agent
+
 ROOT = Path(__file__).resolve().parents[1]
 CASES = ROOT / "evals" / "reviewer" / "cases"
 WORK = ROOT / "evals" / "reviewer" / ".work"  # gitignored scratch for neutral copies
 RESULTS = ROOT / "evals" / "results"
 SKILL = ".agents/skills/review/SKILL.md"
-TOOLS = "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
-DENY = "Edit,Write,NotebookEdit,WebFetch,WebSearch,Agent,Task"
 TIMEOUT = 900
 
 PROMPT = (
@@ -52,47 +52,33 @@ def parse(text: str) -> dict:
     }
 
 
-def _child_env() -> dict:
-    """The reviewer session uses the user's Claude Code login. An ANTHROPIC_API_KEY in
-    the environment (e.g. from the app's .env) would take precedence and may be invalid."""
-    env = dict(os.environ)
-    env.pop("ANTHROPIC_API_KEY", None)
-    return env
-
-
 def run_once(case: Path, run: int, out_dir: Path) -> dict:
     tmp = WORK / uuid.uuid4().hex[:8]
     tmp.mkdir(parents=True)
     patch = tmp / "change.patch"
     shutil.copy(case, patch)
-    cmd = [
-        "claude",
-        "-p",
-        PROMPT.format(skill=SKILL, patch=patch.relative_to(ROOT)),
-        "--allowedTools",
-        TOOLS,
-        "--disallowedTools",
-        DENY,
-        "--output-format",
-        "text",
-    ]
+    agent = selected_agent()
+    usage = {}
+    error = True
     try:
-        proc = subprocess.run(
-            cmd,
-            cwd=ROOT,
-            env=_child_env(),
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=TIMEOUT,
+        result = run_agent(
+            agent, PROMPT.format(skill=SKILL, patch=patch.relative_to(ROOT)), ROOT, TIMEOUT
         )
-        text = proc.stdout + ("\n[stderr]\n" + proc.stderr if proc.returncode else "")
+        text, usage, error = result["text"], result["usage"], result["error"]
+        (out_dir / f"{case.stem}.run{run}.raw.txt").write_text(result["raw"], encoding="utf-8")
     except subprocess.TimeoutExpired:
         text = "[timeout]"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     (out_dir / f"{case.stem}.run{run}.txt").write_text(text, encoding="utf-8")
-    return {"case": case.name, "run": run, **parse(text)}
+    return {
+        "case": case.name,
+        "run": run,
+        "agent": agent,
+        "usage": usage,
+        "error": error,
+        **parse("" if error else text),
+    }
 
 
 def grade(case: str, r: dict) -> dict:
@@ -113,6 +99,9 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--only", help="run a single case (filename)")
     args = ap.parse_args()
+    agent = selected_agent()
+    if not shutil.which(agent):
+        ap.error(f"{agent} CLI not found")
 
     cases = sorted(CASES.glob("*.patch"))
     if args.only:
@@ -160,7 +149,7 @@ def main() -> None:
         ["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True
     ).stdout.strip()
     RESULTS.mkdir(exist_ok=True)
-    path = RESULTS / f"reviewer-{stamp[:10]}-{sha}.json"
+    path = RESULTS / f"reviewer-{stamp}-{sha}-{agent}.json"
     path.write_text(
         json.dumps(
             {

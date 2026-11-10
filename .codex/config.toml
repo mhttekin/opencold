@@ -1,5 +1,5 @@
-# Codex PostToolUse only fires for Bash, so file edits are checked at end of turn.
+# Validate at end of turn; keep check output out of Stop's JSON stdout channel.
 [[hooks.Stop]]
 [[hooks.Stop.hooks]]
 type = "command"
-command = "bash -c 'cd \"$(git rev-parse --show-toplevel)\" && ./scripts/check.sh'"
+command = "bash \"$(git rev-parse --show-toplevel)/scripts/agent-hooks/codex-stop.sh\""

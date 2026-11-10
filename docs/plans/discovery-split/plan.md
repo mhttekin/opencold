@@ -139,22 +139,48 @@ threading, progress callback contents and exception boundaries.
   overrides and progress ordering. Preserve unknown/defer semantics and region
   authority; fixed-artifact eval alone cannot detect runtime regressions.
 
-## Harness portability findings
+## Harness portability
 
-- `.claude/settings.json` and `.claude/hooks/post-edit.sh` use Claude tool names,
-  JSON event shape, `$CLAUDE_PROJECT_DIR`, and a system `python`. Keep shared scripts
-  as the agent-neutral gates; use thin per-agent adapters rooted via git and .venv.
-- Claude-only deny rules in settings cover .env and labels; AGENTS.md protects
-  labels for every agent. Add equivalent host permissions per agent as needed.
-- `evals/reviewer_eval.sh` requires claude; reviewer_eval.py invokes `claude -p`
-  with Claude-specific tools/options. Suggested fix: a reviewer-command adapter
-  with normalized verdict/usage output; preserve the labelled cases.
-- Review skill requests a fresh subagent when available, with direct-review fallback.
-  It works here; prefer capability-based wording, never a named vendor agent.
-- No `/cost` dependency found. Usage summaries differ: record supplied numbers
-  or unavailable, never require a vendor-specific slash command.
-- `.codex/config.toml` declares a Stop hook, but declaration alone does not prove
-  runtime activation. Use explicit init/check gates in every session; verify hook
-  execution from host events before relying on it. No hook configuration changed.
+Fixed before coding sessions (2026-11-10):
+
+- Shared gates remain in `scripts/check.sh` and `scripts/fix-file.sh`.
+  `scripts/agent-check.sh` captures all check output in unique, gitignored
+  `.agent-logs/check.*` files, returning only a failure reason with the last 30
+  log lines. Per-agent adapters handle the host event and output protocol.
+- Codex: `.codex/config.toml` calls `scripts/agent-hooks/codex-stop.sh`.
+  Success exits 0 with empty stdout; failure exits 0 with JSON
+  `{"decision":"block","reason":"..."}` to request a continuation.
+  Contract: [official Stop documentation](https://learn.chatgpt.com/docs/hooks#stop).
+  Direct adapter runs verified both paths using real check.sh runs: passing checks
+  produced no output; a temporary failing pytest produced valid block JSON with
+  the failure in its reason. The temporary test was removed afterwards.
+- Claude: `.claude/settings.json` and its thin post-edit adapter resolve the repo
+  via git, without `$CLAUDE_PROJECT_DIR` or system `python`. The adapter parses
+  Claude's event with `.venv/bin/python` and delegates to shared `fix-file.sh`.
+  Claude-specific tool names and JSON parsing stay in the adapter/settings.
+- Reviewer eval: `AGENT_CLI=claude|codex ./evals/reviewer_eval.sh` selects the CLI
+  (default `claude`). `scripts/reviewer_agent.py` isolates CLI commands, read-only
+  settings and output/usage decoding. Claude uses JSON; Codex uses JSONL and a
+  read-only sandbox with approvals disabled. Codex reviewer sessions disable the
+  workspace Stop hook so a review does not run a mutating validation gate.
+  Results record agent, normalized verdict/rules, supplied token/cost numbers
+  (null if unavailable), invocation errors and raw output. CLI failures cannot
+  count as valid verdicts. Labelled cases and grading policy are preserved.
+  Offline adapter tests cover both CLIs, malformed/failed/incomplete output and
+  usage normalization; no paid reviewer comparison was run for this change.
+
+Remaining host-specific work and limits:
+
+- A successful direct adapter run does not prove host event activation. Confirm
+  Stop execution/trust in a new Codex session and PostToolUse execution in Claude
+  before relying on hooks. Explicit init/check gates remain required every session.
+- Claude-only deny rules cover .env and labels; AGENTS.md protects labels for
+  every agent. Configure equivalent host permissions where supported; the repo
+  does not provide a portable deny-rule format across hosts.
+- The review skill uses a fresh subagent when available and direct review otherwise.
+  Usage summaries vary: record supplied numbers or unavailable; no `/cost` dependency.
+- The reviewer runner supports the two named CLIs, not arbitrary CLI syntax.
+  Installed CLI authentication, host permissions and live model quality still
+  require host-specific validation. Other agents can run the shared gates directly.
 - Claude model names in product defaults/tests describe supported providers and
   are not harness dependencies.

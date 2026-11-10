@@ -1,3 +1,5 @@
 #!/usr/bin/env bash
-f=$(python -c 'import sys,json; print(json.load(sys.stdin).get("tool_input",{}).get("file_path",""))')
-exec "$CLAUDE_PROJECT_DIR/scripts/fix-file.sh" "$f"
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+file=$("$root/.venv/bin/python" -c 'import json,sys; print(json.load(sys.stdin).get("tool_input", {}).get("file_path", ""))')
+exec "$root/scripts/fix-file.sh" "$file"
