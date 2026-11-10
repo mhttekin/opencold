@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from opencold import discovery, enricher
+from opencold import discovery, discovery_data, enricher
 
 SOURCE_HTML = """
 <html><body>
@@ -19,6 +19,12 @@ COMPANY_PAGE = enricher.PageContent(
     description="Acme helps engineering teams automate release workflows.",
     text="Contact Ada Lovelace at ada@acme.dev for partnerships.",
 )
+
+
+def test_data_facade_exports_preserve_identity():
+    for name, value in vars(discovery_data).items():
+        if name.isupper():
+            assert getattr(discovery, name) is value, name
 
 
 class TestExtractCompanies:

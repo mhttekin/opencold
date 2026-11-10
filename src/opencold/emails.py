@@ -66,6 +66,7 @@ def pick_company_email(emails: list, domain: str, known_names=()) -> tuple[str, 
     On-domain emails are preferred over off-domain ones.
     """
     from opencold import discovery  # lazy: discovery imports this module
+    from opencold.discovery_data import ROLE_PREFIXES
 
     best: tuple[int, str, str, str] | None = None
     for email, url in emails:
@@ -77,7 +78,7 @@ def pick_company_email(emails: list, domain: str, known_names=()) -> tuple[str, 
             rank = 98 if any(sep in local for sep in (".", "_", "-")) else 92
             etype = "person_email"
         else:
-            default = 45 if local in discovery.ROLE_PREFIXES else 55
+            default = 45 if local in ROLE_PREFIXES else 55
             rank, etype = discovery.COMPANY_EMAIL_PRIORITY.get(local, default), "role_inbox"
         if discovery.normalize_domain(email_host) != domain:
             # Penalize off-domain emails enough that any on-domain inbox wins, but
