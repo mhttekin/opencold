@@ -7,7 +7,7 @@ WORKDIR /app
 
 # Install the opencold package (core pipeline) first for better layer caching.
 COPY pyproject.toml ./
-COPY opencold ./opencold
+COPY src ./src
 RUN pip install --no-cache-dir .
 
 # Then the server's own deps and code.
