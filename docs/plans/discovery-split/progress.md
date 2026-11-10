@@ -141,3 +141,19 @@ in that session. See plan.md for the field template.
 - Reviewer verdict: `VERDICT: PASS`.
 - Retries/surprises: no implementation retries. The baseline JSON contains 20
   metric keys. The earlier log counted 21.
+
+## 03-search_models — 2026-11-10 — Codex
+
+- Agent/CLI: Codex (GPT-6), with fresh review by `review_unit_03`.
+- Starting commit: `4984569`. Ending reference: this commit and its CI run.
+- Wall-clock duration through verification and review: about 1 minute.
+- Tokens/cost: `unavailable` (operator fills in).
+- Moved `SearchResult` with an identical class definition by AST comparison.
+  The facade re-exports the same class object. No patch targets needed retargeting.
+- `discovery.py` ratchet: 4,225 → 4,215 lines. The 16-line owner module is
+  covered by the ratchet's source glob and 400-line default.
+- `check.sh`: two explicit runs, including the initializer. Both passed with
+  692 passed and 2 xfailed. The unchanged runtime golden passed separately.
+  All 20 generated eval metrics matched the exact baseline above.
+- Reviewer verdict: `VERDICT: PASS`.
+- Retries/surprises: none.

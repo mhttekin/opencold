@@ -67,6 +67,7 @@ from opencold.discovery_data import (
     SPACE_RE,
 )
 from opencold.discovery_models import CandidateCompany, Contact
+from opencold.discovery_search_models import SearchResult
 from opencold.emails import pick_company_email
 
 # Re-exported names: tests and icp_expansion resolve these via opencold.discovery.
@@ -391,17 +392,6 @@ def _fetch_search_html(url: str) -> str | None:
 # ---------------------------------------------------------------------------
 # Unified search: Serper API (preferred) with DDG HTML fallback
 # ---------------------------------------------------------------------------
-
-
-@dataclass
-class SearchResult:
-    """A single search result with title, URL, and optional snippet."""
-
-    title: str
-    url: str
-    snippet: str = ""
-    published_date: str = ""  # ISO date or relative date from search engine
-    engine: str = ""  # Which search engine returned this result
 
 
 def _get_serper_key() -> str | None:
