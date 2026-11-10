@@ -65,7 +65,7 @@ def fixture_sics(monkeypatch):
     monkeypatch.setattr(sic_match, "load_sic_codes", lambda: _FIXTURE_SICS)
     # Title-matcher unit tests: the real ONS index would disagree with a fake SIC list,
     # and the low-confidence gate is tested on real data in tests/test_sic_index.py.
-    monkeypatch.setattr(sic_match, "index_scores", lambda *a, **k: ({}, "lexical"))
+    monkeypatch.setattr(sic_match, "code_scores", lambda *a, **k: {})
     monkeypatch.setattr(sic_rank, "SIC_CONFIDENCE_MIN", 0.0)
     sic_match.reset_cache()
     yield

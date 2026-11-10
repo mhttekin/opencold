@@ -3,15 +3,12 @@
 Prints the top-1 SIC (and status) per probe so ranking/stemming changes can be
 eyeballed beyond the six labelled cases. Offline: no expansion, no LLM.
 
-    python -m evals.sic_probes [--semantic] [--model NAME]
+    python -m evals.sic_probes
 """
 
 from __future__ import annotations
 
-import argparse
-import os
-
-from opencold import sic_match, sic_semantic
+from opencold import sic_match
 
 PROBES = [
     # varied industries (used to choose SIC_CONFIDENCE_MIN; not tuned to labels)
@@ -61,7 +58,6 @@ def run() -> list[dict]:
             {
                 "icp": icp,
                 "status": r.status,
-                "mode": r.mode,
                 "code": top.code if top else "",
                 "score": top.score if top else 0.0,
                 "description": top.description if top else "",
@@ -71,14 +67,6 @@ def run() -> list[dict]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--semantic", action="store_true")
-    ap.add_argument("--model")
-    args = ap.parse_args()
-    if args.semantic:
-        os.environ[sic_semantic.MATCHING_ENV] = "hybrid"
-        os.environ.setdefault("HF_HUB_OFFLINE", "1")
-        sic_semantic.MODEL = args.model or sic_semantic.MODEL
     for p in run():
         print(
             f"{p['icp']:28} {p['status']:14} {p['score']:5.2f} {p['code']:5} {p['description'][:55]}"

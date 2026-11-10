@@ -55,13 +55,9 @@ def main() -> None:
     ap.add_argument("--record", action="store_true", help="re-record network cassettes")
     ap.add_argument("--discover-csv", type=Path, default=DEFAULT_DISCOVER_CSV)
     ap.add_argument("--baseline", action="store_true", help="also save as baseline.json")
-    ap.add_argument(
-        "--semantic", action="store_true", help="SIC eval in hybrid (BM25+embedding) mode"
-    )
-    ap.add_argument("--model", help="embedding model for --semantic")
     args = ap.parse_args()
 
-    sic = sic_eval.run(record=args.record, semantic=args.semantic, model=args.model)
+    sic = sic_eval.run(record=args.record)
     sic_eval.print_report(sic)
     print()
     disc = discover_eval.score(args.discover_csv)
@@ -76,12 +72,11 @@ def main() -> None:
     print_summary(result, baseline)
 
     RESULTS.mkdir(parents=True, exist_ok=True)
-    suffix = "" if not args.semantic else "-hybrid-" + (sic["model"] or "").split("/")[-1]
-    out = RESULTS / f"{today}-{sha}{suffix}.json"
+    out = RESULTS / f"{today}-{sha}.json"
     payload = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
     out.write_text(payload, encoding="utf-8")
     print(f"\nSaved {out.relative_to(ROOT.parent)}")
-    if (args.baseline or baseline is None) and not args.semantic:
+    if args.baseline or baseline is None:
         baseline_path.write_text(payload, encoding="utf-8")
         print(f"Saved {baseline_path.relative_to(ROOT.parent)}")
 

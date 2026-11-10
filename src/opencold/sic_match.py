@@ -29,7 +29,8 @@ from dataclasses import dataclass, field
 from opencold import icp_phrases, sic_categories
 from opencold.icp_phrases import GENERIC_ICP_TERMS, stem, text_words
 from opencold.sic_data import SIC_CODES
-from opencold.sic_rank import BM25_WEIGHT, index_scores, match_status, role_bonus
+from opencold.sic_index import code_scores
+from opencold.sic_rank import BM25_WEIGHT, match_status, role_bonus
 
 CATEGORY_WEIGHT = 1.0  # a category member (food->meat) is full subject signal
 
@@ -259,7 +260,6 @@ class MatchResult:
     status: str  # "ok" | "relaxed" | "generic" | "empty"
     signal_terms: list[str]  # the non-filler ICP subject signal we matched on
     roles: list[str] = field(default_factory=list)  # roles applied (empty = none)
-    mode: str = "lexical"  # index retrieval that ran: lexical (BM25) | hybrid (BM25+embeddings)
 
     @property
     def ok(self) -> bool:
@@ -402,7 +402,7 @@ def match_icp_to_sics(
 
     reqset = set(roles or [])
     scored: list[tuple] = []  # (rank score, matched, code, desc, role, subject score)
-    index, mode = index_scores(icp, signal, SIC_FILLER | STRIP_WORDS)  # ONS index, 0..1 per code
+    index = code_scores(signal, SIC_FILLER | STRIP_WORDS)  # ONS index BM25, 0..1 per code
     for code, desc, stems, role in _cleaned_sics():
         sc, matched = _score_sic(stems, stem_to_terms, weights)
         sc += BM25_WEIGHT * index.get(code, 0.0)
@@ -420,7 +420,7 @@ def match_icp_to_sics(
     chosen = strict if strict else [_mk(x) for x in scored][:max_sics]
 
     status = match_status(signal, strict, chosen)
-    return MatchResult(chosen, status, signal, roles=list(roles or []), mode=mode)
+    return MatchResult(chosen, status, signal, roles=list(roles or []))
 
 
 def matches_for_codes(codes: list[str]) -> list[SicMatch]:

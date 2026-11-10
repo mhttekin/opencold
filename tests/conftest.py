@@ -61,11 +61,3 @@ def test_csv():
 @pytest.fixture
 def test_csv_no_website():
     return str(FIXTURES_DIR / "test_input_no_website.csv")
-
-
-@pytest.fixture(autouse=True)
-def _lexical_sic_matching(monkeypatch):
-    """Tests never load a real embedding model, even if the shell opts into hybrid."""
-    from opencold import sic_semantic
-
-    monkeypatch.delenv(sic_semantic.MATCHING_ENV, raising=False)
