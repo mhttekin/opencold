@@ -2,9 +2,9 @@
 
 ~16k ONS activity phrases ("Pallets made of plastic (manufacture)" -> 22290) are
 far more specific than the ~730 SIC titles, so they generate candidates the title
-matcher misses. Terms are folded words passed through the same light inflectional
-stemmer as the title matcher (pallets -> pallet); there is NO fuzzy or edit-distance
-matching, so "pallet" and "pellet" stay different words.
+matcher misses. Terms are folded words passed through the Snowball English stemmer,
+on both index and query side (pallets -> pallet, bakeries/bakery -> bakeri); there is
+NO fuzzy or edit-distance matching, so "pallet" and "pellet" stay different words.
 
 Data: sic_index_data.csv, built by scripts/build_sic_index.py (see that script and
 docs/architecture.md for source and Open Government Licence attribution).
@@ -18,9 +18,17 @@ from collections import Counter, defaultdict
 from functools import lru_cache
 from importlib import resources
 
-from opencold.icp_phrases import stem, text_words
+import snowballstemmer
+
+from opencold.icp_phrases import text_words
 
 K1, B = 1.2, 0.75  # standard BM25 parameters
+_STEMMER = snowballstemmer.stemmer("english")
+
+
+@lru_cache(maxsize=65536)
+def stem(word: str) -> str:
+    return _STEMMER.stemWord(word)
 
 
 def _terms(text: str, drop: frozenset[str]) -> list[str]:

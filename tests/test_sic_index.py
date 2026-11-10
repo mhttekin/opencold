@@ -44,3 +44,11 @@ def test_index_data_ships_with_the_package():
     from importlib import resources
 
     assert resources.files("opencold").joinpath("sic_index_data.csv").is_file()
+
+
+def test_snowball_stemming_joins_plural_and_derived_forms():
+    assert sic_index.stem("bakeries") == sic_index.stem("bakery")
+    assert sic_index.stem("pallets") == sic_index.stem("pallet") != sic_index.stem("pellet")
+    bakeries = sic_index.code_scores(["bakeries"], DROP)
+    assert bakeries == sic_index.code_scores(["bakery"], DROP)  # same stems, same scores
+    assert "10710" in bakeries  # bread & fresh pastry goods
