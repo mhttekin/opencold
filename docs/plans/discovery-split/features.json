@@ -37,7 +37,7 @@
       "_guess_email_from_name"
     ],
     "target_module": "src/opencold/discovery_reacher.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "05-contact_data",

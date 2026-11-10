@@ -157,3 +157,22 @@ in that session. See plan.md for the field template.
   All 20 generated eval metrics matched the exact baseline above.
 - Reviewer verdict: `VERDICT: PASS`.
 - Retries/surprises: none.
+
+## 04-reacher — 2026-11-10 — Codex
+
+- Agent/CLI: Codex (GPT-6), with fresh review by `review_unit_04`.
+- Starting commit: `7349645`. Ending reference: this commit and its CI run.
+- Wall-clock duration from initializer through verification and review: about 1m 45s.
+- Tokens/cost: `unavailable` (operator fills in).
+- Moved the Reacher definitions and comments byte-for-byte. The facade re-exports
+  the original objects and forwards `_REACHER_BIN` reads to the owner's cache,
+  which is rebound when the binary is resolved. Verified the cache and filesystem
+  anchor with a mocked lookup. Retargeted Reacher patches to the owner.
+- `discovery.py` ratchet: 4,215 → 4,058 lines. The 182-line owner module is
+  covered by the source glob and its 400-line default.
+- `check.sh`: three explicit runs including the initializer, two passed. The
+  final run had 692 passed and 2 xfailed. The unchanged runtime golden passed
+  separately, and all 20 generated eval metrics matched the exact baseline.
+- Reviewer verdict: `VERDICT: PASS`.
+- Retries/surprises: the first post-extraction check flagged import spacing in
+  both modules. Applied Ruff's fix and adjusted the ratchet to the final count.

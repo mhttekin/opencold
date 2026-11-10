@@ -329,34 +329,34 @@ class TestParseLinkedInResultTitles:
 
 
 class TestReacherTargetTriple:
-    @patch("opencold.discovery.platform.machine", return_value="arm64")
-    @patch("opencold.discovery.platform.system", return_value="Darwin")
+    @patch("opencold.discovery_reacher.platform.machine", return_value="arm64")
+    @patch("opencold.discovery_reacher.platform.system", return_value="Darwin")
     def test_macos_arm64_uses_x86(self, _s, _m):
         assert _reacher_target_triple() == "x86_64-apple-darwin"
 
-    @patch("opencold.discovery.platform.machine", return_value="x86_64")
-    @patch("opencold.discovery.platform.system", return_value="Darwin")
+    @patch("opencold.discovery_reacher.platform.machine", return_value="x86_64")
+    @patch("opencold.discovery_reacher.platform.system", return_value="Darwin")
     def test_macos_x86(self, _s, _m):
         assert _reacher_target_triple() == "x86_64-apple-darwin"
 
-    @patch("opencold.discovery.platform.machine", return_value="x86_64")
-    @patch("opencold.discovery.platform.system", return_value="Linux")
+    @patch("opencold.discovery_reacher.platform.machine", return_value="x86_64")
+    @patch("opencold.discovery_reacher.platform.system", return_value="Linux")
     def test_linux_x86(self, _s, _m):
         assert _reacher_target_triple() == "x86_64-unknown-linux-gnu"
 
-    @patch("opencold.discovery.platform.machine", return_value="aarch64")
-    @patch("opencold.discovery.platform.system", return_value="Linux")
+    @patch("opencold.discovery_reacher.platform.machine", return_value="aarch64")
+    @patch("opencold.discovery_reacher.platform.system", return_value="Linux")
     def test_linux_arm64(self, _s, _m):
         assert _reacher_target_triple() == "aarch64-unknown-linux-gnu"
 
-    @patch("opencold.discovery.platform.machine", return_value="x86_64")
-    @patch("opencold.discovery.platform.system", return_value="Windows")
+    @patch("opencold.discovery_reacher.platform.machine", return_value="x86_64")
+    @patch("opencold.discovery_reacher.platform.system", return_value="Windows")
     def test_windows_returns_none(self, _s, _m):
         assert _reacher_target_triple() is None
 
 
 class TestDownloadReacher:
-    @patch("opencold.discovery._reacher_target_triple", return_value=None)
+    @patch("opencold.discovery_reacher._reacher_target_triple", return_value=None)
     def test_unsupported_platform_returns_none(self, _mock):
         assert _download_reacher() is None
 
@@ -380,14 +380,14 @@ class TestGenerateEmailPatterns:
 
 
 class TestReacherCheck:
-    @patch("opencold.discovery._find_reacher_binary", return_value=None)
+    @patch("opencold.discovery_reacher._find_reacher_binary", return_value=None)
     def test_returns_none_when_no_binary(self, _mock):
         result = _reacher_check("test@example.com")
         assert result is None
 
-    @patch("opencold.discovery.subprocess.run")
+    @patch("opencold.discovery_reacher.subprocess.run")
     @patch(
-        "opencold.discovery._find_reacher_binary",
+        "opencold.discovery_reacher._find_reacher_binary",
         return_value="/usr/local/bin/check-if-email-exists",
     )
     def test_parses_json_output(self, _mock_bin, mock_run):
@@ -398,9 +398,9 @@ class TestReacherCheck:
         result = _reacher_check("jane@acme.com")
         assert result == {"is_reachable": "safe", "smtp": {"is_deliverable": True}}
 
-    @patch("opencold.discovery.subprocess.run")
+    @patch("opencold.discovery_reacher.subprocess.run")
     @patch(
-        "opencold.discovery._find_reacher_binary",
+        "opencold.discovery_reacher._find_reacher_binary",
         return_value="/usr/local/bin/check-if-email-exists",
     )
     def test_returns_none_on_timeout(self, _mock_bin, mock_run):
@@ -410,9 +410,9 @@ class TestReacherCheck:
         result = _reacher_check("jane@acme.com")
         assert result is None
 
-    @patch("opencold.discovery.subprocess.run")
+    @patch("opencold.discovery_reacher.subprocess.run")
     @patch(
-        "opencold.discovery._find_reacher_binary",
+        "opencold.discovery_reacher._find_reacher_binary",
         return_value="/usr/local/bin/check-if-email-exists",
     )
     def test_returns_none_on_bad_json(self, _mock_bin, mock_run):
@@ -427,20 +427,20 @@ class TestReacherCheck:
 
 
 class TestGuessEmailFromName:
-    @patch("opencold.discovery._find_reacher_binary", return_value=None)
+    @patch("opencold.discovery_reacher._find_reacher_binary", return_value=None)
     @patch("opencold.verifier._check_mx", return_value=True)
     def test_no_reacher_returns_none(self, _mock_mx, _mock_reacher):
         """Without reacher binary, don't guess — return None."""
         result = _guess_email_from_name("Jane Smith", "acme.com")
         assert result is None
 
-    @patch("opencold.discovery._find_reacher_binary", return_value=None)
+    @patch("opencold.discovery_reacher._find_reacher_binary", return_value=None)
     @patch("opencold.verifier._check_mx", return_value=True)
     def test_three_part_name_no_reacher_returns_none(self, _mock_mx, _mock_reacher):
         result = _guess_email_from_name("Mary Jane Watson", "bigco.io")
         assert result is None
 
-    @patch("opencold.discovery._find_reacher_binary", return_value=None)
+    @patch("opencold.discovery_reacher._find_reacher_binary", return_value=None)
     @patch("opencold.verifier._check_mx", return_value=False)
     def test_no_mx_returns_none(self, _mock_mx, _mock_reacher):
         result = _guess_email_from_name("Jane Smith", "invalid.nonexistent")
@@ -454,9 +454,9 @@ class TestGuessEmailFromName:
         result = _guess_email_from_name("", "acme.com")
         assert result is None
 
-    @patch("opencold.discovery._reacher_check")
+    @patch("opencold.discovery_reacher._reacher_check")
     @patch(
-        "opencold.discovery._find_reacher_binary",
+        "opencold.discovery_reacher._find_reacher_binary",
         return_value="/usr/local/bin/check-if-email-exists",
     )
     @patch("opencold.verifier._check_mx", return_value=True)
@@ -469,9 +469,9 @@ class TestGuessEmailFromName:
         result = _guess_email_from_name("Jane Smith", "acme.com")
         assert result == "jane@acme.com"
 
-    @patch("opencold.discovery._reacher_check")
+    @patch("opencold.discovery_reacher._reacher_check")
     @patch(
-        "opencold.discovery._find_reacher_binary",
+        "opencold.discovery_reacher._find_reacher_binary",
         return_value="/usr/local/bin/check-if-email-exists",
     )
     @patch("opencold.verifier._check_mx", return_value=True)
@@ -481,9 +481,9 @@ class TestGuessEmailFromName:
         result = _guess_email_from_name("Jane Smith", "acme.com")
         assert result == "jane.smith@acme.com"
 
-    @patch("opencold.discovery._reacher_check")
+    @patch("opencold.discovery_reacher._reacher_check")
     @patch(
-        "opencold.discovery._find_reacher_binary",
+        "opencold.discovery_reacher._find_reacher_binary",
         return_value="/usr/local/bin/check-if-email-exists",
     )
     @patch("opencold.verifier._check_mx", return_value=True)
@@ -493,9 +493,9 @@ class TestGuessEmailFromName:
         result = _guess_email_from_name("Jane Smith", "acme.com")
         assert result is None
 
-    @patch("opencold.discovery._reacher_check")
+    @patch("opencold.discovery_reacher._reacher_check")
     @patch(
-        "opencold.discovery._find_reacher_binary",
+        "opencold.discovery_reacher._find_reacher_binary",
         return_value="/usr/local/bin/check-if-email-exists",
     )
     @patch("opencold.verifier._check_mx", return_value=True)
@@ -505,9 +505,9 @@ class TestGuessEmailFromName:
         result = _guess_email_from_name("Jane Smith", "acme.com")
         assert result is None
 
-    @patch("opencold.discovery._reacher_check")
+    @patch("opencold.discovery_reacher._reacher_check")
     @patch(
-        "opencold.discovery._find_reacher_binary",
+        "opencold.discovery_reacher._find_reacher_binary",
         return_value="/usr/local/bin/check-if-email-exists",
     )
     @patch("opencold.verifier._check_mx", return_value=True)
