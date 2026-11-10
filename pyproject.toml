@@ -28,6 +28,9 @@ dev = ["pytest>=8.0", "pytest-socket", "ruff==0.17.4", "pre-commit", "vcrpy"]
 [project.scripts]
 opencold = "opencold.cli:main"
 
+[tool.setuptools.package-data]
+opencold = ["*.csv"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["opencold*"]

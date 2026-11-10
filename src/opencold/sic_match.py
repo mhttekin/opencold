@@ -29,7 +29,8 @@ from dataclasses import dataclass, field
 from opencold import icp_phrases, sic_categories
 from opencold.icp_phrases import GENERIC_ICP_TERMS, stem, text_words
 from opencold.sic_data import SIC_CODES
-from opencold.sic_rank import role_bonus
+from opencold.sic_index import code_scores
+from opencold.sic_rank import BM25_WEIGHT, match_status, role_bonus
 
 CATEGORY_WEIGHT = 1.0  # a category member (food->meat) is full subject signal
 
@@ -388,7 +389,8 @@ def match_icp_to_sics(
     retail (the user's requested default).
 
     status: "ok" (subject >= min_score), "relaxed" (best positive overlap),
-    "generic" (no subject signal -- narrow it), or "empty".
+    "low_confidence" (top-1 too weak: ask for --sic), "generic" (no subject
+    signal -- narrow it), or "empty". Subject = SIC-title overlap + ONS index BM25.
     """
     profile = icp_phrases.parse_icp(icp)
     signal = _core_signal(profile)
@@ -400,8 +402,10 @@ def match_icp_to_sics(
 
     reqset = set(roles or [])
     scored: list[tuple] = []  # (rank score, matched, code, desc, role, subject score)
+    index = code_scores(signal, SIC_FILLER | STRIP_WORDS)  # ONS index BM25, 0..1 per code
     for code, desc, stems, role in _cleaned_sics():
         sc, matched = _score_sic(stems, stem_to_terms, weights)
+        sc += BM25_WEIGHT * index.get(code, 0.0)
         if sc <= 0:
             continue
         if reqset and role is not None and role not in reqset:
@@ -415,15 +419,9 @@ def match_icp_to_sics(
     strict = [_mk(x) for x in scored if x[5] >= min_score][:max_sics]  # role can't lift a SIC in
     chosen = strict if strict else [_mk(x) for x in scored][:max_sics]
 
-    if not signal:
-        status = "generic"
-    elif strict:
-        status = "ok"
-    elif chosen:
-        status = "relaxed"
-    else:
-        status = "empty"
-    return MatchResult(chosen, status, signal, roles=list(roles or []))
+    return MatchResult(
+        chosen, match_status(signal, strict, chosen), signal, roles=list(roles or [])
+    )
 
 
 def matches_for_codes(codes: list[str]) -> list[SicMatch]:

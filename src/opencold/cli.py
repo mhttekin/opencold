@@ -2116,7 +2116,7 @@ def do_smearch(
 ) -> None:
     """Match an ICP to UK SIC codes and pull ranked SMEs from Companies House."""
     from opencold import companies_house as ch
-    from opencold import sic_match
+    from opencold import sic_match, sic_rank
     from opencold import smearch as sm
 
     typer.echo(
@@ -2165,7 +2165,7 @@ def do_smearch(
             f"  {RED}No SIC codes matched.{RESET} Try a clearer/broader ICP, a lower --min-score, or --sic CODES."
         )
         return
-    if match.status == "relaxed":
+    if match.status in ("relaxed", "low_confidence"):
         typer.echo(
             f"  {YELLOW}⚠ No strong SIC match{RESET} — using best-effort (low-confidence) codes:"
         )
@@ -2188,8 +2188,8 @@ def do_smearch(
         )
         typer.echo(f"      {BOLD}{m.code}{RESET}  {m.description}  {DIM}[{tag}]{RESET}{extra}")
 
-    if dry_run:
-        typer.echo(f"\n  {CYAN}ℹ{RESET} Dry run — no Companies House query made.")
+    if (low := sic_rank.low_confidence_message(match)) or dry_run:
+        typer.echo(f"\n  {CYAN}ℹ{RESET} {low or 'Dry run — no Companies House query made.'}")
         return
 
     if sandbox:

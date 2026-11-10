@@ -15,7 +15,7 @@ from unittest.mock import patch
 import pytest
 
 from opencold import companies_house as ch
-from opencold import config, google_places, sic_categories, sic_match
+from opencold import config, google_places, sic_categories, sic_match, sic_rank
 from opencold import smearch as sm
 from opencold import smearch_db as sdb
 from opencold import smearch_enrich as se
@@ -63,6 +63,10 @@ _FIXTURE_SICS = [
 @pytest.fixture
 def fixture_sics(monkeypatch):
     monkeypatch.setattr(sic_match, "load_sic_codes", lambda: _FIXTURE_SICS)
+    # Title-matcher unit tests: the real ONS index would disagree with a fake SIC list,
+    # and the low-confidence gate is tested on real data in tests/test_sic_index.py.
+    monkeypatch.setattr(sic_match, "code_scores", lambda *a, **k: {})
+    monkeypatch.setattr(sic_rank, "SIC_CONFIDENCE_MIN", 0.0)
     sic_match.reset_cache()
     yield
 

@@ -47,6 +47,20 @@ stack, with `google_places` as a fallback when no website is found.
 `smearch_db` keeps a SQLite seen-set of output company numbers (`~/.opencold/smearch.db`,
 override with `OPENCOLD_SMEARCH_DB`) so repeat runs skip them and page on; `--no-db` disables it.
 
+SIC candidates come from two offline sources, merged per code in `sic_match`:
+SIC-title term overlap, plus BM25 (`sic_index`) over the ONS alphabetical index
+(`sic_index_data.csv`, ~16k activity phrases → SIC 2007 code). Ranking weights
+(role bonus, `BM25_WEIGHT`) and the low-confidence gate (`SIC_CONFIDENCE_MIN`:
+below it smearch shows the top-5 and asks for `--sic`) live in `sic_rank`.
+
+The index data is built by `scripts/build_sic_index.py` from the Office for National
+Statistics workbook "UK SIC 2007 Indexes with addendum December 2022 reformatted
+September 2024"
+(https://www.ons.gov.uk/methodology/classificationsandstandards/ukstandardindustrialclassificationofeconomicactivities/uksic2007).
+Source: Office for National Statistics, licensed under the Open Government Licence v3.0
+(https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/).
+Contains public sector information licensed under the Open Government Licence v3.0.
+
 ## `prepare` / `pipeline.py`
 `pipeline.py` is the headless pipeline used by the CLI and designed to be embedded in
 an API (a FastAPI wrapper is archived on branch `archive/server-web`). No disk
