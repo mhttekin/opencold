@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from opencold import icp_phrases, sic_categories
 from opencold.icp_phrases import GENERIC_ICP_TERMS, stem, text_words
 from opencold.sic_data import SIC_CODES
+from opencold.sic_rank import role_bonus
 
 CATEGORY_WEIGHT = 1.0  # a category member (food->meat) is full subject signal
 
@@ -398,28 +399,20 @@ def match_icp_to_sics(
         stem_to_terms.setdefault(stem(term), []).append(term)
 
     reqset = set(roles or [])
-    scored: list[
-        tuple[float, list[str], str, str, str | None]
-    ] = []  # (score, matched, code, desc, role)
+    scored: list[tuple] = []  # (rank score, matched, code, desc, role, subject score)
     for code, desc, stems, role in _cleaned_sics():
         sc, matched = _score_sic(stems, stem_to_terms, weights)
         if sc <= 0:
             continue
         if reqset and role is not None and role not in reqset:
             continue  # role specified -> drop other explicit roles (the food-retail bug)
-        scored.append((sc, matched, code, desc, role))
-
-    if reqset:
-        # role matches first (by subject score), then role-less; ties by code.
-        scored.sort(key=lambda x: (0 if x[4] in reqset else 1, -x[0], x[2]))
-    else:
-        # no role asked -> manufacture > wholesale > retail, then subject score.
-        scored.sort(key=lambda x: (-ROLE_PRIORITY.get(x[4] or "", 0), -x[0], x[2]))
+        scored.append((sc + role_bonus(role, reqset, ROLE_PRIORITY), matched, code, desc, role, sc))
+    scored.sort(key=lambda x: (-x[0], x[2]))  # subject + role weight; ties by code
 
     def _mk(x):
         return SicMatch(code=x[2], description=x[3], score=x[0], matched_terms=x[1], role=x[4])
 
-    strict = [_mk(x) for x in scored if x[0] >= min_score][:max_sics]
+    strict = [_mk(x) for x in scored if x[5] >= min_score][:max_sics]  # role can't lift a SIC in
     chosen = strict if strict else [_mk(x) for x in scored][:max_sics]
 
     if not signal:
