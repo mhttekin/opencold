@@ -39,6 +39,7 @@ relevant section before changing discovery, smearch, or pipeline code.
 - Logic modules stay under ~400 lines (data modules exempt), enforced by a ratchet in
   tests/test_invariants.py; lower the number when you shrink a file.
 - README stays terse: one short entry per feature, no mechanism explanations.
+- Decisions backed by evidence live in docs/decisions/. Read them before re-trying an approach.
 - Ratchet numbers only go down. Raising one requires asking first.
 
 ## Evals
@@ -48,3 +49,4 @@ relevant section before changing discovery, smearch, or pipeline code.
 
 ## Git
 - Never use git commit --no-verify.
+- Stage files explicitly (git add <paths>); never git add -A or git add .
