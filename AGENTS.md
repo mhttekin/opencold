@@ -22,6 +22,7 @@ relevant section before changing discovery, smearch, or pipeline code.
 - Tests never hit the network (enforced by pytest-socket via `addopts`).
 - Output CSV columns are a contract. Renaming one means updating README and tests together. (enforced: tests/test_invariants.py)
 - Respect rate limits. Never add CAPTCHA solving or anti-bot evasion.
+- No language- or country-specific special cases. Matching, normalization and region logic must work for any region.
 
 ## Gotchas
 - CLI flags live in three places: Typer signature, `_parse_<cmd>_args()`, REPL help text.
