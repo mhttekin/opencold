@@ -148,12 +148,17 @@ Fixed before coding sessions (2026-11-10):
   `.agent-logs/check.*` files, returning only a failure reason with the last 30
   log lines. Per-agent adapters handle the host event and output protocol.
 - Codex: `.codex/config.toml` calls `scripts/agent-hooks/codex-stop.sh`.
-  Success exits 0 with empty stdout; failure exits 0 with JSON
-  `{"decision":"block","reason":"..."}` to request a continuation.
+  The Python helper reads the Stop JSON from stdin using `.venv/bin/python`.
+  Success exits 0 with `{}`; first failure exits 0 with JSON
+  `{"decision":"block","reason":"..."}` to request one continuation.
+  If `stop_hook_active` is true, another failure exits 0 with a `systemMessage`
+  warning pointing to `.agent-logs/check.*`, without a blocking decision.
   Contract: [official Stop documentation](https://learn.chatgpt.com/docs/hooks#stop).
-  Direct adapter runs verified both paths using real check.sh runs: passing checks
-  produced no output; a temporary failing pytest produced valid block JSON with
-  the failure in its reason. The temporary test was removed afterwards.
+  Direct adapter runs verified all paths using real check.sh runs: passing checks
+  produced `{}`; a temporary failing pytest produced block JSON on the first
+  attempt and a non-blocking warning when already active. The temporary test was
+  removed afterwards. Unit tests exercise crafted inputs without running check.sh.
+- After changing `.codex/config.toml` hooks: restart Codex and re-trust them via /hooks.
 - Claude: `.claude/settings.json` and its thin post-edit adapter resolve the repo
   via git, without `$CLAUDE_PROJECT_DIR` or system `python`. The adapter parses
   Claude's event with `.venv/bin/python` and delegates to shared `fix-file.sh`.
