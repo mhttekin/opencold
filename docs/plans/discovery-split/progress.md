@@ -49,3 +49,33 @@ tokens/cost from CLI usage summary (write unavailable if absent; never estimate)
 check.sh run count, exact eval comparison, reviewer verdict, retries/surprises.
 The implementation commit is followed by a log/status commit if necessary; never
 start another unit in that session.
+
+## 01-data — 2026-11-10 — Codex
+
+- Starting commit: `ea7ca81`; implementation ending commit: `2ac256f`.
+  This entry and queue status are persisted in the follow-up log commit.
+- Agent/CLI: Codex (GPT-6); fresh review subagent: `review_unit_01`.
+- Wall-clock timed implementation/review interval: 2m 13s
+  (21:58:08–22:00:21 UTC); initial reading/init occurred before that interval.
+- Tokens/cost: unavailable (no CLI usage summary supplied).
+- Moved all 39 owned definitions, unchanged by AST comparison, into
+  `discovery_data.py` (357 lines). Facade exports retain object identity;
+  `emails.pick_company_email` now lazily reads `ROLE_PREFIXES` from its owner.
+  Other lazy dependencies remain for their queued owner extractions.
+- Patch inventory: no tests patch the moved constants; no patch retargeting needed.
+  Added facade identity coverage without changing existing assertions or xfails.
+- `discovery.py`: 4,554 → 4,243 lines; ratchet lowered to 4,243.
+  The new module is covered automatically by the ratchet's source glob and its
+  400-line default; it is not exempted as data or grandfathered.
+- `check.sh`: 3 explicit runs, including initializer; all PASS.
+  Final result: 691 passed, 2 xfailed. Commit hooks also passed ruff checks.
+- Eval: all 21 metric values exactly equal the baseline above, verified against
+  the generated JSON, not the older `baseline.json`. Result retained at
+  `evals/results/2026-11-10-ea7ca81.json`. Final eval rerun also matched exactly.
+- Reviewer output: `VERDICT: PASS` (no findings).
+- Retries/surprises: grouped self-alias imports expanded under ruff; compacted
+  imports while retaining the unused private pattern's explicit re-export.
+  The initial comparison script read the JSON suite root instead of `metrics`;
+  corrected the inspection and confirmed exact equality. Git staging required
+  sandbox escalation. No implementation behavior changes or failed check runs.
+- Stopped after this unit; next pending unit is `02-models`.
