@@ -1,9 +1,14 @@
 """Tests for LinkedIn contact discovery via web search results."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from opencold.discovery import (
+    LINKEDIN_TITLE_RE,
+    Contact,
+    SearchResult,
+    _brave_search,
     _company_name_matches,
+    _ddgs_search,
     _download_reacher,
     _generate_email_patterns,
     _guess_email_from_name,
@@ -11,20 +16,13 @@ from opencold.discovery import (
     _parse_linkedin_title,
     _reacher_check,
     _reacher_target_triple,
+    _serper_search,
     parse_linkedin_result_titles,
+    score_contact,
     search_linkedin_contacts,
     verify_current_employment,
-    score_contact,
     web_search,
-    _serper_search,
-    _ddgs_search,
-    _brave_search,
-    _ddg_html_search,
-    SearchResult,
-    Contact,
-    LINKEDIN_TITLE_RE,
 )
-
 
 # ---------------------------------------------------------------------------
 # Test LINKEDIN_TITLE_RE

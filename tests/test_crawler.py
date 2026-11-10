@@ -1,7 +1,8 @@
 """Tests for crawler module (no real HTTP calls)."""
 
-from unittest.mock import patch, MagicMock
-from opencold.crawler import crawl_website, _clean_text, _extract_meta, _extract_bs4
+from unittest.mock import patch
+
+from opencold.crawler import _clean_text, _extract_bs4, _extract_meta, crawl_website
 
 
 class TestCleanText:

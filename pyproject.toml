@@ -35,5 +35,9 @@ include = ["opencold*"]
 testpaths = ["tests"]
 addopts = "--disable-socket"
 
+[tool.ruff]
+line-length = 100
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]
+ignore = ["E501"]

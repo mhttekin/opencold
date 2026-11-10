@@ -5,14 +5,13 @@ import json
 import os
 import shlex
 import sys
-import time
 from pathlib import Path
 from typing import Optional
 
 import typer
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application import Application
-from prompt_toolkit.completion import PathCompleter, Completer, Completion
+from prompt_toolkit.completion import Completer, Completion, PathCompleter
 from prompt_toolkit.formatted_text import ANSI, FormattedText
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
@@ -20,7 +19,15 @@ from prompt_toolkit.layout import Layout
 from prompt_toolkit.layout.containers import Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 
-from opencold import config, crawler, discovery, enricher, generator, pipeline, quality, sender, verifier
+from opencold import (
+    config,
+    discovery,
+    enricher,
+    generator,
+    pipeline,
+    sender,
+    verifier,
+)
 
 app = typer.Typer(
     name="opencold",
@@ -1403,7 +1410,7 @@ def do_run(
         typer.echo(f"\n  Campaign: {BOLD}{campaign['title']}{RESET}")
 
     if enriched_input:
-        typer.echo(f"\n  Using prepared facts from input CSV; skipping website enrichment.")
+        typer.echo("\n  Using prepared facts from input CSV; skipping website enrichment.")
 
     provider = {
         "type": provider_config.get("type", "anthropic"),
@@ -1530,7 +1537,7 @@ def do_send(input_csv: str, subject: str = "") -> None:
     missing = required - set(rows[0].keys())
     if missing:
         typer.echo(f"  {RED}Missing columns:{RESET} {', '.join(missing)}")
-        typer.echo(f"  Expected a CSV with at least: email, name, generated_email")
+        typer.echo("  Expected a CSV with at least: email, name, generated_email")
         return
 
     _do_send_results(rows, subject)
@@ -1680,7 +1687,7 @@ def _do_discover_companies(
     typer.echo(f"\n  {YELLOW}[experimental]{RESET} Company discovery — review before outreach")
     if not icp or not region:
         typer.echo(f"  {RED}Error:{RESET} companies mode needs --icp and --region.")
-        typer.echo(f'  e.g. discover --icp "insurance companies" --region "Bangladesh"')
+        typer.echo('  e.g. discover --icp "insurance companies" --region "Bangladesh"')
         return
 
     try:
@@ -1824,10 +1831,10 @@ def smtp_setup_cmd() -> None:
 
     # Common presets
     typer.echo(f"  {DIM}Common SMTP hosts:{RESET}")
-    typer.echo(f"    Gmail:     smtp.gmail.com (port 587, use app password)")
-    typer.echo(f"    Outlook:   smtp.office365.com (port 587)")
-    typer.echo(f"    Zoho:      smtp.zoho.com (port 587)")
-    typer.echo(f"    Custom:    your own SMTP server\n")
+    typer.echo("    Gmail:     smtp.gmail.com (port 587, use app password)")
+    typer.echo("    Outlook:   smtp.office365.com (port 587)")
+    typer.echo("    Zoho:      smtp.zoho.com (port 587)")
+    typer.echo("    Custom:    your own SMTP server\n")
 
     host = _ask("SMTP host", "smtp.gmail.com")
     port_str = _ask("SMTP port", "587")
@@ -1978,9 +1985,9 @@ def do_smearch(
     no_db: bool = False,
 ) -> None:
     """Match an ICP to UK SIC codes and pull ranked SMEs from Companies House."""
-    from opencold import smearch as sm
     from opencold import companies_house as ch
     from opencold import sic_match
+    from opencold import smearch as sm
 
     typer.echo(f"\n  {YELLOW}[experimental]{RESET} SME search (Companies House) — review before outreach")
 
@@ -2104,8 +2111,8 @@ def do_smearch(
 
     top = fresh[:top_n]  # default: top-N fresh (factory mode reselects below)
     if enrich:
-        from opencold import smearch_enrich as se
         from opencold import google_places
+        from opencold import smearch_enrich as se
         places_key = google_places.get_places_key()
         enrich_provider = discovery._resolve_llm_provider() if use_llm else None
         if not places_key:

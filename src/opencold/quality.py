@@ -6,7 +6,6 @@ import re
 
 from opencold.enricher import FACT_SEPARATOR
 
-
 _GENERIC_PHRASES = (
     "i hope this email finds you well",
     "touch base",

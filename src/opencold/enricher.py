@@ -10,11 +10,11 @@ from __future__ import annotations
 import csv
 import json
 import re
+import urllib.request
 import warnings
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
-import urllib.request
 
 from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning
 

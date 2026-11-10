@@ -4,7 +4,6 @@ from unittest.mock import patch
 
 from opencold import discovery, enricher
 
-
 SOURCE_HTML = """
 <html><body>
   <a href="https://acme.dev">Acme DevTools</a>

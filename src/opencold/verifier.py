@@ -1,7 +1,7 @@
 """Email verification via format check and MX record lookup."""
 
 import re
-import socket
+
 import dns.resolver
 
 # Basic email regex — intentionally simple, covers 99% of real addresses

@@ -4,7 +4,6 @@ from unittest.mock import patch
 
 from opencold import enricher
 
-
 HTML = """
 <html>
   <head>

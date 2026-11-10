@@ -32,7 +32,6 @@ Per-country fields (all optional except `aliases`):
 
 from __future__ import annotations
 
-
 # ccTLDs widely repurposed as generic / vanity domains. They must NOT count as a
 # country signal (positive or conflict) — else e.g. acme.io would be read as
 # "British Indian Ocean Territory" and wrongly rejected.

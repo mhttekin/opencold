@@ -20,8 +20,8 @@ from typing import Callable, Optional
 from opencold import crawler, discovery, enricher, generator, quality, verifier
 from opencold.prompts import (
     SYSTEM_PROMPT,
-    build_user_prompt,
     build_template_prompt,
+    build_user_prompt,
 )
 
 # A progress event is a small dict, e.g.

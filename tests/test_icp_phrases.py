@@ -5,9 +5,7 @@ per-token evidence (incl. provenance classes), and the all-core-tokens gate that
 stops a single generic word ("consultancy") from confirming a multi-word ICP.
 """
 
-from opencold import icp_phrases
 from opencold.icp_phrases import (
-    CoreMatch,
     evidence_core,
     parse_icp,
     phrase_hit,

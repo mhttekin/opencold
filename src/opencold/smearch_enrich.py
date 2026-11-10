@@ -21,8 +21,7 @@ from __future__ import annotations
 import re
 
 from opencold import companies_house as ch
-from opencold import discovery
-from opencold import google_places
+from opencold import discovery, google_places
 
 _REGION = "United Kingdom"
 

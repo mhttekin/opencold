@@ -1,16 +1,16 @@
 """Tests for email verifier module."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-import dns.resolver
 import dns.exception
+import dns.resolver
 
 from opencold.verifier import (
     _check_format,
     _check_mx,
+    clear_cache,
     verify_email,
     verify_emails,
-    clear_cache,
 )
 
 

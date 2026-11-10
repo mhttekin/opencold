@@ -15,10 +15,7 @@ from unittest.mock import patch
 import pytest
 
 from opencold import companies_house as ch
-from opencold import config
-from opencold import google_places
-from opencold import sic_categories
-from opencold import sic_match
+from opencold import config, google_places, sic_categories, sic_match
 from opencold import smearch as sm
 from opencold import smearch_db as sdb
 from opencold import smearch_enrich as se

@@ -1,6 +1,6 @@
 """Tests for sender module."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from opencold import sender
 

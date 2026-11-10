@@ -25,8 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from opencold import icp_phrases
-from opencold import sic_categories
+from opencold import icp_phrases, sic_categories
 from opencold.icp_phrases import GENERIC_ICP_TERMS, stem, text_words
 from opencold.sic_data import SIC_CODES
 

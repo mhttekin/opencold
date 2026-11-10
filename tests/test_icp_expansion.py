@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from opencold import icp_expansion, config, discovery
+from opencold import config, discovery, icp_expansion
 from opencold.discovery import CandidateCompany
 
 

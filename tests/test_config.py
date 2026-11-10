@@ -1,7 +1,9 @@
 """Tests for config module."""
 
 import json
+
 import pytest
+
 from opencold import config
 
 

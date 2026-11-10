@@ -13,21 +13,20 @@ import subprocess
 import tarfile
 import time
 import urllib.request
-from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from itertools import zip_longest
 from pathlib import Path
 from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from opencold import enricher
-from opencold import icp_phrases
+from opencold import enricher, icp_phrases, translator
 from opencold import regions_data as rd
-from opencold import translator
-# Re-exported names: tests and icp_expansion resolve these via opencold.discovery.
-from opencold.icp_phrases import GENERIC_ICP_TERMS, stem as _stem
 
+# Re-exported names: tests and icp_expansion resolve these via opencold.discovery.
+from opencold.icp_phrases import GENERIC_ICP_TERMS
+from opencold.icp_phrases import stem as _stem
 
 BLOCKED_DOMAINS = {
     "apple.com",
@@ -1125,7 +1124,7 @@ def parse_search_result_urls(html: str, base_url: str = "https://duckduckgo.com"
             continue
         if "duckduckgo.com" in parsed.netloc:
             continue
-        if classes and not ({"result__a", "result-link", "result-link"} & classes):
+        if classes and not ({"result__a", "result-link"} & classes):
             # Lite result links often have no useful class, so only use this as
             # a weak filter when class metadata exists.
             if "result" not in " ".join(classes):
@@ -2857,7 +2856,8 @@ def _resolve_llm_provider() -> dict | None:
     when nothing is set up so callers degrade gracefully to search-only discovery.
     """
     try:
-        from opencold import config, generator as _gen
+        from opencold import config
+        from opencold import generator as _gen
     except Exception:
         return None
     try:

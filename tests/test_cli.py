@@ -1,6 +1,7 @@
 """Tests for CLI helpers."""
 
 from unittest.mock import patch
+
 from opencold.cli import _clamp_workers, _enrich_rows, _validate_csv, do_run
 
 

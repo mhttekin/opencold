@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import json
 
-
 # Each inner list is an equivalence class: every member is interchangeable with every
 # other as a B2B search target. Order is cosmetic. Terms appearing in two clusters
 # (e.g. "joinery" in timber+furniture) bridge those clusters — and ONLY those — which

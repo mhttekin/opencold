@@ -2,12 +2,11 @@
 
 from opencold.prompts import (
     SYSTEM_PROMPT,
-    build_user_prompt,
-    build_template_prompt,
     _is_usable_text,
-    _sanitize_website_text,
     _pick_structure,
-    _STRUCTURES,
+    _sanitize_website_text,
+    build_template_prompt,
+    build_user_prompt,
 )
 
 

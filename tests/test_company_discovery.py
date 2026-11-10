@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from opencold import discovery, icp_expansion, translator
-from opencold.discovery import SearchResult, CandidateCompany
+from opencold.discovery import CandidateCompany, SearchResult
 
 
 @pytest.fixture(autouse=True)
