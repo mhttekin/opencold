@@ -44,6 +44,8 @@ Brave, Mojeek, SearXNG, DDG HTML). Region data lives in `regions_data.py`.
 `companies_house` and scores/ranks results (account type, officers, recency,
 dormancy). `smearch_enrich` enriches the top N by reusing `discovery`'s search/contact
 stack, with `google_places` as a fallback when no website is found.
+`smearch_db` keeps a SQLite seen-set of output company numbers (`~/.opencold/smearch.db`,
+override with `OPENCOLD_SMEARCH_DB`) so repeat runs skip them and page on; `--no-db` disables it.
 
 ## `prepare` / `pipeline.py`
 `pipeline.py` is the headless pipeline used by the CLI and designed to be embedded in

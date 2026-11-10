@@ -258,6 +258,7 @@ class TestCandidateHarvest:
             SearchResult(title="LinkedIn", url="https://www.linkedin.com/company/x"),  # blocked
         ]
         with patch("opencold.discovery._resolve_llm_provider", return_value=None), \
+             patch("opencold.discovery.wikipedia_company_names", return_value=[]), \
              patch("opencold.discovery.web_search", return_value=results):
             cands = discovery.discover_company_candidates("insurance", "Bangladesh", limit=10)
         domains = {discovery.normalize_domain(c.website) for c in cands}

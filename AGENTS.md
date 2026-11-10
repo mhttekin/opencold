@@ -19,6 +19,7 @@ relevant section before changing discovery, smearch, or pipeline code.
 - `pipeline.py` is headless so it can be embedded in an API: no disk config, prompts,
   printing, or file writes. Progress goes out via callback of plain dicts, never secrets.
 - Tests never touch real config: use `tmp_config` / `seeded_config` (tests/conftest.py).
+- Tests never hit the network (enforced by pytest-socket via `addopts`).
 - Output CSV columns are a contract. Renaming one means updating README and tests together.
 - Respect rate limits. Never add CAPTCHA solving or anti-bot evasion.
 

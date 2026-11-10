@@ -194,10 +194,11 @@ class TestSearchResolver:
 
 
 class TestDiscoverRows:
+    @patch("opencold.discovery.search_linkedin_contacts", return_value=[])
     @patch("opencold.discovery.search_company_pages", return_value=[])
     @patch("opencold.discovery.crawl_company_pages")
     @patch("opencold.discovery._fetch_source")
-    def test_builds_prepare_compatible_rows(self, mock_fetch, mock_crawl, _mock_search):
+    def test_builds_prepare_compatible_rows(self, mock_fetch, mock_crawl, _mock_search, _mock_linkedin):
         mock_fetch.return_value = SOURCE_HTML
         mock_crawl.return_value = [COMPANY_PAGE]
 
