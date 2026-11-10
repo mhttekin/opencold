@@ -2555,6 +2555,7 @@ SHELL_HELP = f"""\
       --require-contact           Only keep companies that have an email
       -o, --output <path>         Output path (default: leads.csv)
       --limit <number>            Max companies (default: 10)
+      --max-pages <number>        Company pages to crawl (default: 3)
       --workers <number>          Parallel company workers, max 8 (default: 8)
       {DIM}people mode adds: [sources.txt] --source-limit --guess-role-email{RESET}
 
@@ -2565,6 +2566,7 @@ SHELL_HELP = f"""\
       --limit <number>            Max companies to rank (default: 50)
       -p, --page <number>         Result page, 1-based; each page is --limit (default: 1)
       --location <text>           Filter on registered office (e.g. London)
+      --status <status>           Company status filter (default: active)
       --company-type <types>      Comma list (default: SME-friendly forms)
       --max-sics <number>         Max SIC codes to match (default: 5)
       --min-score <number>        Min ICP→SIC score (default: 1.0)
@@ -2991,7 +2993,9 @@ def _run_shell() -> None:
 
             elif cmd == "draft":
                 args = _parse_run_args(rest)
-                if not args:
+                if args.get("send"):
+                    typer.echo(f"  {RED}draft never sends.{RESET} Use: run <file.csv> --send")
+                elif not args:
                     csv_file = _select_csv_file()
                     if csv_file:
                         do_run(input_csv=csv_file, output="drafts.csv", require_enriched=True)

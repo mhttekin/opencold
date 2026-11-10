@@ -218,3 +218,44 @@ class TestEnrichRows:
 
         assert len(enriched) == 2
         assert mock_enrich_website.call_count == 1
+
+
+class TestDraftNeverSends:
+    """REPL `draft` shares run's parser, so `--send` parses; it must never send."""
+
+    def test_repl_draft_send_does_not_send(self, seeded_config, tmp_path):
+        from types import SimpleNamespace
+
+        csv_path = tmp_path / "enriched.csv"
+        csv_path.write_text(
+            "email,name,company,personalization_facts\na@acme.test,Ada,Acme,Builds things\n",
+            encoding="utf-8",
+        )
+        out = tmp_path / "drafts.csv"
+        draft_row = {
+            "email": "a@acme.test",
+            "name": "Ada",
+            "company": "Acme",
+            "personalization_facts": "Builds things",
+            "generated_subject": "Hi",
+            "generated_email": "Body",
+        }
+        result = SimpleNamespace(rows=[draft_row], success_count=1, total_count=1)
+        lines = iter([f"draft {csv_path} -o {out} --send --system-prompt sp", "exit"])
+        session = SimpleNamespace(prompt=lambda *a, **k: next(lines))
+        smtp = {"host": "smtp.test", "port": 587, "sender_email": "me@test.com"}
+
+        with (
+            patch("opencold.cli.PromptSession", return_value=session),
+            patch("opencold.cli._resolve_provider", return_value={"type": "anthropic"}),
+            patch("opencold.cli.pipeline.generate_drafts", return_value=result),
+            patch("opencold.cli.config.get_smtp", return_value=smtp),
+            patch("opencold.cli._confirm", return_value=True),
+            patch("opencold.cli._ask", return_value="Subject"),
+            patch("opencold.cli.sender.send_email") as send_email,
+        ):
+            from opencold.cli import _run_shell
+
+            _run_shell()
+
+        send_email.assert_not_called()

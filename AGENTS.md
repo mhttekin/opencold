@@ -24,7 +24,7 @@ relevant section before changing discovery, smearch, or pipeline code.
 
 ## Gotchas
 - CLI flags live in three places: Typer signature, `_parse_<cmd>_args()`, REPL help text.
-  Change all three.
+  Change all three. (enforced: tests/test_invariants.py)
 - Wrong-company attachment usually comes from `resolve_company_website()`
   (`_registrable_domain`, name↔domain matching).
 - Email drafting/sending (`generator`, `prompts`, `sender`, `run`/`draft`/`send`) is legacy:
