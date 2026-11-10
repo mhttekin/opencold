@@ -43,3 +43,6 @@ vendor/
 !.claude/settings.json
 !.claude/hooks/
 !.claude/skills
+
+# reviewer eval scratch (neutral patch copies)
+evals/reviewer/.work/

@@ -1,0 +1,6 @@
+[R5] evals/discover_eval.py:145
+> "exclude_leakage": len(exclude & verified),  # only verified leaks matter
+
+This loosens the scorer without making the product any better. `exclude_leakage` used to count every excluded domain that showed up anywhere in the output. Now it only counts the verified ones, so excluded companies in unverified rows no longer get counted. It also makes the metric identical to `exclude_verified` on the line above, so the leakage signal is lost entirely.
+
+VERDICT: FAIL

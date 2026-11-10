@@ -1,0 +1,11 @@
+[R2] src/opencold/discovery.py:4519
+> `rows = llm_canonical_names(rows, _resolve_llm_provider())`
+
+This LLM call has no keyless fallback. It runs even when no provider is configured (`_resolve_llm_provider()` returns `None`) and ignores `use_llm`/`--no-llm`. In that case `generator.complete(None, ...)` fails at `provider_config.get`.
+
+[R2] src/opencold/discovery.py:4054
+> `names = json.loads(raw)`
+
+The new LLM path has no fallback when the call fails. If `complete` raises, the JSON is malformed, or an index is missing (`names[str(i)]`), discovery crashes. It should keep the deterministic domain-derived `company` instead.
+
+VERDICT: FAIL

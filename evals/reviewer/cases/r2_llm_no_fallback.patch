@@ -1,0 +1,35 @@
+diff --git a/src/opencold/discovery.py b/src/opencold/discovery.py
+index bc8161b..b26eff4 100644
+--- a/src/opencold/discovery.py
++++ b/src/opencold/discovery.py
+@@ -4043,6 +4043,20 @@ def _build_judge_prompt(items: list[dict], icp: str, region: str) -> str:
+     return "\n".join(lines)
+ 
+ 
++def llm_canonical_names(rows: list[dict], provider_config: dict) -> list[dict]:
++    """Ask the LLM for each company's canonical legal name and overwrite `company`."""
++    listing = "\n".join(f"{i}: {r['company']} ({r['website']})" for i, r in enumerate(rows))
++    raw = generator.complete(
++        provider_config,
++        "Return JSON mapping each index to the company's canonical legal name.",
++        listing,
++    )
++    names = json.loads(raw)
++    for i, row in enumerate(rows):
++        row["company"] = names[str(i)]
++    return rows
++
++
+ def judge_companies(rows: list[dict], icp: str, region: str, provider_config: dict) -> dict:
+     """Single batched LLM verdict per company, grounded in crawled summaries.
+ 
+@@ -4501,6 +4515,9 @@ def discover_company_rows(
+         if prov:
+             verdicts = judge_companies(rows, icp, region, prov)
+ 
++    # Canonical legal names from the LLM (cleaner than domain-derived names).
++    rows = llm_canonical_names(rows, _resolve_llm_provider())
++
+     # Classify each row, then rank within its confidence band by lead score.
+     for idx, row in enumerate(rows):
+         confidence, why = _classify_company(

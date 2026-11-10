@@ -1,0 +1,14 @@
+diff --git a/src/opencold/discovery.py b/src/opencold/discovery.py
+index bc8161b..77bd1b1 100644
+--- a/src/opencold/discovery.py
++++ b/src/opencold/discovery.py
+@@ -3918,6 +3918,9 @@ def region_fit(
+     target_code = _REGION_PHONE.get(region_key) if region_key else None
+     phones_joined = "".join(contacts.phones).replace(" ", "")
+ 
++    if region.lower() == "turkey" and domain.endswith(".com.tr"):
++        score += 15  # Turkish SMEs almost always use .com.tr
++        reasons.append("tr_business_domain")
+     if target_cc and (domain.endswith("." + target_cc) or tld == target_cc):
+         score += 40
+         reasons.append(f"cctld:.{target_cc}")

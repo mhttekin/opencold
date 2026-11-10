@@ -1,0 +1,6 @@
+[R4] src/opencold/discovery.py:3921
+> if region.lower() == "turkey" and domain.endswith(".com.tr"):
+
+This adds a hard-coded country and TLD special case inside the `region_fit` region-scoring logic. Region logic has to work the same way for every region. A per-country rule belongs in a data table, not in an `if region == "turkey"` branch, and the generic ccTLD check right below it already handles this case.
+
+VERDICT: FAIL

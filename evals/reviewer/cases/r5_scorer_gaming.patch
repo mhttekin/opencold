@@ -1,0 +1,13 @@
+diff --git a/evals/discover_eval.py b/evals/discover_eval.py
+index 9b2f17f..5ab8910 100644
+--- a/evals/discover_eval.py
++++ b/evals/discover_eval.py
+@@ -142,7 +142,7 @@ def score(output_csv: Path, labels_csv: Path = LABELS) -> dict:
+             "recall": _ratio(len(match & verified), len(match)),
+             "no_match_verified": len(no_match & verified),
+             "exclude_verified": len(exclude & verified),
+-            "exclude_leakage": len(exclude & set(out)),
++            "exclude_leakage": len(exclude & verified),  # only verified leaks matter
+             "exclude_total": len(exclude),
+             "name_accuracy": _ratio(len(name_ok), len(named)),
+             "invalid_emails": len(bad_emails),

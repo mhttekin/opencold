@@ -1,0 +1,11 @@
+[R2] src/opencold/discovery.py:4519
+> `rows = llm_canonical_names(rows, _resolve_llm_provider())`
+
+This new LLM call has no `if prov:` guard, unlike the judge call just above it. `_resolve_llm_provider()` returns `None` when no provider is configured, and that `None` goes straight into `generator.complete`. So discovery stops working with no LLM provider, and the call also ignores `--no-llm`. Without a provider, the domain-derived names should be kept.
+
+[R2] src/opencold/discovery.py:4052
+> `names = json.loads(raw)`
+
+The provider call and the JSON parse have no fallback. A failed call, bad JSON or a missing index (`names[str(i)]`) raises an error and stops the whole run. The fix is to catch these and keep each row's existing `company` name.
+
+VERDICT: FAIL

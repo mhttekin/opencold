@@ -1,0 +1,13 @@
+diff --git a/src/opencold/discovery.py b/src/opencold/discovery.py
+index bc8161b..7e78897 100644
+--- a/src/opencold/discovery.py
++++ b/src/opencold/discovery.py
+@@ -4107,7 +4107,7 @@ def _classify_company(
+         return "rejected", "region_conflict"
+     if row.get("_is_government"):
+         return "rejected", "government_site"
+-    if llm_match == "no":
++    if llm_match in ("no", "unknown"):
+         detail = llm.get("industry") or llm.get("country") or "different company"
+         return "rejected", f"llm_mismatch:{detail}"
+     if row.get("_is_aggregator"):

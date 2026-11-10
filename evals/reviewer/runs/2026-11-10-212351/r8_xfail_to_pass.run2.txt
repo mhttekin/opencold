@@ -1,0 +1,6 @@
+[R8] tests/test_invariants.py:389
+> +@pytest.mark.xfail(reason="pipeline progress printing in flux")
+
+This xfail turns off the test that enforces the headless `pipeline.py` invariant, so the suite passes while `pipeline.py` prints. It doesn't pin a known, unfixed bug: the reason says "in flux", it isn't a strict xfail in `tests/test_known_bugs.py`, and the invariant itself is something AGENTS.md requires.
+
+VERDICT: FAIL

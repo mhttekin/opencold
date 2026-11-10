@@ -1,0 +1,12 @@
+diff --git a/README.md b/README.md
+index 5f7f474..85d5843 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,6 @@
+ # OpenCold
+ 
+-CLI for company research. Finds companies that match an ideal customer profile (ICP) and enriches them with website facts and contact details.
++CLI for company research. Finds companies matching an ideal customer profile (ICP) and enriches each with website facts and contact details.
+ 
+ ## Install
+ 

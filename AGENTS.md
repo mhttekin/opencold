@@ -40,6 +40,7 @@ relevant section before changing discovery, smearch, or pipeline code.
   tests/test_invariants.py; lower the number when you shrink a file.
 - README stays terse: one short entry per feature, no mechanism explanations.
 - Decisions backed by evidence live in docs/decisions/. Read them before re-trying an approach.
+- Before committing non-trivial changes, run the review skill on the staged diff. Fix FAIL findings or explain why not.
 - Ratchet numbers only go down. Raising one requires asking first.
 
 ## Evals

@@ -1,0 +1,5 @@
+[R1] src/opencold/discovery.py:4110
+> `if llm_match in ("no", "unknown"):`
+An LLM `unknown` verdict now rejects the company as `llm_mismatch`. The rule says `unknown` must defer to the deterministic signals and never reject.
+
+VERDICT: FAIL

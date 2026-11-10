@@ -1,0 +1,6 @@
+[R1] src/opencold/discovery.py:4110
+> `if llm_match in ("no", "unknown"):`
+
+This makes an LLM `unknown` reject the company, when it should defer to the deterministic signals. `llm_match` defaults to `"unknown"` (`llm.get("match", "unknown")`), so a failed call or a run with no provider would also return `rejected`. That breaks the no-LLM mode too.
+
+VERDICT: FAIL

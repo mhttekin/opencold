@@ -1,0 +1,19 @@
+diff --git a/src/opencold/discovery.py b/src/opencold/discovery.py
+index bc8161b..019f3f0 100644
+--- a/src/opencold/discovery.py
++++ b/src/opencold/discovery.py
+@@ -1977,9 +1977,11 @@ def _icp_match(terms: set[str], text: str) -> list[str]:
+     spellings, sorted, so callers can display them as before."""
+     if not terms or not text:
+         return []
+-    low = fold(text)
+-    word_stems = {_stem(tok) for tok in re.findall(r"[a-z0-9]+", low)}
+-    matched = [t for t in terms if _stem(fold(t)) in word_stems or (len(t) >= 4 and fold(t) in low)]
++    folded_text = fold(text)
++    word_stems = {_stem(tok) for tok in re.findall(r"[a-z0-9]+", folded_text)}
++    matched = [
++        t for t in terms if _stem(fold(t)) in word_stems or (len(t) >= 4 and fold(t) in folded_text)
++    ]
+     return sorted(matched)
+ 
+ 

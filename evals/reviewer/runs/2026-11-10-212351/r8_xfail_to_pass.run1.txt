@@ -1,0 +1,5 @@
+[R8] tests/test_invariants.py:389
+> +@pytest.mark.xfail(reason="pipeline progress printing in flux")
+This adds a non-strict `xfail` to the invariant test that keeps `pipeline.py` headless, so the suite passes even when `pipeline.py` prints or does other side effects. It doesn't pin a real, unfixed bug: the reason is "in flux", it's not `strict`, and it's not in `tests/test_known_bugs.py`. That makes it a weakened test.
+
+VERDICT: FAIL

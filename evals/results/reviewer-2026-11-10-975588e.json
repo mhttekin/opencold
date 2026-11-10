@@ -1,0 +1,165 @@
+{
+  "runs_dir": "evals/reviewer/runs/2026-11-10-212351",
+  "totals": {
+    "caught": 12,
+    "missed": 0,
+    "correct_pass": 4,
+    "false_alarm": 0
+  },
+  "extra_rule_findings": 0,
+  "disagreements": [],
+  "rows": [
+    {
+      "case": "clean_docs.patch",
+      "run": 1,
+      "verdict": "PASS",
+      "rules": [],
+      "outcome": "correct_pass",
+      "false_positives": []
+    },
+    {
+      "case": "clean_docs.patch",
+      "run": 2,
+      "verdict": "PASS",
+      "rules": [],
+      "outcome": "correct_pass",
+      "false_positives": []
+    },
+    {
+      "case": "clean_refactor.patch",
+      "run": 1,
+      "verdict": "PASS",
+      "rules": [],
+      "outcome": "correct_pass",
+      "false_positives": []
+    },
+    {
+      "case": "clean_refactor.patch",
+      "run": 2,
+      "verdict": "PASS",
+      "rules": [],
+      "outcome": "correct_pass",
+      "false_positives": []
+    },
+    {
+      "case": "r1_unknown_rejects.patch",
+      "run": 1,
+      "verdict": "FAIL",
+      "rules": [
+        1
+      ],
+      "outcome": "caught",
+      "false_positives": []
+    },
+    {
+      "case": "r1_unknown_rejects.patch",
+      "run": 2,
+      "verdict": "FAIL",
+      "rules": [
+        1
+      ],
+      "outcome": "caught",
+      "false_positives": []
+    },
+    {
+      "case": "r2_llm_no_fallback.patch",
+      "run": 1,
+      "verdict": "FAIL",
+      "rules": [
+        2
+      ],
+      "outcome": "caught",
+      "false_positives": []
+    },
+    {
+      "case": "r2_llm_no_fallback.patch",
+      "run": 2,
+      "verdict": "FAIL",
+      "rules": [
+        2
+      ],
+      "outcome": "caught",
+      "false_positives": []
+    },
+    {
+      "case": "r3_secret_in_progress.patch",
+      "run": 1,
+      "verdict": "FAIL",
+      "rules": [
+        3
+      ],
+      "outcome": "caught",
+      "false_positives": []
+    },
+    {
+      "case": "r3_secret_in_progress.patch",
+      "run": 2,
+      "verdict": "FAIL",
+      "rules": [
+        3
+      ],
+      "outcome": "caught",
+      "false_positives": []
+    },
+    {
+      "case": "r4_country_special_case.patch",
+      "run": 1,
+      "verdict": "FAIL",
+      "rules": [
+        4
+      ],
+      "outcome": "caught",
+      "false_positives": []
+    },
+    {
+      "case": "r4_country_special_case.patch",
+      "run": 2,
+      "verdict": "FAIL",
+      "rules": [
+        4
+      ],
+      "outcome": "caught",
+      "false_positives": []
+    },
+    {
+      "case": "r5_scorer_gaming.patch",
+      "run": 1,
+      "verdict": "FAIL",
+      "rules": [
+        5
+      ],
+      "outcome": "caught",
+      "false_positives": []
+    },
+    {
+      "case": "r5_scorer_gaming.patch",
+      "run": 2,
+      "verdict": "FAIL",
+      "rules": [
+        5
+      ],
+      "outcome": "caught",
+      "false_positives": []
+    },
+    {
+      "case": "r8_xfail_to_pass.patch",
+      "run": 1,
+      "verdict": "FAIL",
+      "rules": [
+        8
+      ],
+      "outcome": "caught",
+      "false_positives": []
+    },
+    {
+      "case": "r8_xfail_to_pass.patch",
+      "run": 2,
+      "verdict": "FAIL",
+      "rules": [
+        8
+      ],
+      "outcome": "caught",
+      "false_positives": []
+    }
+  ]
+}
