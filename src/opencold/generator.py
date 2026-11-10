@@ -66,9 +66,7 @@ def _generate_anthropic(
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
     )
-    return next(
-        (block.text for block in response.content if block.type == "text"), ""
-    )
+    return next((block.text for block in response.content if block.type == "text"), "")
 
 
 # ── OpenAI / Proxy generation ────────────────────────────────────────────────
@@ -86,8 +84,7 @@ def _generate_openai(
         from openai import OpenAI
     except ImportError:
         raise ImportError(
-            "OpenAI package is required for this provider. "
-            "Install it with: pip install openai"
+            "OpenAI package is required for this provider. Install it with: pip install openai"
         )
 
     kwargs = {"api_key": api_key}
@@ -111,20 +108,26 @@ def _generate_openai(
 import re
 
 _META_PATTERNS = [
-    re.compile(r"\n\n(?:This response|This email|Here is|I hope this|Let me know if|Note:).*", re.DOTALL | re.IGNORECASE),
-    re.compile(r"\n\n(?:The above|I've (?:written|crafted|composed)|Word count).*", re.DOTALL | re.IGNORECASE),
+    re.compile(
+        r"\n\n(?:This response|This email|Here is|I hope this|Let me know if|Note:).*",
+        re.DOTALL | re.IGNORECASE,
+    ),
+    re.compile(
+        r"\n\n(?:The above|I've (?:written|crafted|composed)|Word count).*",
+        re.DOTALL | re.IGNORECASE,
+    ),
     re.compile(r"\n\n\[.*?\]$", re.DOTALL),  # bracketed notes at end
 ]
 
 # Patterns that indicate leaked system/config data in a paragraph
 _LEAK_INDICATORS = re.compile(
     r"(?:"
-    r"\w+_\w+\s*[:=]"           # key_name: value or key_name= value
-    r"|/[a-z]/\d+/"             # file paths like /u/26/75/
-    r"|\.json\b"               # JSON file references
+    r"\w+_\w+\s*[:=]"  # key_name: value or key_name= value
+    r"|/[a-z]/\d+/"  # file paths like /u/26/75/
+    r"|\.json\b"  # JSON file references
     r"|max_tokens|temperature|top_[kp]|frequency"  # LLM params
-    r"|system_name|binary_name|latency|cache"      # system params
-    r"|PARAMS\s*:"              # explicit params block
+    r"|system_name|binary_name|latency|cache"  # system params
+    r"|PARAMS\s*:"  # explicit params block
     r")",
     re.IGNORECASE,
 )
@@ -153,11 +156,11 @@ def _clean_output(text: str) -> str:
     text = text.strip('"')
     text = text.strip()
     # Remove double quotes from the body (keep apostrophes for contractions)
-    text = text.replace('"', '')
+    text = text.replace('"', "")
     # Replace em/en dashes with commas (looks less AI-generated)
-    text = text.replace('—', ',').replace('–', ',')
+    text = text.replace("—", ",").replace("–", ",")
     # Clean up double commas or comma-space-comma from dash replacement
-    text = re.sub(r',\s*,', ',', text)
+    text = re.sub(r",\s*,", ",", text)
     for pattern in _META_PATTERNS:
         text = pattern.sub("", text)
     # Remove leading "Subject:" or greeting lines some models prepend
@@ -170,7 +173,12 @@ def _clean_output(text: str) -> str:
     # Remove trailing sign-off names like (Mehmet), (Name), - Mehmet, Best, Name
     text = re.sub(r"\n+\([\w\s]+\)\s*$", "", text)
     text = re.sub(r"\n+[-–—]\s*[\w\s]+\s*$", "", text)
-    text = re.sub(r"\n+(?:Best|Regards|Cheers|Thanks|Thank you|Sincerely|Warm regards)[,.]?\s*\n*[\w\s]*$", "", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"\n+(?:Best|Regards|Cheers|Thanks|Thank you|Sincerely|Warm regards)[,.]?\s*\n*[\w\s]*$",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
 
     # Split into paragraphs, keep only clean ones (max 3)
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
@@ -191,10 +199,10 @@ def _clean_subject(subject: str) -> str:
     """Clean up a generated subject line."""
     subject = subject.strip().strip('"').strip("'")
     # Remove em/en dashes
-    subject = subject.replace('—', ',').replace('–', ',')
-    subject = re.sub(r',\s*,', ',', subject)
+    subject = subject.replace("—", ",").replace("–", ",")
+    subject = re.sub(r",\s*,", ",", subject)
     # Strip trailing punctuation that looks weird in subject
-    subject = subject.rstrip('.')
+    subject = subject.rstrip(".")
     return subject
 
 
@@ -224,7 +232,7 @@ def _split_subject_body(text: str) -> tuple[str, str]:
     # Strip common prefixes models prepend
     for prefix in ("Subject:", "Subject Line:", "SUBJECT:", "Re:"):
         if first.lower().startswith(prefix.lower()):
-            first = first[len(prefix):].strip()
+            first = first[len(prefix) :].strip()
 
     # Sanity check: if "subject" is too long, it's probably body text
     if len(first.split()) > 12:
@@ -258,10 +266,14 @@ def generate_email(
     effective_max_tokens = max_tokens or provider_config.get("max_tokens") or DEFAULT_MAX_TOKENS
 
     if provider_type == "anthropic":
-        raw = _generate_anthropic(api_key, system_prompt, user_prompt, effective_model, effective_max_tokens)
+        raw = _generate_anthropic(
+            api_key, system_prompt, user_prompt, effective_model, effective_max_tokens
+        )
     elif provider_type in ("openai", "proxy"):
         base_url = provider_config.get("base_url") if provider_type == "proxy" else None
-        raw = _generate_openai(api_key, system_prompt, user_prompt, effective_model, effective_max_tokens, base_url)
+        raw = _generate_openai(
+            api_key, system_prompt, user_prompt, effective_model, effective_max_tokens, base_url
+        )
     else:
         raise ValueError(f"Unknown provider type: {provider_type}")
 
@@ -287,10 +299,14 @@ def complete(
     effective_max_tokens = max_tokens or provider_config.get("max_tokens") or DEFAULT_MAX_TOKENS
 
     if provider_type == "anthropic":
-        return _generate_anthropic(api_key, system_prompt, user_prompt, effective_model, effective_max_tokens)
+        return _generate_anthropic(
+            api_key, system_prompt, user_prompt, effective_model, effective_max_tokens
+        )
     if provider_type in ("openai", "proxy"):
         base_url = provider_config.get("base_url") if provider_type == "proxy" else None
-        return _generate_openai(api_key, system_prompt, user_prompt, effective_model, effective_max_tokens, base_url)
+        return _generate_openai(
+            api_key, system_prompt, user_prompt, effective_model, effective_max_tokens, base_url
+        )
     raise ValueError(f"Unknown provider type: {provider_type}")
 
 

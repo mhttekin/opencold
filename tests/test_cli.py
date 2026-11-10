@@ -8,22 +8,46 @@ from opencold.cli import _clamp_workers, _enrich_rows, _validate_csv, do_run
 class TestValidateCsv:
     def test_valid_rows_with_website(self):
         rows = [
-            {"email": "a@test.com", "first_name": "A", "last_name": "B", "company": "C", "website": "https://c.com"},
+            {
+                "email": "a@test.com",
+                "first_name": "A",
+                "last_name": "B",
+                "company": "C",
+                "website": "https://c.com",
+            },
         ]
         result = _validate_csv(rows)
         assert result == rows
 
     def test_missing_email_returns_none(self):
         rows = [
-            {"email": "", "first_name": "A", "last_name": "B", "company": "C", "website": "https://c.com"},
+            {
+                "email": "",
+                "first_name": "A",
+                "last_name": "B",
+                "company": "C",
+                "website": "https://c.com",
+            },
         ]
         result = _validate_csv(rows)
         assert result is None
 
     def test_some_missing_email_returns_none(self):
         rows = [
-            {"email": "a@test.com", "first_name": "A", "last_name": "B", "company": "C", "website": "https://c.com"},
-            {"email": "", "first_name": "D", "last_name": "E", "company": "F", "website": "https://f.com"},
+            {
+                "email": "a@test.com",
+                "first_name": "A",
+                "last_name": "B",
+                "company": "C",
+                "website": "https://c.com",
+            },
+            {
+                "email": "",
+                "first_name": "D",
+                "last_name": "E",
+                "company": "F",
+                "website": "https://f.com",
+            },
         ]
         result = _validate_csv(rows)
         assert result is None
@@ -47,8 +71,20 @@ class TestValidateCsv:
     @patch("opencold.cli._confirm", return_value=True)
     def test_missing_websites_filters_rows(self, mock_confirm):
         rows = [
-            {"email": "a@test.com", "first_name": "A", "last_name": "B", "company": "C", "website": "https://c.com"},
-            {"email": "d@test.com", "first_name": "D", "last_name": "E", "company": "F", "website": ""},
+            {
+                "email": "a@test.com",
+                "first_name": "A",
+                "last_name": "B",
+                "company": "C",
+                "website": "https://c.com",
+            },
+            {
+                "email": "d@test.com",
+                "first_name": "D",
+                "last_name": "E",
+                "company": "F",
+                "website": "",
+            },
         ]
         result = _validate_csv(rows)
         assert len(result) == 1
@@ -57,16 +93,40 @@ class TestValidateCsv:
     @patch("opencold.cli._confirm", return_value=False)
     def test_missing_websites_cancel(self, mock_confirm):
         rows = [
-            {"email": "a@test.com", "first_name": "A", "last_name": "B", "company": "C", "website": "https://c.com"},
-            {"email": "d@test.com", "first_name": "D", "last_name": "E", "company": "F", "website": ""},
+            {
+                "email": "a@test.com",
+                "first_name": "A",
+                "last_name": "B",
+                "company": "C",
+                "website": "https://c.com",
+            },
+            {
+                "email": "d@test.com",
+                "first_name": "D",
+                "last_name": "E",
+                "company": "F",
+                "website": "",
+            },
         ]
         result = _validate_csv(rows)
         assert result is None
 
     def test_all_have_websites_no_warning(self):
         rows = [
-            {"email": "a@test.com", "first_name": "A", "last_name": "B", "company": "C", "website": "https://c.com"},
-            {"email": "d@test.com", "first_name": "D", "last_name": "E", "company": "F", "website": "https://f.com"},
+            {
+                "email": "a@test.com",
+                "first_name": "A",
+                "last_name": "B",
+                "company": "C",
+                "website": "https://c.com",
+            },
+            {
+                "email": "d@test.com",
+                "first_name": "D",
+                "last_name": "E",
+                "company": "F",
+                "website": "https://f.com",
+            },
         ]
         result = _validate_csv(rows)
         assert len(result) == 2
@@ -75,7 +135,13 @@ class TestValidateCsv:
     def test_all_missing_websites_returns_none(self, mock_confirm):
         """If all rows lack website and user proceeds, filtering leaves nothing."""
         rows = [
-            {"email": "a@test.com", "first_name": "A", "last_name": "B", "company": "C", "website": ""},
+            {
+                "email": "a@test.com",
+                "first_name": "A",
+                "last_name": "B",
+                "company": "C",
+                "website": "",
+            },
         ]
         result = _validate_csv(rows)
         assert result is None
@@ -95,7 +161,13 @@ class TestDraftRequiresEnriched:
     @patch("opencold.cli._ensure_config")
     def test_draft_mode_rejects_raw_csv(self, mock_config, mock_read, mock_validate):
         rows = [
-            {"email": "a@test.com", "first_name": "A", "last_name": "B", "company": "C", "website": "https://c.com"},
+            {
+                "email": "a@test.com",
+                "first_name": "A",
+                "last_name": "B",
+                "company": "C",
+                "website": "https://c.com",
+            },
         ]
         mock_config.return_value = {}
         mock_read.return_value = rows
@@ -109,7 +181,10 @@ class TestDraftRequiresEnriched:
 
 
 class TestEnrichRows:
-    @patch("opencold.cli.verifier.verify_email", return_value={"email": "a@test.com", "valid": True, "reason": "ok"})
+    @patch(
+        "opencold.cli.verifier.verify_email",
+        return_value={"email": "a@test.com", "valid": True, "reason": "ok"},
+    )
     @patch("opencold.cli.enricher.enrich_website")
     def test_enriches_each_unique_website_once(self, mock_enrich_website, _mock_verify):
         mock_enrich_website.return_value = {
@@ -122,8 +197,20 @@ class TestEnrichRows:
             "enrichment_json": "{}",
         }
         rows = [
-            {"email": "a@test.com", "first_name": "A", "last_name": "B", "company": "Acme", "website": "acme.com"},
-            {"email": "b@test.com", "first_name": "B", "last_name": "C", "company": "Acme", "website": "https://acme.com"},
+            {
+                "email": "a@test.com",
+                "first_name": "A",
+                "last_name": "B",
+                "company": "Acme",
+                "website": "acme.com",
+            },
+            {
+                "email": "b@test.com",
+                "first_name": "B",
+                "last_name": "C",
+                "company": "Acme",
+                "website": "https://acme.com",
+            },
         ]
 
         with patch("opencold.cli.typer.echo"):

@@ -10,15 +10,37 @@ expansion improves recall without drifting off-sector. Ambiguous members are
 omitted on purpose (e.g. "oil" would hit "Mineral oil refining"; "rope" is a
 substring of "property"). Keep additions conservative and SIC-grounded.
 """
+
 from __future__ import annotations
 
 from opencold.icp_phrases import stem
 
 CATEGORY_HYPONYMS: dict[str, list[str]] = {
-    "food": ["meat", "poultry", "fish", "crustacean", "fruit", "vegetable",
-             "potato", "dairy", "milk", "cheese", "bread", "pastry", "biscuit",
-             "confectionery", "chocolate", "cocoa", "sugar", "cereal", "grain",
-             "flour", "starch", "spice", "margarine"],
+    "food": [
+        "meat",
+        "poultry",
+        "fish",
+        "crustacean",
+        "fruit",
+        "vegetable",
+        "potato",
+        "dairy",
+        "milk",
+        "cheese",
+        "bread",
+        "pastry",
+        "biscuit",
+        "confectionery",
+        "chocolate",
+        "cocoa",
+        "sugar",
+        "cereal",
+        "grain",
+        "flour",
+        "starch",
+        "spice",
+        "margarine",
+    ],
     "beverage": ["beer", "wine", "cider", "spirit", "malt", "juice"],
     "clothing": ["apparel", "workwear", "underwear", "outerwear", "hosiery", "fur"],
     "textile": ["fabric", "woven", "knitted", "fibre", "carpet", "twine", "cordage"],
@@ -41,12 +63,19 @@ CATEGORY_HYPONYMS: dict[str, list[str]] = {
 
 # Extra user spellings/abbreviations -> canonical category above.
 _ALIASES: dict[str, str] = {
-    "drink": "beverage", "drinks": "beverage",
-    "clothes": "clothing", "apparel": "clothing", "garment": "clothing",
-    "automotive": "vehicle", "auto": "vehicle",
-    "electronics": "electronic", "cosmetics": "cosmetic",
-    "jewelry": "jewellery", "pharma": "pharmaceutical",
-    "shoes": "footwear", "shoe": "footwear",
+    "drink": "beverage",
+    "drinks": "beverage",
+    "clothes": "clothing",
+    "apparel": "clothing",
+    "garment": "clothing",
+    "automotive": "vehicle",
+    "auto": "vehicle",
+    "electronics": "electronic",
+    "cosmetics": "cosmetic",
+    "jewelry": "jewellery",
+    "pharma": "pharmaceutical",
+    "shoes": "footwear",
+    "shoe": "footwear",
 }
 
 # Looked up by stem so "foods"/"metals"/"clothing" resolve like their canonical.

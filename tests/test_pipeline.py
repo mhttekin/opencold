@@ -41,8 +41,14 @@ class TestGenerateDrafts:
         leads = [{"name": "Ada", "company": "Analytical", "email": "ada@analytical.com"}]
         with patch("opencold.generator.generate_with_retry", side_effect=_fake_generation):
             pipeline.generate_drafts(
-                leads, {}, {"name": "Me"}, {}, {"api_key": "k", "model": "m"},
-                do_resolve_websites=False, do_enrich=False, do_verify=False,
+                leads,
+                {},
+                {"name": "Me"},
+                {},
+                {"api_key": "k", "model": "m"},
+                do_resolve_websites=False,
+                do_enrich=False,
+                do_verify=False,
             )
         assert "generated_email" not in leads[0]
 
@@ -56,9 +62,14 @@ class TestGenerateDrafts:
         leads = [{"name": "Ada", "company": "A", "email": "a@a.com"}]
         with patch("opencold.generator.generate_with_retry", side_effect=_capture):
             pipeline.generate_drafts(
-                leads, {}, {}, {},
+                leads,
+                {},
+                {},
+                {},
                 {"type": "proxy", "api_key": "tok", "model": "custom-1", "base_url": "https://x"},
-                do_resolve_websites=False, do_enrich=False, do_verify=False,
+                do_resolve_websites=False,
+                do_enrich=False,
+                do_verify=False,
             )
         assert captured["type"] == "proxy"
         assert captured["api_key"] == "tok"
@@ -76,11 +87,20 @@ class TestGenerateDrafts:
         def _verify(email):
             return good if email == "good@a.com" else bad
 
-        with patch("opencold.verifier.verify_email", side_effect=_verify), \
-             patch("opencold.generator.generate_with_retry", side_effect=_fake_generation):
+        with (
+            patch("opencold.verifier.verify_email", side_effect=_verify),
+            patch("opencold.generator.generate_with_retry", side_effect=_fake_generation),
+        ):
             result = pipeline.generate_drafts(
-                leads, {}, {}, {}, {"api_key": "k", "model": "m"},
-                do_resolve_websites=False, do_enrich=False, do_verify=True, drop_invalid=True,
+                leads,
+                {},
+                {},
+                {},
+                {"api_key": "k", "model": "m"},
+                do_resolve_websites=False,
+                do_enrich=False,
+                do_verify=True,
+                drop_invalid=True,
             )
 
         assert result.total_count == 1
@@ -91,8 +111,14 @@ class TestGenerateDrafts:
         leads = [{"name": "Ada", "company": "A", "email": "a@a.com"}]
         with patch("opencold.generator.generate_with_retry", side_effect=RuntimeError("boom")):
             result = pipeline.generate_drafts(
-                leads, {}, {}, {}, {"api_key": "k", "model": "m"},
-                do_resolve_websites=False, do_enrich=False, do_verify=False,
+                leads,
+                {},
+                {},
+                {},
+                {"api_key": "k", "model": "m"},
+                do_resolve_websites=False,
+                do_enrich=False,
+                do_verify=False,
             )
         assert result.success_count == 0
         assert result.rows[0]["generated_email"].startswith("ERROR:")
@@ -100,7 +126,11 @@ class TestGenerateDrafts:
 
     def test_empty_leads_returns_empty_result(self):
         result = pipeline.generate_drafts(
-            [], {}, {}, {}, {"api_key": "k", "model": "m"},
+            [],
+            {},
+            {},
+            {},
+            {"api_key": "k", "model": "m"},
         )
         assert result.rows == []
         assert result.total_count == 0

@@ -197,7 +197,9 @@ class TestDiscoverRows:
     @patch("opencold.discovery.search_company_pages", return_value=[])
     @patch("opencold.discovery.crawl_company_pages")
     @patch("opencold.discovery._fetch_source")
-    def test_builds_prepare_compatible_rows(self, mock_fetch, mock_crawl, _mock_search, _mock_linkedin):
+    def test_builds_prepare_compatible_rows(
+        self, mock_fetch, mock_crawl, _mock_search, _mock_linkedin
+    ):
         mock_fetch.return_value = SOURCE_HTML
         mock_crawl.return_value = [COMPANY_PAGE]
 
@@ -223,7 +225,9 @@ class TestDiscoverRows:
     @patch("opencold.discovery.search_company_pages", return_value=[])
     @patch("opencold.discovery.crawl_company_pages", return_value=[])
     @patch("opencold.discovery._fetch_source", return_value=SOURCE_HTML)
-    def test_require_contact_filters_contactless_rows(self, _mock_fetch, _mock_crawl, _mock_search, _mock_linkedin):
+    def test_require_contact_filters_contactless_rows(
+        self, _mock_fetch, _mock_crawl, _mock_search, _mock_linkedin
+    ):
         rows = discovery.discover_rows(
             ["https://source.test/list"],
             require_contact=True,
@@ -234,7 +238,9 @@ class TestDiscoverRows:
     @patch("opencold.discovery.search_company_pages")
     @patch("opencold.discovery.crawl_company_pages")
     @patch("opencold.discovery._fetch_source")
-    def test_search_pages_improve_contact_discovery(self, mock_fetch, mock_crawl, mock_search, _mock_linkedin):
+    def test_search_pages_improve_contact_discovery(
+        self, mock_fetch, mock_crawl, mock_search, _mock_linkedin
+    ):
         mock_fetch.return_value = SOURCE_HTML
         mock_crawl.return_value = [
             enricher.PageContent(

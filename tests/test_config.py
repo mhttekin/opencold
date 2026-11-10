@@ -196,7 +196,9 @@ class TestMigration:
             "email": "t@t.com",
             "api_keys": {"anthropic": "sk-ant-123"},
             "active_profile": "default",
-            "profiles": {"default": {"company": "", "role": "", "bio": "", "pitch": "", "color": 75}},
+            "profiles": {
+                "default": {"company": "", "role": "", "bio": "", "pitch": "", "color": 75}
+            },
         }
         tmp_config.write_text(json.dumps(old))
         cfg = config.load_config()
@@ -263,7 +265,9 @@ class TestProviders:
             "email": "new@test.com",
             "api_keys": {},
             "active_profile": "default",
-            "profiles": {"default": {"company": "", "role": "", "bio": "", "pitch": "", "color": 75}},
+            "profiles": {
+                "default": {"company": "", "role": "", "bio": "", "pitch": "", "color": 75}
+            },
         }
         tmp_config.write_text(json.dumps(new))
         cfg = config.load_config()

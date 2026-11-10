@@ -16,6 +16,7 @@ enrich_top_factories / is_factory_company).
 Web search auto-uses Serper when a key is present and the LLM is optional --
 exactly like discovery. Only the top N rows are enriched (expensive per row).
 """
+
 from __future__ import annotations
 
 import re
@@ -27,8 +28,14 @@ _REGION = "United Kingdom"
 
 # Enrichment columns added to every smearch row (empty until enriched).
 ENRICH_FIELDS = [
-    "officer_names", "website", "website_confidence", "address_matched",
-    "phone", "email", "email_type", "contact_source",
+    "officer_names",
+    "website",
+    "website_confidence",
+    "address_matched",
+    "phone",
+    "email",
+    "email_type",
+    "contact_source",
 ]
 
 
@@ -47,8 +54,12 @@ def _format_officer_name(ch_name: str) -> str:
 
 
 def _address_str(row: dict) -> str:
-    parts = [row.get("address_line_1", ""), row.get("address_line_2", ""),
-             row.get("locality", ""), row.get("postal_code", "")]
+    parts = [
+        row.get("address_line_1", ""),
+        row.get("address_line_2", ""),
+        row.get("locality", ""),
+        row.get("postal_code", ""),
+    ]
     return ", ".join(p for p in parts if p)
 
 
@@ -88,7 +99,8 @@ def _site_contacts(website: str, pages: int) -> tuple[str, str, str]:
     phone = contacts.phones[0] if contacts.phones else ""
     if contacts.emails:
         email, etype, _ = discovery.pick_company_email(
-            contacts.emails, discovery.normalize_domain(website))
+            contacts.emails, discovery.normalize_domain(website)
+        )
     else:
         email, etype = "", ""
     return phone, email, etype
@@ -96,16 +108,20 @@ def _site_contacts(website: str, pages: int) -> tuple[str, str, str]:
 
 def _pages_text(website: str, pages: int) -> str:
     try:
-        return " ".join(p.text or "" for p in discovery.crawl_company_pages(website, max_pages=pages))
+        return " ".join(
+            p.text or "" for p in discovery.crawl_company_pages(website, max_pages=pages)
+        )
     except Exception:
         return ""
 
 
-def _llm_confirms_website(provider: dict, company: str, address: str,
-                          website: str, page_text: str) -> bool | None:
+def _llm_confirms_website(
+    provider: dict, company: str, address: str, website: str, page_text: str
+) -> bool | None:
     """Grounded yes/no: is this website really `company`'s? None on error."""
     try:
         from opencold import generator
+
         out = generator.complete(
             provider,
             "You verify whether a website belongs to a specific UK company. Reply only YES or NO.",
@@ -122,21 +138,53 @@ def _llm_confirms_website(provider: dict, company: str, address: str,
 # Phrases on a site that signal a real production operation (vs an artisan maker
 # or shop). Matched case-insensitively as substrings of the crawled page text.
 _FACTORY_TERMS = (
-    "manufacturing facility", "production facility", "processing facility",
-    "our facility", "production line", "production capacity", "manufacturing process",
-    "our factory", "the factory", "factory", "warehouse", "industrial unit",
-    "manufacturing plant", "processing plant", "production plant",
-    "contract manufactur", "private label", "own label", "own-label", "oem",
-    "bulk supply", "bulk order", "wholesale supply", "trade enquiries",
-    "trade customers", "units per", "tonnes", "per annum", "sq ft", "square feet",
-    "production team", "manufactured in", "produced in our",
+    "manufacturing facility",
+    "production facility",
+    "processing facility",
+    "our facility",
+    "production line",
+    "production capacity",
+    "manufacturing process",
+    "our factory",
+    "the factory",
+    "factory",
+    "warehouse",
+    "industrial unit",
+    "manufacturing plant",
+    "processing plant",
+    "production plant",
+    "contract manufactur",
+    "private label",
+    "own label",
+    "own-label",
+    "oem",
+    "bulk supply",
+    "bulk order",
+    "wholesale supply",
+    "trade enquiries",
+    "trade customers",
+    "units per",
+    "tonnes",
+    "per annum",
+    "sq ft",
+    "square feet",
+    "production team",
+    "manufactured in",
+    "produced in our",
 )
 # Industrial-premises markers in a registered address (cheap CH signal; used when
 # the website is weak or absent).
 _INDUSTRIAL_ADDRESS_TERMS = (
-    "industrial estate", "trading estate", "business park", "industrial park",
-    "enterprise park", "industrial unit", "trade park", "trade centre",
-    "distribution park", "industrial centre",
+    "industrial estate",
+    "trading estate",
+    "business park",
+    "industrial park",
+    "enterprise park",
+    "industrial unit",
+    "trade park",
+    "trade centre",
+    "distribution park",
+    "industrial centre",
 )
 
 
@@ -146,8 +194,9 @@ def _factory_keywords(pages_text: str) -> bool:
 
 
 def _industrial_address(row: dict) -> bool:
-    addr = " ".join(str(row.get(k, "")) for k in
-                    ("address_line_1", "address_line_2", "locality")).lower()
+    addr = " ".join(
+        str(row.get(k, "")) for k in ("address_line_1", "address_line_2", "locality")
+    ).lower()
     return any(term in addr for term in _INDUSTRIAL_ADDRESS_TERMS)
 
 
@@ -155,6 +204,7 @@ def _llm_is_factory(provider: dict, company: str, pages_text: str) -> bool | Non
     """Grounded: is this an industrial factory (vs artisan/retail)? None on error."""
     try:
         from opencold import generator
+
         out = generator.complete(
             provider,
             "Classify a UK company from its website text. Reply only FACTORY or OTHER. "
@@ -169,8 +219,9 @@ def _llm_is_factory(provider: dict, company: str, pages_text: str) -> bool | Non
         return None
 
 
-def is_factory_company(row: dict, pages_text: str, *, use_llm: bool = False,
-                       provider: dict | None = None) -> bool:
+def is_factory_company(
+    row: dict, pages_text: str, *, use_llm: bool = False, provider: dict | None = None
+) -> bool:
     """Is this company a real factory? An industrial-estate registered address is a
     strong yes; otherwise judge website content (LLM when available, else keyword
     evidence). No content and no industrial address => no (so it's skipped)."""
@@ -185,9 +236,18 @@ def is_factory_company(row: dict, pages_text: str, *, use_llm: bool = False,
     return False
 
 
-def _finish_enrich(row: dict, website: str, conf: str, text: str, *, ch_key: str,
-                   use_llm: bool = False, provider: dict | None = None,
-                   places_key: str | None = None, pages: int = 4) -> dict:
+def _finish_enrich(
+    row: dict,
+    website: str,
+    conf: str,
+    text: str,
+    *,
+    ch_key: str,
+    use_llm: bool = False,
+    provider: dict | None = None,
+    places_key: str | None = None,
+    pages: int = 4,
+) -> dict:
     """Fill a row's enrichment fields given an already-resolved website + crawled
     page text (so the factory gate can reuse the same crawl)."""
     row.update(blank_fields())
@@ -229,27 +289,55 @@ def _finish_enrich(row: dict, website: str, conf: str, text: str, *, ch_key: str
     return row
 
 
-def enrich_row(row: dict, *, ch_key: str, use_llm: bool = False,
-               provider: dict | None = None, places_key: str | None = None,
-               pages: int = 4) -> dict:
+def enrich_row(
+    row: dict,
+    *,
+    ch_key: str,
+    use_llm: bool = False,
+    provider: dict | None = None,
+    places_key: str | None = None,
+    pages: int = 4,
+) -> dict:
     """Enrich one smearch row in place (fail-soft on any single sub-step)."""
     website, conf = _resolve_website(row.get("company_name", ""), row.get("locality", ""))
     text = _pages_text(website, pages) if website else ""
-    return _finish_enrich(row, website, conf, text, ch_key=ch_key, use_llm=use_llm,
-                          provider=provider, places_key=places_key, pages=pages)
+    return _finish_enrich(
+        row,
+        website,
+        conf,
+        text,
+        ch_key=ch_key,
+        use_llm=use_llm,
+        provider=provider,
+        places_key=places_key,
+        pages=pages,
+    )
 
 
-def enrich_rows(rows: list[dict], *, ch_key: str, use_llm: bool = False,
-                provider: dict | None = None, places_key: str | None = None,
-                pages: int = 4, progress=None) -> list[dict]:
+def enrich_rows(
+    rows: list[dict],
+    *,
+    ch_key: str,
+    use_llm: bool = False,
+    provider: dict | None = None,
+    places_key: str | None = None,
+    pages: int = 4,
+    progress=None,
+) -> list[dict]:
     """Enrich each row (the top-N). A failing row is left with blank enrichment
     fields rather than aborting the batch."""
     for i, row in enumerate(rows, 1):
         if progress:
             progress(i, len(rows), row.get("company_name", ""))
         try:
-            enrich_row(row, ch_key=ch_key, use_llm=use_llm, provider=provider,
-                       places_key=places_key, pages=pages)
+            enrich_row(
+                row,
+                ch_key=ch_key,
+                use_llm=use_llm,
+                provider=provider,
+                places_key=places_key,
+                pages=pages,
+            )
         except Exception:
             row.setdefault("officer_names", "")
             for k in ENRICH_FIELDS:
@@ -257,10 +345,17 @@ def enrich_rows(rows: list[dict], *, ch_key: str, use_llm: bool = False,
     return rows
 
 
-def enrich_top_factories(pool: list[dict], *, target: int, ch_key: str,
-                         use_llm: bool = False, provider: dict | None = None,
-                         places_key: str | None = None, pages: int = 4,
-                         progress=None) -> tuple[list[dict], int]:
+def enrich_top_factories(
+    pool: list[dict],
+    *,
+    target: int,
+    ch_key: str,
+    use_llm: bool = False,
+    provider: dict | None = None,
+    places_key: str | None = None,
+    pages: int = 4,
+    progress=None,
+) -> tuple[list[dict], int]:
     """Walk the ranked pool keeping only companies with factory evidence (website
     content or industrial address), until `target` are collected or the pool is
     exhausted. The gate crawls page text once and only the kept rows pay the full
@@ -278,8 +373,17 @@ def enrich_top_factories(pool: list[dict], *, target: int, ch_key: str,
             text = _pages_text(website, pages) if website else ""
             if not is_factory_company(row, text, use_llm=use_llm, provider=provider):
                 continue
-            _finish_enrich(row, website, conf, text, ch_key=ch_key, use_llm=use_llm,
-                           provider=provider, places_key=places_key, pages=pages)
+            _finish_enrich(
+                row,
+                website,
+                conf,
+                text,
+                ch_key=ch_key,
+                use_llm=use_llm,
+                provider=provider,
+                places_key=places_key,
+                pages=pages,
+            )
             kept.append(row)
         except Exception:
             continue

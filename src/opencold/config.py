@@ -19,16 +19,16 @@ DEFAULT_PROFILE = "default"
 PROFILE_PALETTE = [
     204,  # rose
     114,  # green
-    75,   # sky blue
+    75,  # sky blue
     215,  # orange
     141,  # lavender
-    73,   # teal
+    73,  # teal
     210,  # coral
     228,  # pale yellow
     183,  # lilac
     108,  # sage
     167,  # brick red
-    45,   # bright cyan
+    45,  # bright cyan
 ]
 
 
@@ -63,19 +63,25 @@ def _migrate(cfg: dict) -> dict:
         if "providers" not in cfg and cfg.get("api_keys"):
             cfg["providers"] = {}
             for name, key in cfg["api_keys"].items():
-                ptype = "anthropic" if "anthropic" in name else (
-                    "openai" if "openai" in name else "proxy"
+                ptype = (
+                    "anthropic"
+                    if "anthropic" in name
+                    else ("openai" if "openai" in name else "proxy")
                 )
-                default_model = "claude-sonnet-4-6" if ptype == "anthropic" else (
-                    "gpt-4o" if ptype == "openai" else ""
+                default_model = (
+                    "claude-sonnet-4-6"
+                    if ptype == "anthropic"
+                    else ("gpt-4o" if ptype == "openai" else "")
                 )
                 cfg["providers"][name] = {
                     "type": ptype,
                     "api_key": key,
                     "default_model": default_model,
                 }
-            cfg["default_provider"] = "anthropic" if "anthropic" in cfg["providers"] else (
-                next(iter(cfg["providers"]), "")
+            cfg["default_provider"] = (
+                "anthropic"
+                if "anthropic" in cfg["providers"]
+                else (next(iter(cfg["providers"]), ""))
             )
             save_config(cfg)
         return cfg
@@ -242,9 +248,14 @@ def get_provider(name: str) -> dict | None:
     return load_config().get("providers", {}).get(name)
 
 
-def add_provider(name: str, provider_type: str, api_key: str,
-                 default_model: str = "", base_url: str = "",
-                 max_tokens: int = 0) -> None:
+def add_provider(
+    name: str,
+    provider_type: str,
+    api_key: str,
+    default_model: str = "",
+    base_url: str = "",
+    max_tokens: int = 0,
+) -> None:
     """Add or update a provider."""
     cfg = load_config()
     entry = {
@@ -260,7 +271,11 @@ def add_provider(name: str, provider_type: str, api_key: str,
     # Also write to legacy api_keys for backward compat
     cfg.setdefault("api_keys", {})[name] = api_key
     # Set as default if it's the first LLM provider (not a key-only service)
-    if not cfg.get("default_provider") and provider_type not in ("serper", "companies_house", "google_places"):
+    if not cfg.get("default_provider") and provider_type not in (
+        "serper",
+        "companies_house",
+        "google_places",
+    ):
         cfg["default_provider"] = name
     save_config(cfg)
 
@@ -415,11 +430,13 @@ def _migrate_campaigns(profile: dict) -> list[dict]:
         migrated = []
         for key, val in raw.items():
             if isinstance(val, dict):
-                migrated.append({
-                    "title": key.capitalize(),
-                    "description": val.get("description", ""),
-                    "pitch": val.get("pitch", ""),
-                })
+                migrated.append(
+                    {
+                        "title": key.capitalize(),
+                        "description": val.get("description", ""),
+                        "pitch": val.get("pitch", ""),
+                    }
+                )
         profile["campaigns"] = migrated
         return migrated
     return list(raw)

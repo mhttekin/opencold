@@ -85,16 +85,16 @@ def _extract_meta(html: str) -> str | None:
 def _extract_bs4(html: str) -> str:
     """Text extraction via BeautifulSoup (fallback)."""
     soup = BeautifulSoup(html, "html.parser")
-    for tag in soup(["script", "style", "nav", "footer", "header",
-                     "noscript", "svg", "iframe", "form"]):
+    for tag in soup(
+        ["script", "style", "nav", "footer", "header", "noscript", "svg", "iframe", "form"]
+    ):
         tag.decompose()
 
     # Prefer main/article content if present
     main = soup.find("main") or soup.find("article") or soup.find(role="main")
     target = main if main else soup
 
-    lines = [l for l in target.get_text(separator="\n", strip=True).splitlines()
-             if l.strip()]
+    lines = [l for l in target.get_text(separator="\n", strip=True).splitlines() if l.strip()]
     return "\n".join(lines)
 
 

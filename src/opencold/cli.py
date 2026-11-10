@@ -105,7 +105,8 @@ def _ask(text: str, default: str = "", hide: bool = False) -> str:
     suffix = f" [{default}]" if default else ""
     try:
         result = PromptSession(key_bindings=_kb).prompt(
-            f"  {text}{suffix}: ", is_password=hide,
+            f"  {text}{suffix}: ",
+            is_password=hide,
         )
         return result.strip() or default
     except KeyboardInterrupt:
@@ -187,7 +188,12 @@ def _select_campaign() -> dict | None:
             lines = []
             lines.append(("", "\n"))
             lines.append(("bold", "  Select a campaign  "))
-            lines.append(("fg:ansibrightblack", "(\u2191\u2193 move, Enter select, d delete, Esc cancel)\n\n"))
+            lines.append(
+                (
+                    "fg:ansibrightblack",
+                    "(\u2191\u2193 move, Enter select, d delete, Esc cancel)\n\n",
+                )
+            )
             for i, label in enumerate(items):
                 is_add_new = i == len(items) - 1
                 if i == selected[0]:
@@ -254,10 +260,7 @@ def _create_campaign() -> dict | None:
 
 def _list_csv_files() -> list[str]:
     """List .csv files in the current directory."""
-    return sorted(
-        f for f in os.listdir(".")
-        if f.lower().endswith(".csv") and os.path.isfile(f)
-    )
+    return sorted(f for f in os.listdir(".") if f.lower().endswith(".csv") and os.path.isfile(f))
 
 
 def _select_proxy_provider(proxy_providers: dict) -> str | None:
@@ -316,7 +319,11 @@ def _select_proxy_provider(proxy_providers: dict) -> str | None:
     return names[result]
 
 
-_ROLE_CHOICES = [("manufacture", "Manufacturer"), ("wholesale", "Wholesaler"), ("retail", "Retailer")]
+_ROLE_CHOICES = [
+    ("manufacture", "Manufacturer"),
+    ("wholesale", "Wholesaler"),
+    ("retail", "Retailer"),
+]
 
 
 def _select_roles() -> list[str]:
@@ -359,7 +366,8 @@ def _select_roles() -> list[str]:
 
     def _get_text():
         lines = [
-            ("", "\n"), ("bold", "  Business type?  "),
+            ("", "\n"),
+            ("bold", "  Business type?  "),
             ("fg:ansibrightblack", "(←/→ move, Space tick, Enter confirm, Esc = all)\n\n  "),
         ]
         for i, (key, label) in enumerate(_ROLE_CHOICES):
@@ -445,7 +453,23 @@ def _select_csv_file() -> str | None:
 class _ReplCompleter(Completer):
     """Tab-completer for the REPL: completes commands and file paths."""
 
-    _TOP_COMMANDS = ["discover", "smearch", "run", "prepare", "draft", "review", "send", "verify", "smtp", "config", "profile", "provider", "help", "exit", "q"]
+    _TOP_COMMANDS = [
+        "discover",
+        "smearch",
+        "run",
+        "prepare",
+        "draft",
+        "review",
+        "send",
+        "verify",
+        "smtp",
+        "config",
+        "profile",
+        "provider",
+        "help",
+        "exit",
+        "q",
+    ]
     _CONFIG_SUBS = ["init", "set-key"]
     _PROFILE_SUBS = ["list", "create", "use", "delete"]
     _PROVIDER_SUBS = ["list", "add", "delete", "default"]
@@ -536,8 +560,15 @@ class _ReplCompleter(Completer):
             # Suggest --flags when user starts typing with -
             if current_word.startswith("-"):
                 run_flags = [
-                    "--model", "--max-tokens", "--output", "--format",
-                    "--system-prompt", "--template", "--delay", "--workers", "--send",
+                    "--model",
+                    "--max-tokens",
+                    "--output",
+                    "--format",
+                    "--system-prompt",
+                    "--template",
+                    "--delay",
+                    "--workers",
+                    "--send",
                 ]
                 for flag in run_flags:
                     if flag.startswith(current_word) and flag != current_word:
@@ -546,6 +577,7 @@ class _ReplCompleter(Completer):
             # Otherwise complete file paths (CSV files)
             prefix_len = len(words[0]) + 1
             from prompt_toolkit.document import Document
+
             sub_text = text[prefix_len:] if len(text) > prefix_len else ""
             sub_doc = Document(sub_text)
             yield from self._path_completer.get_completions(sub_doc, complete_event)
@@ -554,12 +586,30 @@ class _ReplCompleter(Completer):
         if first == "discover":
             current_word = words[-1] if not text.endswith(" ") else ""
             if current_word.startswith("-"):
-                for flag in ["--icp", "--region", "--mode", "--output", "--limit", "--source-limit", "--require-contact", "--guess-role-email", "--find-people", "--count", "--max-pages", "--workers", "--no-llm", "--no-wiki", "--no-translate", "--no-expand"]:
+                for flag in [
+                    "--icp",
+                    "--region",
+                    "--mode",
+                    "--output",
+                    "--limit",
+                    "--source-limit",
+                    "--require-contact",
+                    "--guess-role-email",
+                    "--find-people",
+                    "--count",
+                    "--max-pages",
+                    "--workers",
+                    "--no-llm",
+                    "--no-wiki",
+                    "--no-translate",
+                    "--no-expand",
+                ]:
                     if flag.startswith(current_word) and flag != current_word:
                         yield Completion(flag, start_position=-len(current_word))
                 return
             prefix_len = len(words[0]) + 1
             from prompt_toolkit.document import Document
+
             sub_text = text[prefix_len:] if len(text) > prefix_len else ""
             sub_doc = Document(sub_text)
             yield from self._path_completer.get_completions(sub_doc, complete_event)
@@ -574,6 +624,7 @@ class _ReplCompleter(Completer):
                 return
             prefix_len = len(words[0]) + 1
             from prompt_toolkit.document import Document
+
             sub_text = text[prefix_len:] if len(text) > prefix_len else ""
             sub_doc = Document(sub_text)
             yield from self._path_completer.get_completions(sub_doc, complete_event)
@@ -588,6 +639,7 @@ class _ReplCompleter(Completer):
                 return
             prefix_len = len(words[0]) + 1
             from prompt_toolkit.document import Document
+
             sub_text = text[prefix_len:] if len(text) > prefix_len else ""
             sub_doc = Document(sub_text)
             yield from self._path_completer.get_completions(sub_doc, complete_event)
@@ -596,6 +648,7 @@ class _ReplCompleter(Completer):
         if first in ("verify", "review"):
             prefix_len = len(words[0]) + 1
             from prompt_toolkit.document import Document
+
             sub_text = text[prefix_len:] if len(text) > prefix_len else ""
             sub_doc = Document(sub_text)
             yield from self._path_completer.get_completions(sub_doc, complete_event)
@@ -646,7 +699,9 @@ def config_init() -> None:
     # ── Active profile (hat) ──
     profile_name = config.get_active_profile_name()
     pc = config.color_ansi(config.get_profile_color(profile_name))
-    typer.echo(f"\n  {BOLD}Profile{RESET} {pc}\u25cf {profile_name}{RESET} {DIM}(company, role, bio, pitch){RESET}\n")
+    typer.echo(
+        f"\n  {BOLD}Profile{RESET} {pc}\u25cf {profile_name}{RESET} {DIM}(company, role, bio, pitch){RESET}\n"
+    )
     prof = config.get_profile()
     company = _ask("Company", default=prof.get("company", ""))
     role = _ask("Role / title", default=prof.get("role", ""))
@@ -897,9 +952,13 @@ def provider_list_cmd() -> None:
         base_url = prov.get("base_url", "")
         url_info = f"  {DIM}{base_url}{RESET}" if base_url else ""
         if ptype == "serper":
-            typer.echo(f"  {check} {BOLD}{name}{RESET}  {DIM}{masked}{RESET}  {DIM}(discovery search){RESET}")
+            typer.echo(
+                f"  {check} {BOLD}{name}{RESET}  {DIM}{masked}{RESET}  {DIM}(discovery search){RESET}"
+            )
         else:
-            typer.echo(f"  {check} {BOLD}{name}{RESET}  {DIM}{masked}{RESET}  ({model}){marker}{url_info}")
+            typer.echo(
+                f"  {check} {BOLD}{name}{RESET}  {DIM}{masked}{RESET}  ({model}){marker}{url_info}"
+            )
 
 
 @provider_app.command("add")
@@ -922,7 +981,9 @@ def provider_add_cmd() -> None:
         # Serper is a search API, not an LLM — skip model/tokens
         if ptype == "serper":
             config.add_provider("serper", ptype, api_key)
-            typer.echo(f"\n  {GREEN}\u2713{RESET} serper added. Discovery will now use Google search.")
+            typer.echo(
+                f"\n  {GREEN}\u2713{RESET} serper added. Discovery will now use Google search."
+            )
             return
 
         default_model = _ask("Default model", default=suggested_model)
@@ -1143,9 +1204,9 @@ def _resolve_missing_websites(rows: list[dict], workers: int = 8) -> list[dict]:
 
     has_col = bool(rows) and "website" in rows[0]
     targets = [
-        r for r in rows
-        if r.get("company", "").strip()
-        and not (r.get("website", "").strip() if has_col else "")
+        r
+        for r in rows
+        if r.get("company", "").strip() and not (r.get("website", "").strip() if has_col else "")
     ]
     if not targets:
         return rows
@@ -1247,7 +1308,9 @@ def _enrich_rows(rows: list[dict], max_pages: int = 4, workers: int = 8) -> list
         email = row.get("email", "")
         if email.strip():
             email_result = verifier.verify_email(email)
-            enriched_row["verification_status"] = "valid" if email_result["valid"] else f"invalid: {email_result['reason']}"
+            enriched_row["verification_status"] = (
+                "valid" if email_result["valid"] else f"invalid: {email_result['reason']}"
+            )
         else:
             enriched_row["verification_status"] = "missing"
         website = enricher.normalize_url(row.get("website", ""))
@@ -1271,11 +1334,11 @@ def _write_results(rows: list[dict], results: list[dict], output: str, fmt: str)
     elif fmt == "stdout":
         for r in results:
             name = _display_name(r)
-            typer.echo(f"\n{'='*60}")
+            typer.echo(f"\n{'=' * 60}")
             typer.echo(f"To: {name} <{r['email']}> @ {r['company']}")
             if r.get("generated_subject"):
                 typer.echo(f"Subject: {r['generated_subject']}")
-            typer.echo(f"{'='*60}")
+            typer.echo(f"{'=' * 60}")
             typer.echo(r["generated_email"])
     else:
         fieldnames = list(rows[0].keys())
@@ -1331,7 +1394,11 @@ def _resolve_provider(model: str | None) -> dict | None:
         # Fallback: check legacy api_keys
         legacy_key = config.get_api_key("anthropic")
         if legacy_key:
-            return {"type": "anthropic", "api_key": legacy_key, "default_model": generator.DEFAULT_MODEL}
+            return {
+                "type": "anthropic",
+                "api_key": legacy_key,
+                "default_model": generator.DEFAULT_MODEL,
+            }
         typer.echo(f"{RED}Error:{RESET} No provider configured. Run: provider add")
         return None
     return provider_config
@@ -1543,7 +1610,9 @@ def do_send(input_csv: str, subject: str = "") -> None:
     _do_send_results(rows, subject)
 
 
-def do_prepare(input_csv: str, output: str = "enriched.csv", max_pages: int = 4, workers: int = 8) -> None:
+def do_prepare(
+    input_csv: str, output: str = "enriched.csv", max_pages: int = 4, workers: int = 8
+) -> None:
     """Prepare an enriched lead CSV without generating emails."""
     rows = _read_csv(input_csv, require_email=False)
     # Fill in any missing company websites from their names (free web search).
@@ -1605,14 +1674,32 @@ def do_discover(
     """
     if mode == "people":
         _do_discover_people(
-            sources_file, icp, output, limit, require_contact,
-            max_pages, workers, source_limit, guess_role_email,
+            sources_file,
+            icp,
+            output,
+            limit,
+            require_contact,
+            max_pages,
+            workers,
+            source_limit,
+            guess_role_email,
         )
         return
     _do_discover_companies(
-        icp, region, output, limit, max_pages, workers,
-        sources_file, find_people, seed_count, require_contact, use_llm, use_wiki,
-        use_translation, use_expansion,
+        icp,
+        region,
+        output,
+        limit,
+        max_pages,
+        workers,
+        sources_file,
+        find_people,
+        seed_count,
+        require_contact,
+        use_llm,
+        use_wiki,
+        use_translation,
+        use_expansion,
     )
 
 
@@ -1637,9 +1724,12 @@ def _do_discover_people(
     typer.echo(f"  {YELLOW}⚠ Person→company data can be stale; verify before outreach.{RESET}")
     try:
         from ddgs import DDGS
+
         typer.echo(f"  {GREEN}✓{RESET} Searching with DuckDuckGo")
     except ImportError:
-        typer.echo(f"  {YELLOW}⚠{RESET} ddgs package not installed. Run: {BOLD}pip install ddgs{RESET}")
+        typer.echo(
+            f"  {YELLOW}⚠{RESET} ddgs package not installed. Run: {BOLD}pip install ddgs{RESET}"
+        )
     if discovery._get_serper_key():
         typer.echo(f"  {GREEN}✓{RESET} Serper search API configured (fallback)")
 
@@ -1661,7 +1751,9 @@ def _do_discover_people(
 
     with_contact = sum(1 for row in rows if row.get("email"))
     linkedin_count = sum(1 for row in rows if row.get("contact_type") == "linkedin_profile")
-    typer.echo(f"  Found {len(rows)} compan{'y' if len(rows) == 1 else 'ies'} ({with_contact} with contact info).")
+    typer.echo(
+        f"  Found {len(rows)} compan{'y' if len(rows) == 1 else 'ies'} ({with_contact} with contact info)."
+    )
     if linkedin_count:
         typer.echo(f"  {CYAN}ℹ{RESET} {linkedin_count} contact(s) via LinkedIn search")
     typer.echo(f"  Output saved to: {output}")
@@ -1692,13 +1784,18 @@ def _do_discover_companies(
 
     try:
         from ddgs import DDGS
+
         typer.echo(f"  {GREEN}✓{RESET} Searching with DuckDuckGo")
     except ImportError:
-        typer.echo(f"  {YELLOW}⚠{RESET} ddgs package not installed. Run: {BOLD}pip install ddgs{RESET}")
+        typer.echo(
+            f"  {YELLOW}⚠{RESET} ddgs package not installed. Run: {BOLD}pip install ddgs{RESET}"
+        )
     if discovery._get_serper_key():
         typer.echo(f"  {GREEN}✓{RESET} Serper search API configured (fallback)")
     if not use_llm:
-        typer.echo(f"  {CYAN}ℹ{RESET} --no-llm: deterministic only (no LLM seeding, no LLM referee)")
+        typer.echo(
+            f"  {CYAN}ℹ{RESET} --no-llm: deterministic only (no LLM seeding, no LLM referee)"
+        )
     elif discovery._resolve_llm_provider():
         typer.echo(f"  {GREEN}✓{RESET} LLM company seeding + referee enabled")
     else:
@@ -1709,7 +1806,9 @@ def _do_discover_companies(
         typer.echo(f"  {CYAN}ℹ{RESET} --no-wiki: Wikipedia list channel disabled")
     target_langs = discovery._region_languages(region) if use_translation else []
     if target_langs:
-        typer.echo(f"  {GREEN}✓{RESET} Local-language search enabled ({region} → {', '.join(target_langs)})")
+        typer.echo(
+            f"  {GREEN}✓{RESET} Local-language search enabled ({region} → {', '.join(target_langs)})"
+        )
     elif not use_translation:
         typer.echo(f"  {CYAN}ℹ{RESET} --no-translate: English-only search/matching")
     if use_expansion:
@@ -1843,7 +1942,9 @@ def smtp_setup_cmd() -> None:
 
     # Show app password guidance for Gmail
     if "gmail" in host.lower():
-        typer.echo(f"\n  {YELLOW}Gmail requires an App Password (not your regular password).{RESET}")
+        typer.echo(
+            f"\n  {YELLOW}Gmail requires an App Password (not your regular password).{RESET}"
+        )
         typer.echo(f"  {DIM}1. Enable 2-Step Verification on your Google account{RESET}")
         typer.echo(f"  {DIM}2. Go to: https://myaccount.google.com/apppasswords{RESET}")
         typer.echo(f"  {DIM}3. Generate a password for 'Mail' and paste it below{RESET}\n")
@@ -1934,30 +2035,70 @@ def smtp_show_direct() -> None:
 
 @app.command()
 def discover(
-    sources_file: str = typer.Argument("", help="Optional source URLs file (people mode, or extra channel in companies mode)"),
-    icp: str = typer.Option("", "--icp", help="Ideal customer profile / what the target companies do"),
+    sources_file: str = typer.Argument(
+        "", help="Optional source URLs file (people mode, or extra channel in companies mode)"
+    ),
+    icp: str = typer.Option(
+        "", "--icp", help="Ideal customer profile / what the target companies do"
+    ),
     region: str = typer.Option("", "--region", help="Country or region to target (companies mode)"),
-    mode: str = typer.Option("companies", "--mode", help="'companies' (ICP+region) or 'people' (legacy sources)"),
-    output: str = typer.Option("leads.csv", "-o", "--output", help="Output discovered lead CSV path"),
+    mode: str = typer.Option(
+        "companies", "--mode", help="'companies' (ICP+region) or 'people' (legacy sources)"
+    ),
+    output: str = typer.Option(
+        "leads.csv", "-o", "--output", help="Output discovered lead CSV path"
+    ),
     limit: int = typer.Option(10, "--limit", help="Maximum companies to discover"),
-    source_limit: int = typer.Option(25, "--source-limit", help="[people] Max candidates per source page"),
-    require_contact: bool = typer.Option(False, "--require-contact", help="Only keep companies with an email"),
-    guess_role_email: bool = typer.Option(False, "--guess-role-email", help="[people] Low-confidence hello@domain guesses"),
-    find_people: bool = typer.Option(False, "--find-people", help="Also search a named contact per company (may be stale)"),
+    source_limit: int = typer.Option(
+        25, "--source-limit", help="[people] Max candidates per source page"
+    ),
+    require_contact: bool = typer.Option(
+        False, "--require-contact", help="Only keep companies with an email"
+    ),
+    guess_role_email: bool = typer.Option(
+        False, "--guess-role-email", help="[people] Low-confidence hello@domain guesses"
+    ),
+    find_people: bool = typer.Option(
+        False, "--find-people", help="Also search a named contact per company (may be stale)"
+    ),
     count: int = typer.Option(30, "--count", help="[companies] Max companies for LLM seeding"),
-    max_pages: int = typer.Option(3, "--max-pages", help="Company pages to crawl for facts/contacts"),
+    max_pages: int = typer.Option(
+        3, "--max-pages", help="Company pages to crawl for facts/contacts"
+    ),
     workers: int = typer.Option(8, "--workers", help="Parallel company crawl workers (max 8)"),
-    no_llm: bool = typer.Option(False, "--no-llm", help="[companies] Deterministic only — no LLM seeding or referee"),
-    no_wiki: bool = typer.Option(False, "--no-wiki", help="[companies] Disable the Wikipedia list channel"),
-    no_translate: bool = typer.Option(False, "--no-translate", help="[companies] Disable local-language search/translation"),
-    no_expand: bool = typer.Option(False, "--no-expand", help="[companies] Disable semantic ICP expansion (related-term recall)"),
+    no_llm: bool = typer.Option(
+        False, "--no-llm", help="[companies] Deterministic only — no LLM seeding or referee"
+    ),
+    no_wiki: bool = typer.Option(
+        False, "--no-wiki", help="[companies] Disable the Wikipedia list channel"
+    ),
+    no_translate: bool = typer.Option(
+        False, "--no-translate", help="[companies] Disable local-language search/translation"
+    ),
+    no_expand: bool = typer.Option(
+        False,
+        "--no-expand",
+        help="[companies] Disable semantic ICP expansion (related-term recall)",
+    ),
 ) -> None:
     """[Experimental] Discover companies (ICP + region) with a contact bundle, or people (legacy)."""
     do_discover(
-        sources_file, icp, output, limit, require_contact, max_pages, workers,
-        source_limit, guess_role_email,
-        region=region, mode=mode, find_people=find_people, seed_count=count,
-        use_llm=not no_llm, use_wiki=not no_wiki, use_translation=not no_translate,
+        sources_file,
+        icp,
+        output,
+        limit,
+        require_contact,
+        max_pages,
+        workers,
+        source_limit,
+        guess_role_email,
+        region=region,
+        mode=mode,
+        find_people=find_people,
+        seed_count=count,
+        use_llm=not no_llm,
+        use_wiki=not no_wiki,
+        use_translation=not no_translate,
         use_expansion=not no_expand,
     )
 
@@ -1989,11 +2130,15 @@ def do_smearch(
     from opencold import sic_match
     from opencold import smearch as sm
 
-    typer.echo(f"\n  {YELLOW}[experimental]{RESET} SME search (Companies House) — review before outreach")
+    typer.echo(
+        f"\n  {YELLOW}[experimental]{RESET} SME search (Companies House) — review before outreach"
+    )
 
     sic_codes = [c.strip() for c in sic.split(",") if c.strip()] if sic else None
     if not icp.strip() and not sic_codes:
-        typer.echo(f"  {RED}Error:{RESET} provide an ICP (e.g. smearch \"timber merchants\") or --sic CODES")
+        typer.echo(
+            f'  {RED}Error:{RESET} provide an ICP (e.g. smearch "timber merchants") or --sic CODES'
+        )
         return
 
     provider = discovery._resolve_llm_provider() if (use_expansion and use_llm) else None
@@ -2012,17 +2157,29 @@ def do_smearch(
 
     # 1) Resolve SIC codes (offline; no API key needed) and report.
     match = sm.plan_matches(
-        icp, sic_codes=sic_codes, roles=roles, use_expansion=use_expansion,
-        use_llm=use_llm, provider=provider, max_sics=max_sics, min_score=min_score,
+        icp,
+        sic_codes=sic_codes,
+        roles=roles,
+        use_expansion=use_expansion,
+        use_llm=use_llm,
+        provider=provider,
+        max_sics=max_sics,
+        min_score=min_score,
     )
     if match.status == "generic":
-        typer.echo(f"  {YELLOW}⚠ ICP looks generic{RESET} — no specific industry term in \"{icp}\".")
-        typer.echo(f"  {DIM}Narrow it (e.g. 'furniture manufacturing', 'metal fabrication') or pass --sic CODES.{RESET}")
+        typer.echo(f'  {YELLOW}⚠ ICP looks generic{RESET} — no specific industry term in "{icp}".')
+        typer.echo(
+            f"  {DIM}Narrow it (e.g. 'furniture manufacturing', 'metal fabrication') or pass --sic CODES.{RESET}"
+        )
     if not match.matches:
-        typer.echo(f"  {RED}No SIC codes matched.{RESET} Try a clearer/broader ICP, a lower --min-score, or --sic CODES.")
+        typer.echo(
+            f"  {RED}No SIC codes matched.{RESET} Try a clearer/broader ICP, a lower --min-score, or --sic CODES."
+        )
         return
     if match.status == "relaxed":
-        typer.echo(f"  {YELLOW}⚠ No strong SIC match{RESET} — using best-effort (low-confidence) codes:")
+        typer.echo(
+            f"  {YELLOW}⚠ No strong SIC match{RESET} — using best-effort (low-confidence) codes:"
+        )
     elif match.status == "generic":
         typer.echo(f"  {DIM}Best-effort SIC codes (broad ICP):{RESET}")
     else:
@@ -2030,10 +2187,16 @@ def do_smearch(
     if roles:
         typer.echo(f"  {DIM}business type: {' + '.join(roles)}{RESET}")
     elif not sic_codes:
-        typer.echo(f"  {DIM}no business type given — ranked manufacture > wholesale > retail (use --role){RESET}")
+        typer.echo(
+            f"  {DIM}no business type given — ranked manufacture > wholesale > retail (use --role){RESET}"
+        )
     for m in match.matches:
         tag = m.role or "other"
-        extra = f"  {DIM}(score {m.score:g}; {', '.join(m.matched_terms[:6])}){RESET}" if m.matched_terms else ""
+        extra = (
+            f"  {DIM}(score {m.score:g}; {', '.join(m.matched_terms[:6])}){RESET}"
+            if m.matched_terms
+            else ""
+        )
         typer.echo(f"      {BOLD}{m.code}{RESET}  {m.description}  {DIM}[{tag}]{RESET}{extra}")
 
     if dry_run:
@@ -2047,7 +2210,9 @@ def do_smearch(
     key = ch.get_companies_house_key()
     if not key:
         typer.echo(f"\n  {RED}Error:{RESET} no Companies House API key.")
-        typer.echo(f"  Add {BOLD}COMPANIES_HOUSE_API_KEY{RESET} to a .env file, or run {BOLD}config set-key companies_house{RESET}.")
+        typer.echo(
+            f"  Add {BOLD}COMPANIES_HOUSE_API_KEY{RESET} to a .env file, or run {BOLD}config set-key companies_house{RESET}."
+        )
         return
 
     types = tuple(t.strip() for t in company_type.split(",") if t.strip()) or None
@@ -2059,6 +2224,7 @@ def do_smearch(
     if not no_db:
         try:
             from opencold import smearch_db
+
             db = smearch_db.connect()
         except Exception as e:  # a broken/locked DB shouldn't block the search
             typer.echo(f"  {YELLOW}⚠{RESET} seen-DB unavailable ({e}); running without dedup.")
@@ -2071,29 +2237,42 @@ def do_smearch(
         si = sm.page_to_start_index(pg, limit)
         if pg == max(1, page):
             note = f", page {pg}" if si else ""
-            typer.echo(f"\n  Querying Companies House (active SMEs, limit {limit}{note})… {DIM}[{ch.base_url()}]{RESET}")
+            typer.echo(
+                f"\n  Querying Companies House (active SMEs, limit {limit}{note})… {DIM}[{ch.base_url()}]{RESET}"
+            )
         else:
             typer.echo(f"  {DIM}page {pg - 1} already enriched — fetching page {pg}…{RESET}")
         page_rows = sm.collect_smes(
-            match.matches, api_key=key, limit=limit, location=location,
-            status=status, company_types=types, progress=_progress,
-            exclude_dormant=not include_dormant, factory=factory,
-            size_filter=size_filter, start_index=si,
+            match.matches,
+            api_key=key,
+            limit=limit,
+            location=location,
+            status=status,
+            company_types=types,
+            progress=_progress,
+            exclude_dormant=not include_dormant,
+            factory=factory,
+            size_filter=size_filter,
+            start_index=si,
         )
         typer.echo("")  # end the progress line
         return page_rows
 
-    _seen = (lambda rws: smearch_db.seen_numbers(
-        db, [r.get("company_number") for r in rws])) if db is not None else None
+    _seen = (
+        (lambda rws: smearch_db.seen_numbers(db, [r.get("company_number") for r in rws]))
+        if db is not None
+        else None
+    )
     # Factory mode scans a page-worth of candidates for production evidence; the
     # plain path only needs top_n fresh rows to enrich.
     target = limit if factory else top_n
     try:
-        gathered = sm.gather_fresh_pages(_collect, start_page=page, target=target,
-                                         is_seen=_seen)
+        gathered = sm.gather_fresh_pages(_collect, start_page=page, target=target, is_seen=_seen)
     except ch.CompaniesHouseAuthError:
         typer.echo(f"\n  {RED}Invalid Authorization (HTTP 401){RESET} from {ch.base_url()}.")
-        typer.echo(f"  {DIM}If this is a sandbox/test key, add --sandbox. For real UK data, use a Live application key.{RESET}")
+        typer.echo(
+            f"  {DIM}If this is a sandbox/test key, add --sandbox. For real UK data, use a Live application key.{RESET}"
+        )
         return
     except ch.CompaniesHouseRequestError as e:
         typer.echo(f"\n  {RED}Companies House rejected the query.{RESET} {DIM}{e}{RESET}")
@@ -2103,33 +2282,51 @@ def do_smearch(
     fresh = gathered.rows
     if not fresh:
         if gathered.skipped_seen:
-            typer.echo(f"  {YELLOW}⚠{RESET} Every company on the scanned page(s) was already enriched — "
-                       f"nothing new. Try {BOLD}--page N{RESET}, a broader ICP, or {BOLD}--no-db{RESET}.")
+            typer.echo(
+                f"  {YELLOW}⚠{RESET} Every company on the scanned page(s) was already enriched — "
+                f"nothing new. Try {BOLD}--page N{RESET}, a broader ICP, or {BOLD}--no-db{RESET}."
+            )
         else:
-            typer.echo(f"  {YELLOW}⚠{RESET} No companies returned (check key, filters, or network).")
+            typer.echo(
+                f"  {YELLOW}⚠{RESET} No companies returned (check key, filters, or network)."
+            )
         return
 
     top = fresh[:top_n]  # default: top-N fresh (factory mode reselects below)
     if enrich:
         from opencold import google_places
         from opencold import smearch_enrich as se
+
         places_key = google_places.get_places_key()
         enrich_provider = discovery._resolve_llm_provider() if use_llm else None
         if not places_key:
-            typer.echo(f"  {DIM}no GOOGLE_PLACES_API_KEY — Places website/phone fallback disabled{RESET}")
+            typer.echo(
+                f"  {DIM}no GOOGLE_PLACES_API_KEY — Places website/phone fallback disabled{RESET}"
+            )
 
         if factory:
-            typer.echo(f"\n  {CYAN}factory mode{RESET} — keeping only companies with production/facility evidence (scanning ranked pool)…")
+            typer.echo(
+                f"\n  {CYAN}factory mode{RESET} — keeping only companies with production/facility evidence (scanning ranked pool)…"
+            )
 
             def _fprog(kept: int, total: int, cname: str) -> None:
-                typer.echo(f"\r  {DIM}factory {kept}/{total} (scanning {cname[:28]:28}){RESET}", nl=False)
+                typer.echo(
+                    f"\r  {DIM}factory {kept}/{total} (scanning {cname[:28]:28}){RESET}", nl=False
+                )
 
             top, scanned = se.enrich_top_factories(
-                fresh, target=top_n, ch_key=key, use_llm=use_llm,
-                provider=enrich_provider, places_key=places_key, progress=_fprog,
+                fresh,
+                target=top_n,
+                ch_key=key,
+                use_llm=use_llm,
+                provider=enrich_provider,
+                places_key=places_key,
+                progress=_fprog,
             )
             typer.echo("")
-            typer.echo(f"  {DIM}scanned {scanned} to find {len(top)} factor{'y' if len(top) == 1 else 'ies'}{RESET}")
+            typer.echo(
+                f"  {DIM}scanned {scanned} to find {len(top)} factor{'y' if len(top) == 1 else 'ies'}{RESET}"
+            )
         else:
             typer.echo(f"\n  Enriching top {len(top)} (officers, website, contacts)…")
 
@@ -2137,14 +2334,20 @@ def do_smearch(
                 typer.echo(f"\r  {DIM}enriching {i}/{total}: {cname[:32]:32}{RESET}", nl=False)
 
             se.enrich_rows(
-                top, ch_key=key, use_llm=use_llm, provider=enrich_provider,
-                places_key=places_key, progress=_eprog,
+                top,
+                ch_key=key,
+                use_llm=use_llm,
+                provider=enrich_provider,
+                places_key=places_key,
+                progress=_eprog,
             )
             typer.echo("")
 
     if not top:
-        typer.echo(f"  {YELLOW}⚠{RESET} No matching companies after enrichment "
-                   f"({'no factory evidence found in pool' if factory else 'check filters'}).")
+        typer.echo(
+            f"  {YELLOW}⚠{RESET} No matching companies after enrichment "
+            f"({'no factory evidence found in pool' if factory else 'check filters'})."
+        )
         return
     sm.write_smes_csv(top, output)
 
@@ -2156,60 +2359,130 @@ def do_smearch(
             pass
 
     dorm = "" if include_dormant else f" {DIM}(dormant excluded){RESET}"
-    skip = f" {DIM}(skipped {gathered.skipped_seen} already-enriched){RESET}" if gathered.skipped_seen else ""
+    skip = (
+        f" {DIM}(skipped {gathered.skipped_seen} already-enriched){RESET}"
+        if gathered.skipped_seen
+        else ""
+    )
     test = f" {DIM}(test run — not recorded){RESET}" if no_db else ""
-    typer.echo(f"  {'Enriched + ' if enrich else ''}saved {len(top)} fresh "
-               f"compan{'y' if len(top) == 1 else 'ies'} to {BOLD}{output}{RESET}.{skip}{dorm}{test}")
+    typer.echo(
+        f"  {'Enriched + ' if enrich else ''}saved {len(top)} fresh "
+        f"compan{'y' if len(top) == 1 else 'ies'} to {BOLD}{output}{RESET}.{skip}{dorm}{test}"
+    )
 
 
 @app.command()
 def smearch(
-    icp: str = typer.Argument("", help="Ideal Customer Profile, e.g. \"timber merchants\""),
+    icp: str = typer.Argument("", help='Ideal Customer Profile, e.g. "timber merchants"'),
     output: str = typer.Option("smes.csv", "-o", "--output", help="Output CSV path"),
     limit: int = typer.Option(50, "--limit", help="Max companies to collect & rank"),
-    page: int = typer.Option(1, "-p", "--page", help="Result page (1-based); each page is --limit companies"),
-    location: str = typer.Option("", "--location", help="Filter on registered office (e.g. \"London\")"),
+    page: int = typer.Option(
+        1, "-p", "--page", help="Result page (1-based); each page is --limit companies"
+    ),
+    location: str = typer.Option(
+        "", "--location", help='Filter on registered office (e.g. "London")'
+    ),
     status: str = typer.Option("active", "--status", help="Company status filter"),
-    company_type: str = typer.Option("", "--company-type", help="Comma list of company types (default: SME-friendly forms)"),
-    sic: str = typer.Option("", "--sic", help="Explicit SIC code(s), comma-separated — skips ICP→SIC matching"),
-    role: str = typer.Option("", "--role", help="Business type: manufacturer / wholesaler / retailer (comma for several). Default: detect from ICP, else ask."),
+    company_type: str = typer.Option(
+        "", "--company-type", help="Comma list of company types (default: SME-friendly forms)"
+    ),
+    sic: str = typer.Option(
+        "", "--sic", help="Explicit SIC code(s), comma-separated — skips ICP→SIC matching"
+    ),
+    role: str = typer.Option(
+        "",
+        "--role",
+        help="Business type: manufacturer / wholesaler / retailer (comma for several). Default: detect from ICP, else ask.",
+    ),
     max_sics: int = typer.Option(5, "--max-sics", help="Max SIC codes to match & query"),
     min_score: float = typer.Option(1.0, "--min-score", help="Minimum ICP→SIC match score"),
-    no_llm: bool = typer.Option(False, "--no-llm", help="Deterministic ICP expansion only — no LLM"),
+    no_llm: bool = typer.Option(
+        False, "--no-llm", help="Deterministic ICP expansion only — no LLM"
+    ),
     no_expand: bool = typer.Option(False, "--no-expand", help="Disable semantic ICP expansion"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview matched SIC codes without querying Companies House"),
-    sandbox: bool = typer.Option(False, "--sandbox", help="Use the Companies House sandbox/test API base (for test keys)"),
-    include_dormant: bool = typer.Option(False, "--include-dormant", help="Keep dormant (non-trading) companies (excluded by default)"),
-    top_n: int = typer.Option(10, "--top-n", help="How many top-ranked companies to enrich and write"),
-    no_enrich: bool = typer.Option(False, "--no-enrich", help="Skip enrichment (website, contacts, officers)"),
-    size: str = typer.Option("", "--size", help="Filter by accounts size: comma list of micro/small/medium"),
-    no_db: bool = typer.Option(False, "--no-db", help="Stateless test run: don't skip/record already-seen companies"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Preview matched SIC codes without querying Companies House"
+    ),
+    sandbox: bool = typer.Option(
+        False, "--sandbox", help="Use the Companies House sandbox/test API base (for test keys)"
+    ),
+    include_dormant: bool = typer.Option(
+        False,
+        "--include-dormant",
+        help="Keep dormant (non-trading) companies (excluded by default)",
+    ),
+    top_n: int = typer.Option(
+        10, "--top-n", help="How many top-ranked companies to enrich and write"
+    ),
+    no_enrich: bool = typer.Option(
+        False, "--no-enrich", help="Skip enrichment (website, contacts, officers)"
+    ),
+    size: str = typer.Option(
+        "", "--size", help="Filter by accounts size: comma list of micro/small/medium"
+    ),
+    no_db: bool = typer.Option(
+        False, "--no-db", help="Stateless test run: don't skip/record already-seen companies"
+    ),
 ) -> None:
     """[Experimental] Find UK SMEs via Companies House by matching an ICP to SIC codes."""
     do_smearch(
-        icp, output=output, limit=limit, page=page, location=location, status=status,
-        company_type=company_type, sic=sic, role=role, max_sics=max_sics,
-        min_score=min_score, use_llm=not no_llm, use_expansion=not no_expand,
-        dry_run=dry_run, sandbox=sandbox, include_dormant=include_dormant,
-        top_n=top_n, enrich=not no_enrich, size=size, no_db=no_db,
+        icp,
+        output=output,
+        limit=limit,
+        page=page,
+        location=location,
+        status=status,
+        company_type=company_type,
+        sic=sic,
+        role=role,
+        max_sics=max_sics,
+        min_score=min_score,
+        use_llm=not no_llm,
+        use_expansion=not no_expand,
+        dry_run=dry_run,
+        sandbox=sandbox,
+        include_dormant=include_dormant,
+        top_n=top_n,
+        enrich=not no_enrich,
+        size=size,
+        no_db=no_db,
     )
 
 
 @app.command()
 def run(
     input_csv: str = typer.Argument(help="Path to input CSV file"),
-    output: str = typer.Option("output.csv", "-o", "--output", help="Output path (use '-' for stdout)"),
-    output_format: str = typer.Option("csv", "-f", "--format", help="Output format: csv, json, stdout"),
+    output: str = typer.Option(
+        "output.csv", "-o", "--output", help="Output path (use '-' for stdout)"
+    ),
+    output_format: str = typer.Option(
+        "csv", "-f", "--format", help="Output format: csv, json, stdout"
+    ),
     model: Optional[str] = typer.Option(None, "--model", help="Model ID (auto-detects provider)"),
     max_tokens: Optional[int] = typer.Option(None, "--max-tokens", help="Override max tokens"),
-    system_prompt: Optional[str] = typer.Option(None, "--system-prompt", help="Custom system prompt"),
-    prompt_template: Optional[str] = typer.Option(None, "--template", help="Custom prompt template"),
+    system_prompt: Optional[str] = typer.Option(
+        None, "--system-prompt", help="Custom system prompt"
+    ),
+    prompt_template: Optional[str] = typer.Option(
+        None, "--template", help="Custom prompt template"
+    ),
     delay: float = typer.Option(0.5, "--delay"),
     workers: int = typer.Option(5, "--workers", help="Parallel crawl/LLM workers (max 8)"),
     send: bool = typer.Option(False, "--send", help="Send emails via SMTP after generating"),
 ) -> None:
     """Raw CSV: prepare + draft. Prepared CSV: draft again. Sends only with --send."""
-    do_run(input_csv, output, output_format, model, max_tokens, system_prompt, prompt_template, delay, send, workers=workers)
+    do_run(
+        input_csv,
+        output,
+        output_format,
+        model,
+        max_tokens,
+        system_prompt,
+        prompt_template,
+        delay,
+        send,
+        workers=workers,
+    )
 
 
 @app.command()
@@ -2227,11 +2500,17 @@ def prepare(
 def draft(
     input_csv: str = typer.Argument(help="Path to prepared/enriched CSV file"),
     output: str = typer.Option("drafts.csv", "-o", "--output", help="Output draft CSV path"),
-    output_format: str = typer.Option("csv", "-f", "--format", help="Output format: csv, json, stdout"),
+    output_format: str = typer.Option(
+        "csv", "-f", "--format", help="Output format: csv, json, stdout"
+    ),
     model: Optional[str] = typer.Option(None, "--model", help="Model ID (auto-detects provider)"),
     max_tokens: Optional[int] = typer.Option(None, "--max-tokens", help="Override max tokens"),
-    system_prompt: Optional[str] = typer.Option(None, "--system-prompt", help="Custom system prompt"),
-    prompt_template: Optional[str] = typer.Option(None, "--template", help="Custom prompt template"),
+    system_prompt: Optional[str] = typer.Option(
+        None, "--system-prompt", help="Custom system prompt"
+    ),
+    prompt_template: Optional[str] = typer.Option(
+        None, "--template", help="Custom prompt template"
+    ),
     delay: float = typer.Option(0.5, "--delay"),
     workers: int = typer.Option(5, "--workers", help="Parallel LLM workers (max 8)"),
 ) -> None:
@@ -2371,25 +2650,35 @@ def _parse_run_args(tokens: list[str]) -> dict:
     while i < len(tokens):
         tok = tokens[i]
         if tok in ("-o", "--output") and i + 1 < len(tokens):
-            args["output"] = tokens[i + 1]; i += 2
+            args["output"] = tokens[i + 1]
+            i += 2
         elif tok in ("-f", "--format") and i + 1 < len(tokens):
-            args["output_format"] = tokens[i + 1]; i += 2
+            args["output_format"] = tokens[i + 1]
+            i += 2
         elif tok == "--model" and i + 1 < len(tokens):
-            args["model"] = tokens[i + 1]; i += 2
+            args["model"] = tokens[i + 1]
+            i += 2
         elif tok == "--max-tokens" and i + 1 < len(tokens):
-            args["max_tokens"] = int(tokens[i + 1]); i += 2
+            args["max_tokens"] = int(tokens[i + 1])
+            i += 2
         elif tok == "--system-prompt" and i + 1 < len(tokens):
-            args["system_prompt"] = tokens[i + 1]; i += 2
+            args["system_prompt"] = tokens[i + 1]
+            i += 2
         elif tok == "--template" and i + 1 < len(tokens):
-            args["prompt_template"] = tokens[i + 1]; i += 2
+            args["prompt_template"] = tokens[i + 1]
+            i += 2
         elif tok == "--delay" and i + 1 < len(tokens):
-            args["delay"] = float(tokens[i + 1]); i += 2
+            args["delay"] = float(tokens[i + 1])
+            i += 2
         elif tok == "--workers" and i + 1 < len(tokens):
-            args["workers"] = int(tokens[i + 1]); i += 2
+            args["workers"] = int(tokens[i + 1])
+            i += 2
         elif tok == "--send":
-            args["send"] = True; i += 1
+            args["send"] = True
+            i += 1
         else:
-            positional.append(tok); i += 1
+            positional.append(tok)
+            i += 1
 
     if not positional:
         return {}
@@ -2422,39 +2711,56 @@ def _parse_discover_args(tokens: list[str]) -> dict:
     while i < len(tokens):
         tok = tokens[i]
         if tok == "--icp" and i + 1 < len(tokens):
-            args["icp"] = tokens[i + 1]; i += 2
+            args["icp"] = tokens[i + 1]
+            i += 2
         elif tok == "--region" and i + 1 < len(tokens):
-            args["region"] = tokens[i + 1]; i += 2
+            args["region"] = tokens[i + 1]
+            i += 2
         elif tok == "--mode" and i + 1 < len(tokens):
-            args["mode"] = tokens[i + 1]; i += 2
+            args["mode"] = tokens[i + 1]
+            i += 2
         elif tok in ("-o", "--output") and i + 1 < len(tokens):
-            args["output"] = tokens[i + 1]; i += 2
+            args["output"] = tokens[i + 1]
+            i += 2
         elif tok == "--limit" and i + 1 < len(tokens):
-            args["limit"] = int(tokens[i + 1]); i += 2
+            args["limit"] = int(tokens[i + 1])
+            i += 2
         elif tok == "--source-limit" and i + 1 < len(tokens):
-            args["source_limit"] = int(tokens[i + 1]); i += 2
+            args["source_limit"] = int(tokens[i + 1])
+            i += 2
         elif tok == "--count" and i + 1 < len(tokens):
-            args["seed_count"] = int(tokens[i + 1]); i += 2
+            args["seed_count"] = int(tokens[i + 1])
+            i += 2
         elif tok == "--max-pages" and i + 1 < len(tokens):
-            args["max_pages"] = int(tokens[i + 1]); i += 2
+            args["max_pages"] = int(tokens[i + 1])
+            i += 2
         elif tok == "--workers" and i + 1 < len(tokens):
-            args["workers"] = int(tokens[i + 1]); i += 2
+            args["workers"] = int(tokens[i + 1])
+            i += 2
         elif tok == "--require-contact":
-            args["require_contact"] = True; i += 1
+            args["require_contact"] = True
+            i += 1
         elif tok == "--guess-role-email":
-            args["guess_role_email"] = True; i += 1
+            args["guess_role_email"] = True
+            i += 1
         elif tok == "--find-people":
-            args["find_people"] = True; i += 1
+            args["find_people"] = True
+            i += 1
         elif tok == "--no-llm":
-            args["use_llm"] = False; i += 1
+            args["use_llm"] = False
+            i += 1
         elif tok == "--no-wiki":
-            args["use_wiki"] = False; i += 1
+            args["use_wiki"] = False
+            i += 1
         elif tok == "--no-translate":
-            args["use_translation"] = False; i += 1
+            args["use_translation"] = False
+            i += 1
         elif tok == "--no-expand":
-            args["use_expansion"] = False; i += 1
+            args["use_expansion"] = False
+            i += 1
         else:
-            positional.append(tok); i += 1
+            positional.append(tok)
+            i += 1
     args["sources_file"] = positional[0] if positional else ""
     return args
 
@@ -2462,56 +2768,91 @@ def _parse_discover_args(tokens: list[str]) -> dict:
 def _parse_smearch_args(tokens: list[str]) -> dict:
     """Parse smearch subcommand arguments from REPL tokens."""
     args: dict = {
-        "icp": "", "output": "smes.csv", "limit": 50, "page": 1, "location": "",
-        "status": "active", "company_type": "", "sic": "", "max_sics": 5,
-        "min_score": 1.0, "use_llm": True, "use_expansion": True, "dry_run": False,
-        "sandbox": False, "role": "", "include_dormant": False,
-        "top_n": 10, "enrich": True, "size": "", "no_db": False,
+        "icp": "",
+        "output": "smes.csv",
+        "limit": 50,
+        "page": 1,
+        "location": "",
+        "status": "active",
+        "company_type": "",
+        "sic": "",
+        "max_sics": 5,
+        "min_score": 1.0,
+        "use_llm": True,
+        "use_expansion": True,
+        "dry_run": False,
+        "sandbox": False,
+        "role": "",
+        "include_dormant": False,
+        "top_n": 10,
+        "enrich": True,
+        "size": "",
+        "no_db": False,
     }
     positional = []
     i = 0
     while i < len(tokens):
         tok = tokens[i]
         if tok in ("-o", "--output") and i + 1 < len(tokens):
-            args["output"] = tokens[i + 1]; i += 2
+            args["output"] = tokens[i + 1]
+            i += 2
         elif tok == "--limit" and i + 1 < len(tokens):
-            args["limit"] = int(tokens[i + 1]); i += 2
+            args["limit"] = int(tokens[i + 1])
+            i += 2
         elif tok in ("-p", "--page") and i + 1 < len(tokens):
-            args["page"] = int(tokens[i + 1]); i += 2
+            args["page"] = int(tokens[i + 1])
+            i += 2
         elif tok == "--location" and i + 1 < len(tokens):
-            args["location"] = tokens[i + 1]; i += 2
+            args["location"] = tokens[i + 1]
+            i += 2
         elif tok == "--status" and i + 1 < len(tokens):
-            args["status"] = tokens[i + 1]; i += 2
+            args["status"] = tokens[i + 1]
+            i += 2
         elif tok == "--company-type" and i + 1 < len(tokens):
-            args["company_type"] = tokens[i + 1]; i += 2
+            args["company_type"] = tokens[i + 1]
+            i += 2
         elif tok == "--sic" and i + 1 < len(tokens):
-            args["sic"] = tokens[i + 1]; i += 2
+            args["sic"] = tokens[i + 1]
+            i += 2
         elif tok == "--role" and i + 1 < len(tokens):
-            args["role"] = tokens[i + 1]; i += 2
+            args["role"] = tokens[i + 1]
+            i += 2
         elif tok == "--max-sics" and i + 1 < len(tokens):
-            args["max_sics"] = int(tokens[i + 1]); i += 2
+            args["max_sics"] = int(tokens[i + 1])
+            i += 2
         elif tok == "--min-score" and i + 1 < len(tokens):
-            args["min_score"] = float(tokens[i + 1]); i += 2
+            args["min_score"] = float(tokens[i + 1])
+            i += 2
         elif tok == "--no-llm":
-            args["use_llm"] = False; i += 1
+            args["use_llm"] = False
+            i += 1
         elif tok == "--no-expand":
-            args["use_expansion"] = False; i += 1
+            args["use_expansion"] = False
+            i += 1
         elif tok == "--dry-run":
-            args["dry_run"] = True; i += 1
+            args["dry_run"] = True
+            i += 1
         elif tok == "--sandbox":
-            args["sandbox"] = True; i += 1
+            args["sandbox"] = True
+            i += 1
         elif tok == "--include-dormant":
-            args["include_dormant"] = True; i += 1
+            args["include_dormant"] = True
+            i += 1
         elif tok == "--top-n" and i + 1 < len(tokens):
-            args["top_n"] = int(tokens[i + 1]); i += 2
+            args["top_n"] = int(tokens[i + 1])
+            i += 2
         elif tok == "--no-enrich":
-            args["enrich"] = False; i += 1
+            args["enrich"] = False
+            i += 1
         elif tok == "--no-db":
-            args["no_db"] = True; i += 1
+            args["no_db"] = True
+            i += 1
         elif tok == "--size" and i + 1 < len(tokens):
-            args["size"] = tokens[i + 1]; i += 2
+            args["size"] = tokens[i + 1]
+            i += 2
         else:
-            positional.append(tok); i += 1
+            positional.append(tok)
+            i += 1
     # Join all positional tokens so an unquoted multi-word ICP keeps its words
     # ("smearch metal manufacturers" -> "metal manufacturers", so the role is
     # detected and the picker doesn't fire).
@@ -2527,13 +2868,17 @@ def _parse_prepare_args(tokens: list[str]) -> dict:
     while i < len(tokens):
         tok = tokens[i]
         if tok in ("-o", "--output") and i + 1 < len(tokens):
-            args["output"] = tokens[i + 1]; i += 2
+            args["output"] = tokens[i + 1]
+            i += 2
         elif tok == "--max-pages" and i + 1 < len(tokens):
-            args["max_pages"] = int(tokens[i + 1]); i += 2
+            args["max_pages"] = int(tokens[i + 1])
+            i += 2
         elif tok == "--workers" and i + 1 < len(tokens):
-            args["workers"] = int(tokens[i + 1]); i += 2
+            args["workers"] = int(tokens[i + 1])
+            i += 2
         else:
-            positional.append(tok); i += 1
+            positional.append(tok)
+            i += 1
     if not positional:
         return {}
     args["input_csv"] = positional[0]
@@ -2548,9 +2893,11 @@ def _parse_send_args(tokens: list[str]) -> dict:
     while i < len(tokens):
         tok = tokens[i]
         if tok == "--subject" and i + 1 < len(tokens):
-            args["subject"] = tokens[i + 1]; i += 2
+            args["subject"] = tokens[i + 1]
+            i += 2
         else:
-            positional.append(tok); i += 1
+            positional.append(tok)
+            i += 1
     if not positional:
         return {}
     args["input_csv"] = positional[0]
@@ -2567,7 +2914,9 @@ def _run_shell() -> None:
     pc = _profile_color()
 
     typer.echo(f"\n{BOLD}OpenCold{RESET} interactive shell")
-    typer.echo(f"Logged in as {pc}\u25cf {display_name}{RESET} (profile: {pc}{profile_name}{RESET})")
+    typer.echo(
+        f"Logged in as {pc}\u25cf {display_name}{RESET} (profile: {pc}{profile_name}{RESET})"
+    )
     typer.echo(f"Type {GREEN}help{RESET} for commands, {GREEN}exit{RESET} to quit.\n")
 
     session = PromptSession(history=InMemoryHistory(), completer=_ReplCompleter())
@@ -2601,7 +2950,9 @@ def _run_shell() -> None:
 
             elif cmd == "discover":
                 args = _parse_discover_args(rest)
-                if args.get("mode") == "companies" and (not args.get("icp") or not args.get("region")):
+                if args.get("mode") == "companies" and (
+                    not args.get("icp") or not args.get("region")
+                ):
                     if not args.get("icp"):
                         args["icp"] = _ask("What do the target companies do? (ICP)")
                     if not args.get("region"):

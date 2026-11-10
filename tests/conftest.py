@@ -16,6 +16,7 @@ def tmp_config(tmp_path, monkeypatch):
     config_file = config_dir / "config.json"
 
     from opencold import config
+
     monkeypatch.setattr(config, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(config, "CONFIG_FILE", config_file)
 

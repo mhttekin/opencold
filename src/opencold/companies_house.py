@@ -7,6 +7,7 @@ The key is read (in order) from: COMPANIES_HOUSE_API_KEY (env, populated from
 .env), the 'companies_house' provider in config, then the legacy api_key store
 -- mirroring discovery._get_serper_key.
 """
+
 from __future__ import annotations
 
 import base64
@@ -46,6 +47,7 @@ def use_sandbox() -> None:
     """Point subsequent calls at the sandbox/test base (for test API keys)."""
     os.environ["COMPANIES_HOUSE_BASE_URL"] = SANDBOX_BASE
 
+
 # SME-friendly legal forms. The advanced-search company_type filter is an
 # *include* list, so enumerating the small-business forms is how we exclude plc
 # and other large/odd types. Override via --company-type.
@@ -66,6 +68,7 @@ def get_companies_house_key() -> str | None:
     """Companies House API key: env (.env) -> provider config -> legacy store."""
     try:
         from opencold import config
+
         config.load_dotenv()  # no-op if already loaded / no .env
     except Exception:
         pass
@@ -74,6 +77,7 @@ def get_companies_house_key() -> str | None:
         return key.strip()
     try:
         from opencold import config
+
         prov = config.get_provider("companies_house")
         if prov and prov.get("api_key"):
             return prov.get("api_key")
@@ -97,11 +101,14 @@ def _get_json(url: str, api_key: str, *, strict: bool = False) -> dict:
     empty result. Enrichment calls stay non-strict: a 404 there (no officers, or
     a missing profile) is a normal empty, not an error.
     """
-    req = urllib.request.Request(url, headers={
-        "Authorization": _auth_header(api_key),
-        "Accept": "application/json",
-        "User-Agent": _UA,
-    })
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": _auth_header(api_key),
+            "Accept": "application/json",
+            "User-Agent": _UA,
+        },
+    )
     try:
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
             return json.loads(resp.read().decode("utf-8", "replace"))
@@ -119,11 +126,16 @@ def _get_json(url: str, api_key: str, *, strict: bool = False) -> dict:
         return {}
 
 
-def search_companies(sic_codes: list[str], *, api_key: str, limit: int = 50,
-                     location: str = "", company_status: str = "active",
-                     company_types: tuple[str, ...] | list[str] | None = DEFAULT_SME_TYPES,
-                     start_index: int = 0,
-                     ) -> list[dict]:
+def search_companies(
+    sic_codes: list[str],
+    *,
+    api_key: str,
+    limit: int = 50,
+    location: str = "",
+    company_status: str = "active",
+    company_types: tuple[str, ...] | list[str] | None = DEFAULT_SME_TYPES,
+    start_index: int = 0,
+) -> list[dict]:
     """Advanced search filtered by SIC code(s) (OR-matched) + SME company types.
 
     Paginates size+start_index until `limit` items or the server runs out of
@@ -191,7 +203,7 @@ def list_active_officers(number: str, *, api_key: str, limit: int = 35) -> list[
         api_key,
     )
     out: list[dict] = []
-    for it in (data.get("items") or []):
+    for it in data.get("items") or []:
         if it.get("resigned_on"):
             continue
         name = it.get("name") or ""

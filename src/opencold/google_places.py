@@ -6,6 +6,7 @@ an email). Places never returns email. Fail-silent like the other clients.
 
 Key: GOOGLE_PLACES_API_KEY (env / .env) or the 'google_places' provider config.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,6 +26,7 @@ def get_places_key() -> str | None:
     """Places API key: env (.env) -> provider config -> legacy store."""
     try:
         from opencold import config
+
         config.load_dotenv()
     except Exception:
         pass
@@ -33,6 +35,7 @@ def get_places_key() -> str | None:
         return key.strip()
     try:
         from opencold import config
+
         prov = config.get_provider("google_places")
         if prov and prov.get("api_key"):
             return prov.get("api_key")
@@ -49,11 +52,15 @@ def find_place(query: str, *, api_key: str) -> dict | None:
     if not query or not api_key:
         return None
     body = json.dumps({"textQuery": query}).encode("utf-8")
-    req = urllib.request.Request(_URL, data=body, headers={
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": api_key,
-        "X-Goog-FieldMask": _FIELD_MASK,
-    })
+    req = urllib.request.Request(
+        _URL,
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": api_key,
+            "X-Goog-FieldMask": _FIELD_MASK,
+        },
+    )
     try:
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
             data = json.loads(resp.read().decode("utf-8", "replace"))

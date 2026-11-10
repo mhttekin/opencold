@@ -32,8 +32,8 @@ from dataclasses import dataclass, field
 
 from opencold import icp_phrases
 
-MAX_EXPANSION_TERMS = 24       # hard cap on the returned set (bounds drift)
-DATAMUSE_MAX = 20              # words requested per Datamuse relation
+MAX_EXPANSION_TERMS = 24  # hard cap on the returned set (bounds drift)
+DATAMUSE_MAX = 20  # words requested per Datamuse relation
 # Corpus frequency ceiling (occurrences per million words, Datamuse md=f) for a
 # Datamuse term to become a MATCHER term. Everyday English appears on any business
 # page regardless of industry — measured: ml("plumbing") includes water(278)/
@@ -42,21 +42,65 @@ DATAMUSE_MAX = 20              # words requested per Datamuse relation
 # below. Commonness is the harm even when topically relevant ("delivery" for a
 # freight ICP matches every webshop).
 DATAMUSE_MAX_FREQ = 15.0
-EXPANSION_QUERY_CAP = 3        # top-N expansion terms that each get ONE search query
+EXPANSION_QUERY_CAP = 3  # top-N expansion terms that each get ONE search query
 _TIMEOUT = 4.0
 _UA = "opencold/0.1 (icp expansion)"
 
 # Too-generic words to drop from the network/LLM tiers (the curated lexicon is
 # trusted as-is and is NOT passed through this filter).
 _EXTRA_STOPWORDS = {
-    "service", "services", "solution", "solutions", "industry", "industries",
-    "sector", "market", "markets", "supplier", "suppliers", "provider", "providers",
-    "firm", "firms", "group", "business", "businesses", "company", "companies",
-    "best", "top", "near", "online", "local", "global", "international", "leading",
-    "quality", "professional", "product", "products",
+    "service",
+    "services",
+    "solution",
+    "solutions",
+    "industry",
+    "industries",
+    "sector",
+    "market",
+    "markets",
+    "supplier",
+    "suppliers",
+    "provider",
+    "providers",
+    "firm",
+    "firms",
+    "group",
+    "business",
+    "businesses",
+    "company",
+    "companies",
+    "best",
+    "top",
+    "near",
+    "online",
+    "local",
+    "global",
+    "international",
+    "leading",
+    "quality",
+    "professional",
+    "product",
+    "products",
     # common function words (a Datamuse/LLM slip would otherwise match everything)
-    "the", "and", "for", "with", "that", "this", "are", "our", "you", "your",
-    "from", "not", "their", "they", "its", "all", "any", "other", "such",
+    "the",
+    "and",
+    "for",
+    "with",
+    "that",
+    "this",
+    "are",
+    "our",
+    "you",
+    "your",
+    "from",
+    "not",
+    "their",
+    "they",
+    "its",
+    "all",
+    "any",
+    "other",
+    "such",
 }
 
 _WORD_RE = re.compile(r"[a-z][a-z \-]+")
@@ -70,10 +114,12 @@ _DISK_CACHE: dict[str, object] | None = None
 # Helpers (lazy discovery imports avoid an import cycle)
 # ---------------------------------------------------------------------------
 
+
 def _core_tokens(icp: str) -> set[str]:
     """Original ICP tokens (reuses the discovery tokenizer so behaviour matches)."""
     try:
         from opencold.discovery import _icp_terms
+
         return _icp_terms(icp)
     except Exception:
         return {t for t in re.findall(r"[a-z0-9][a-z0-9\-]{2,}", (icp or "").lower())}
@@ -108,6 +154,7 @@ def _geo_terms() -> frozenset[str]:
         terms: set[str] = set()
         try:
             from opencold import regions_data as rd
+
             for country, info in rd.COUNTRIES.items():
                 terms.add(country)
                 for field in ("aliases", "demonyms", "cities"):
@@ -135,6 +182,7 @@ def _lexicon_terms_grouped(icp: str) -> tuple[set[str], dict[str, set[str]]]:
     A multi-word key ("waste management") attributes to every ICP token it contains
     — the cluster is a trusted phrase-level equivalence."""
     from opencold import icp_synonyms
+
     lex = icp_synonyms.merged_lexicon()
     low = (icp or "").lower()
     profile = icp_phrases.parse_icp(icp)
@@ -193,8 +241,9 @@ def _datamuse(term: str, rels: tuple[str, ...] = ("ml", "rel_trg")) -> list[str]
     for rel in rels:
         try:
             q = urllib.parse.urlencode({rel: term, "max": DATAMUSE_MAX, "md": "f"})
-            req = urllib.request.Request(f"https://api.datamuse.com/words?{q}",
-                                         headers={"User-Agent": _UA})
+            req = urllib.request.Request(
+                f"https://api.datamuse.com/words?{q}", headers={"User-Agent": _UA}
+            )
             with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
                 data = json.loads(resp.read(200_000).decode("utf-8", "replace"))
         except Exception:
@@ -241,7 +290,7 @@ def _llm_terms(icp: str, provider: dict) -> set[str]:
         return set()
     data = _parse_json_object(raw)
     out: set[str] = set()
-    for t in (data.get("terms", []) if isinstance(data, dict) else []):
+    for t in data.get("terms", []) if isinstance(data, dict) else []:
         if isinstance(t, str):
             w = t.lower().strip()
             if _good_candidate(w):
@@ -253,8 +302,10 @@ def _llm_terms(icp: str, provider: dict) -> set[str]:
 # Disk cache
 # ---------------------------------------------------------------------------
 
+
 def _cache_path():
     from opencold import config
+
     return config.CONFIG_DIR / "icp_expansions.json"
 
 
@@ -274,9 +325,11 @@ def _save_cache(key: str, value) -> None:
     cache[key] = value
     try:
         from opencold import config
+
         config._ensure_dir()
-        _cache_path().write_text(json.dumps(cache, indent=2, ensure_ascii=False) + "\n",
-                                 encoding="utf-8")
+        _cache_path().write_text(
+            json.dumps(cache, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
     except Exception:
         pass  # cache write is best-effort; never fatal
 
@@ -285,18 +338,21 @@ def _save_cache(key: str, value) -> None:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ExpansionResult:
     """Expansion terms plus provenance: `flat` is the classic capped set; `by_token`
     maps each ICP token to the derived terms that evidence IT specifically — the
     attribution the phrase-aware gate needs so "advisory" can vouch only for
     "consultancy", never for "sustainability"."""
+
     flat: set[str] = field(default_factory=set)
     by_token: dict[str, set[str]] = field(default_factory=dict)
 
 
-def expand_icp_grouped(icp: str, *, use_llm: bool = True, provider: dict | None = None,
-                       use_datamuse: bool = True) -> ExpansionResult:
+def expand_icp_grouped(
+    icp: str, *, use_llm: bool = True, provider: dict | None = None, use_datamuse: bool = True
+) -> ExpansionResult:
     """English related terms for `icp` with per-token attribution, filtered, deduped,
     and capped to MAX_EXPANSION_TERMS. Never raises.
 
@@ -337,7 +393,7 @@ def expand_icp_grouped(icp: str, *, use_llm: bool = True, provider: dict | None 
         # per-token associations (rel_trg: coffee -> urn/cup) come last and are
         # never attributed — they must not co-evidence a core token.
         assoc: list[str] = []
-        for tok in sorted(core):              # sorted core -> deterministic datamuse order
+        for tok in sorted(core):  # sorted core -> deterministic datamuse order
             hits = _datamuse(tok, rels=("ml",))
             dm += hits
             if hits:
@@ -366,16 +422,19 @@ def expand_icp_grouped(icp: str, *, use_llm: bool = True, provider: dict | None 
     # The two views must never disagree: attribution only for terms that survived
     # the cap.
     by_token = {tok: terms & flat for tok, terms in by_token.items() if terms & flat}
-    _save_cache(key, {"flat": sorted(flat),
-                      "by_token": {t: sorted(v) for t, v in sorted(by_token.items())}})
+    _save_cache(
+        key, {"flat": sorted(flat), "by_token": {t: sorted(v) for t, v in sorted(by_token.items())}}
+    )
     return ExpansionResult(flat=flat, by_token=by_token)
 
 
-def expand_icp(icp: str, *, use_llm: bool = True, provider: dict | None = None,
-               use_datamuse: bool = True) -> set[str]:
+def expand_icp(
+    icp: str, *, use_llm: bool = True, provider: dict | None = None, use_datamuse: bool = True
+) -> set[str]:
     """Flat view of expand_icp_grouped (kept for callers without attribution needs)."""
-    return expand_icp_grouped(icp, use_llm=use_llm, provider=provider,
-                              use_datamuse=use_datamuse).flat
+    return expand_icp_grouped(
+        icp, use_llm=use_llm, provider=provider, use_datamuse=use_datamuse
+    ).flat
 
 
 def curated_terms(icp: str) -> set[str]:
@@ -391,7 +450,9 @@ def curated_terms_grouped(icp: str) -> dict[str, set[str]]:
     return _lexicon_terms_grouped(icp)[1]
 
 
-def expansion_queries(expansion: set[str], region: str, cap: int = EXPANSION_QUERY_CAP) -> list[str]:
+def expansion_queries(
+    expansion: set[str], region: str, cap: int = EXPANSION_QUERY_CAP
+) -> list[str]:
     """Bounded search queries: ONE template per top-N expansion term. Curated lexicon
     terms are preferred for search (higher precision than Datamuse associations like
     "bush"/"geyser"); ties break alphabetically for reproducibility. Native translation
@@ -401,6 +462,7 @@ def expansion_queries(expansion: set[str], region: str, cap: int = EXPANSION_QUE
         return []
     try:
         from opencold import icp_synonyms
+
         lex_all = set().union(*icp_synonyms.merged_lexicon().values())
     except Exception:
         lex_all = set()

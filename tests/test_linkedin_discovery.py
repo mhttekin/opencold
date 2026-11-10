@@ -143,60 +143,88 @@ class TestCompanyNameMatches:
 class TestNameCompanyCoincidence:
     def test_matt_crisp_at_crisp(self):
         """Matt Crisp's URL is /in/mattcrisp — his name, not the company Crisp."""
-        assert _is_name_company_coincidence(
-            "Matt Crisp", "Crisp", "https://www.linkedin.com/in/mattcrisp"
-        ) is True
+        assert (
+            _is_name_company_coincidence(
+                "Matt Crisp", "Crisp", "https://www.linkedin.com/in/mattcrisp"
+            )
+            is True
+        )
 
     def test_eric_crisp_at_crisp(self):
-        assert _is_name_company_coincidence(
-            "Eric Crisp", "Crisp", "https://www.linkedin.com/in/eric-crisp-258a1651"
-        ) is True
+        assert (
+            _is_name_company_coincidence(
+                "Eric Crisp", "Crisp", "https://www.linkedin.com/in/eric-crisp-258a1651"
+            )
+            is True
+        )
 
     def test_jonathan_crisp_at_crisp(self):
-        assert _is_name_company_coincidence(
-            "Jonathan Crisp", "Crisp", "https://www.linkedin.com/in/jonathan-crisp-3a69205"
-        ) is True
+        assert (
+            _is_name_company_coincidence(
+                "Jonathan Crisp", "Crisp", "https://www.linkedin.com/in/jonathan-crisp-3a69205"
+            )
+            is True
+        )
 
     def test_real_employee_not_flagged(self):
         """Abrar Sami at Dorik — name doesn't match company, not a coincidence."""
-        assert _is_name_company_coincidence(
-            "Abrar Sami", "Dorik", "https://www.linkedin.com/in/productmarketer-abrar-sami"
-        ) is False
+        assert (
+            _is_name_company_coincidence(
+                "Abrar Sami", "Dorik", "https://www.linkedin.com/in/productmarketer-abrar-sami"
+            )
+            is False
+        )
 
     def test_name_slug_with_role_prefix(self):
         """URL with role prefix (productmarketer-) — not a pure name slug."""
-        assert _is_name_company_coincidence(
-            "Cooper Lower", "Botpress", "https://www.linkedin.com/in/cooper-lower"
-        ) is False
+        assert (
+            _is_name_company_coincidence(
+                "Cooper Lower", "Botpress", "https://www.linkedin.com/in/cooper-lower"
+            )
+            is False
+        )
 
     def test_single_name_returns_false(self):
-        assert _is_name_company_coincidence(
-            "Crisp", "Crisp", "https://www.linkedin.com/in/crisp"
-        ) is False
+        assert (
+            _is_name_company_coincidence("Crisp", "Crisp", "https://www.linkedin.com/in/crisp")
+            is False
+        )
 
     def test_different_last_name(self):
         """Last name doesn't match company — not a coincidence."""
-        assert _is_name_company_coincidence(
-            "Jane Smith", "Acme", "https://www.linkedin.com/in/janesmith"
-        ) is False
+        assert (
+            _is_name_company_coincidence(
+                "Jane Smith", "Acme", "https://www.linkedin.com/in/janesmith"
+            )
+            is False
+        )
 
     def test_random_slug_with_name_match(self):
         """Slug is random (label23), but last name matches company — coincidence."""
-        assert _is_name_company_coincidence(
-            "Jonathan Raymond Crisp", "Crisp", "https://www.linkedin.com/in/label23"
-        ) is True
+        assert (
+            _is_name_company_coincidence(
+                "Jonathan Raymond Crisp", "Crisp", "https://www.linkedin.com/in/label23"
+            )
+            is True
+        )
 
     def test_slug_with_company_context_not_coincidence(self):
         """Slug contains company name in non-name context — likely a real employee."""
-        assert _is_name_company_coincidence(
-            "John Crisp", "Crisp", "https://www.linkedin.com/in/john-at-crisp"
-        ) is False
+        assert (
+            _is_name_company_coincidence(
+                "John Crisp", "Crisp", "https://www.linkedin.com/in/john-at-crisp"
+            )
+            is False
+        )
 
     def test_first_name_matches_company(self):
         """Mixo Baloyi at company Mixo — first name is the company name."""
-        assert _is_name_company_coincidence(
-            "Mixo Oral Baloyi", "Mixo", "https://za.linkedin.com/in/mixo-oral-baloyi-8954a5122"
-        ) is True
+        assert (
+            _is_name_company_coincidence(
+                "Mixo Oral Baloyi", "Mixo", "https://za.linkedin.com/in/mixo-oral-baloyi-8954a5122"
+            )
+            is True
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -213,9 +241,14 @@ class TestParseLinkedInResultTitles:
         return "<html><body>" + "\n".join(parts) + "</body></html>"
 
     def test_extracts_valid_profile(self):
-        html = self._make_html([
-            ("https://www.linkedin.com/in/janesmith", "Jane Smith - Marketing Manager - Acme Corp | LinkedIn"),
-        ])
+        html = self._make_html(
+            [
+                (
+                    "https://www.linkedin.com/in/janesmith",
+                    "Jane Smith - Marketing Manager - Acme Corp | LinkedIn",
+                ),
+            ]
+        )
         results = parse_linkedin_result_titles(html)
         assert len(results) == 1
         name, role, company, url = results[0]
@@ -225,43 +258,66 @@ class TestParseLinkedInResultTitles:
         assert "linkedin.com/in" in url
 
     def test_skips_non_linkedin_links(self):
-        html = self._make_html([
-            ("https://example.com/page", "Jane Smith - Marketing Manager - Acme Corp | LinkedIn"),
-        ])
+        html = self._make_html(
+            [
+                (
+                    "https://example.com/page",
+                    "Jane Smith - Marketing Manager - Acme Corp | LinkedIn",
+                ),
+            ]
+        )
         results = parse_linkedin_result_titles(html)
         assert len(results) == 0
 
     def test_skips_bad_names(self):
-        html = self._make_html([
-            ("https://www.linkedin.com/in/aboutpage", "About Us - Company Page - Acme | LinkedIn"),
-        ])
+        html = self._make_html(
+            [
+                (
+                    "https://www.linkedin.com/in/aboutpage",
+                    "About Us - Company Page - Acme | LinkedIn",
+                ),
+            ]
+        )
         results = parse_linkedin_result_titles(html)
         assert len(results) == 0
 
     def test_multiple_results(self):
-        html = self._make_html([
-            ("https://www.linkedin.com/in/jsmith", "Jane Smith - Sales Manager - BigCo | LinkedIn"),
-            ("https://www.linkedin.com/in/bdoe", "Bob Doe - Growth Lead - BigCo | LinkedIn"),
-        ])
+        html = self._make_html(
+            [
+                (
+                    "https://www.linkedin.com/in/jsmith",
+                    "Jane Smith - Sales Manager - BigCo | LinkedIn",
+                ),
+                ("https://www.linkedin.com/in/bdoe", "Bob Doe - Growth Lead - BigCo | LinkedIn"),
+            ]
+        )
         results = parse_linkedin_result_titles(html)
         assert len(results) == 2
 
     def test_deduplicates_same_name(self):
-        html = self._make_html([
-            ("https://www.linkedin.com/in/jsmith1", "Jane Smith - Sales - BigCo | LinkedIn"),
-            ("https://www.linkedin.com/in/jsmith2", "Jane Smith - Marketing - BigCo | LinkedIn"),
-        ])
+        html = self._make_html(
+            [
+                ("https://www.linkedin.com/in/jsmith1", "Jane Smith - Sales - BigCo | LinkedIn"),
+                (
+                    "https://www.linkedin.com/in/jsmith2",
+                    "Jane Smith - Marketing - BigCo | LinkedIn",
+                ),
+            ]
+        )
         results = parse_linkedin_result_titles(html)
         assert len(results) == 1
 
     def test_ddg_redirect_url(self):
         """DuckDuckGo wraps URLs in //duckduckgo.com/l/?uddg=<encoded_url>."""
         from urllib.parse import quote
+
         target = "https://www.linkedin.com/in/janesmith"
         ddg_href = f"//duckduckgo.com/l/?uddg={quote(target, safe='')}"
-        html = self._make_html([
-            (ddg_href, "Jane Smith - Marketing Manager - Acme Corp | LinkedIn"),
-        ])
+        html = self._make_html(
+            [
+                (ddg_href, "Jane Smith - Marketing Manager - Acme Corp | LinkedIn"),
+            ]
+        )
         results = parse_linkedin_result_titles(html)
         assert len(results) == 1
         assert "linkedin.com/in" in results[0][3]
@@ -330,7 +386,10 @@ class TestReacherCheck:
         assert result is None
 
     @patch("opencold.discovery.subprocess.run")
-    @patch("opencold.discovery._find_reacher_binary", return_value="/usr/local/bin/check-if-email-exists")
+    @patch(
+        "opencold.discovery._find_reacher_binary",
+        return_value="/usr/local/bin/check-if-email-exists",
+    )
     def test_parses_json_output(self, _mock_bin, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -340,15 +399,22 @@ class TestReacherCheck:
         assert result == {"is_reachable": "safe", "smtp": {"is_deliverable": True}}
 
     @patch("opencold.discovery.subprocess.run")
-    @patch("opencold.discovery._find_reacher_binary", return_value="/usr/local/bin/check-if-email-exists")
+    @patch(
+        "opencold.discovery._find_reacher_binary",
+        return_value="/usr/local/bin/check-if-email-exists",
+    )
     def test_returns_none_on_timeout(self, _mock_bin, mock_run):
         import subprocess as sp
+
         mock_run.side_effect = sp.TimeoutExpired(cmd="check", timeout=30)
         result = _reacher_check("jane@acme.com")
         assert result is None
 
     @patch("opencold.discovery.subprocess.run")
-    @patch("opencold.discovery._find_reacher_binary", return_value="/usr/local/bin/check-if-email-exists")
+    @patch(
+        "opencold.discovery._find_reacher_binary",
+        return_value="/usr/local/bin/check-if-email-exists",
+    )
     def test_returns_none_on_bad_json(self, _mock_bin, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="not json")
         result = _reacher_check("jane@acme.com")
@@ -389,19 +455,25 @@ class TestGuessEmailFromName:
         assert result is None
 
     @patch("opencold.discovery._reacher_check")
-    @patch("opencold.discovery._find_reacher_binary", return_value="/usr/local/bin/check-if-email-exists")
+    @patch(
+        "opencold.discovery._find_reacher_binary",
+        return_value="/usr/local/bin/check-if-email-exists",
+    )
     @patch("opencold.verifier._check_mx", return_value=True)
     def test_reacher_finds_safe_email(self, _mock_mx, _mock_bin, mock_reacher):
         """When reacher says 'safe', return that pattern."""
         mock_reacher.side_effect = [
             {"is_reachable": "invalid", "smtp": {}},  # first.last@ invalid
-            {"is_reachable": "safe", "smtp": {}},      # first@ safe
+            {"is_reachable": "safe", "smtp": {}},  # first@ safe
         ]
         result = _guess_email_from_name("Jane Smith", "acme.com")
         assert result == "jane@acme.com"
 
     @patch("opencold.discovery._reacher_check")
-    @patch("opencold.discovery._find_reacher_binary", return_value="/usr/local/bin/check-if-email-exists")
+    @patch(
+        "opencold.discovery._find_reacher_binary",
+        return_value="/usr/local/bin/check-if-email-exists",
+    )
     @patch("opencold.verifier._check_mx", return_value=True)
     def test_reacher_catch_all_returns_first_last(self, _mock_mx, _mock_bin, mock_reacher):
         """Catch-all domain returns first.last@ as best guess."""
@@ -410,7 +482,10 @@ class TestGuessEmailFromName:
         assert result == "jane.smith@acme.com"
 
     @patch("opencold.discovery._reacher_check")
-    @patch("opencold.discovery._find_reacher_binary", return_value="/usr/local/bin/check-if-email-exists")
+    @patch(
+        "opencold.discovery._find_reacher_binary",
+        return_value="/usr/local/bin/check-if-email-exists",
+    )
     @patch("opencold.verifier._check_mx", return_value=True)
     def test_reacher_all_invalid_returns_none(self, _mock_mx, _mock_bin, mock_reacher):
         """When all patterns return invalid, person doesn't work there — return None."""
@@ -419,7 +494,10 @@ class TestGuessEmailFromName:
         assert result is None
 
     @patch("opencold.discovery._reacher_check")
-    @patch("opencold.discovery._find_reacher_binary", return_value="/usr/local/bin/check-if-email-exists")
+    @patch(
+        "opencold.discovery._find_reacher_binary",
+        return_value="/usr/local/bin/check-if-email-exists",
+    )
     @patch("opencold.verifier._check_mx", return_value=True)
     def test_reacher_mix_unknown_returns_none(self, _mock_mx, _mock_bin, mock_reacher):
         """When patterns return unknown, don't guess — return None."""
@@ -428,7 +506,10 @@ class TestGuessEmailFromName:
         assert result is None
 
     @patch("opencold.discovery._reacher_check")
-    @patch("opencold.discovery._find_reacher_binary", return_value="/usr/local/bin/check-if-email-exists")
+    @patch(
+        "opencold.discovery._find_reacher_binary",
+        return_value="/usr/local/bin/check-if-email-exists",
+    )
     @patch("opencold.verifier._check_mx", return_value=True)
     def test_reacher_risky_non_catchall_returned(self, _mock_mx, _mock_bin, mock_reacher):
         """Risky but not catch-all still gets returned."""
@@ -483,7 +564,9 @@ class TestWebSearch:
         mock_ddgs.return_value = []
         mock_brave.return_value = []
         mock_serper.return_value = []
-        mock_ddg_html.return_value = [SearchResult(title="DDG HTML Result", url="https://example.com")]
+        mock_ddg_html.return_value = [
+            SearchResult(title="DDG HTML Result", url="https://example.com")
+        ]
         results = web_search("test query")
         assert len(results) == 1
         assert results[0].title == "DDG HTML Result"
@@ -492,10 +575,19 @@ class TestWebSearch:
     @patch("opencold.discovery.urllib.request.urlopen")
     def test_serper_search_parses_response(self, mock_urlopen, _mock_key):
         import json
+
         response_data = {
             "organic": [
-                {"title": "Jane Smith - Marketing - Acme | LinkedIn", "link": "https://linkedin.com/in/js", "snippet": "..."},
-                {"title": "Bob Doe - Sales - Acme | LinkedIn", "link": "https://linkedin.com/in/bd", "snippet": "..."},
+                {
+                    "title": "Jane Smith - Marketing - Acme | LinkedIn",
+                    "link": "https://linkedin.com/in/js",
+                    "snippet": "...",
+                },
+                {
+                    "title": "Bob Doe - Sales - Acme | LinkedIn",
+                    "link": "https://linkedin.com/in/bd",
+                    "snippet": "...",
+                },
             ]
         }
         mock_resp = MagicMock()
@@ -517,7 +609,11 @@ class TestWebSearch:
     def test_ddgs_search_parses_results(self, mock_ddgs_cls):
         mock_instance = MagicMock()
         mock_instance.text.return_value = [
-            {"title": "Jane Smith - Marketing | LinkedIn", "href": "https://linkedin.com/in/js", "body": "..."},
+            {
+                "title": "Jane Smith - Marketing | LinkedIn",
+                "href": "https://linkedin.com/in/js",
+                "body": "...",
+            },
         ]
         mock_instance.__enter__ = lambda s: s
         mock_instance.__exit__ = MagicMock(return_value=False)
@@ -531,6 +627,7 @@ class TestWebSearch:
     @patch("opencold.discovery.urllib.request.urlopen")
     def test_brave_search_parses_results(self, mock_urlopen):
         import gzip
+
         # Brave HTML with LinkedIn results - the <a> text concatenates URL display + title
         html = """<html><body>
         <a href="https://www.linkedin.com/in/jsmith/">LinkedInlinkedin.com› in › jsmithJane Smith - Marketing Manager - Acme Corp | LinkedIn</a>
@@ -833,20 +930,26 @@ class TestVerifyCurrentEmployment:
     def test_site_query_contradicts_overrides_snippet(self, mock_ddgs):
         """site:linkedin.com/in showing different company rejects even if snippet has old company."""
         call_count = [0]
+
         def side_effect(query, num):
             call_count[0] += 1
             if "site:linkedin.com/in" in query:
-                return [SearchResult(
-                    title="Maryia Fokina – JobLeads | LinkedIn",
-                    url="https://linkedin.com/in/maryia-fokina",
-                    snippet="Digital PR & Content Marketing Manager",
-                )]
+                return [
+                    SearchResult(
+                        title="Maryia Fokina – JobLeads | LinkedIn",
+                        url="https://linkedin.com/in/maryia-fokina",
+                        snippet="Digital PR & Content Marketing Manager",
+                    )
+                ]
             else:
-                return [SearchResult(
-                    title="Maryia Fokina, Author at Tidio",
-                    url="https://tidio.com/author/maryia",
-                    snippet="Maryia Fokina PR & Content Specialist at Tidio",
-                )]
+                return [
+                    SearchResult(
+                        title="Maryia Fokina, Author at Tidio",
+                        url="https://tidio.com/author/maryia",
+                        snippet="Maryia Fokina PR & Content Specialist at Tidio",
+                    )
+                ]
+
         mock_ddgs.side_effect = side_effect
         is_current, reason = verify_current_employment("Maryia Fokina", "Tidio")
         assert is_current is False
@@ -878,7 +981,9 @@ class TestVerificationIntegration:
     @patch("opencold.discovery.verify_current_employment")
     @patch("opencold.discovery.web_search")
     @patch("opencold.discovery.time.sleep")
-    def test_unverified_high_confidence_returned_reduced(self, _mock_sleep, mock_search, mock_verify):
+    def test_unverified_high_confidence_returned_reduced(
+        self, _mock_sleep, mock_search, mock_verify
+    ):
         mock_search.return_value = [
             SearchResult(
                 title="Jane Smith - Marketing Manager - Acme | LinkedIn",

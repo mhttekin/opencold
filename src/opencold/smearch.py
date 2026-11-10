@@ -14,6 +14,7 @@ enrichment calls. Tune the SME_* / W_* constants below.
 Orchestration lives here; user-facing messaging (genericness warnings, the
 API-key gate, dry-run preview) lives in cli.do_smearch so this stays testable.
 """
+
 from __future__ import annotations
 
 import csv
@@ -88,6 +89,7 @@ def sme_score(account_type: str, active_count, inc_year, this_year: int) -> floa
 
 # --- enrichment -------------------------------------------------------------
 
+
 @dataclass
 class EnrichedCompany:
     item: dict
@@ -139,15 +141,34 @@ def enrich_company(item: dict, *, api_key: str, this_year: int) -> EnrichedCompa
 # Base columns, then the enrichment columns (kept in sync with
 # smearch_enrich.ENRICH_FIELDS; only filled for the enriched top-N rows).
 CSV_FIELDS: list[str] = [
-    "sme_score", "company_name", "company_number", "company_status",
-    "company_type", "incorporation_year", "date_of_creation",
-    "account_type", "officer_count",
-    "sic_codes", "matched_sic_codes", "matched_sic_descriptions",
+    "sme_score",
+    "company_name",
+    "company_number",
+    "company_status",
+    "company_type",
+    "incorporation_year",
+    "date_of_creation",
+    "account_type",
+    "officer_count",
+    "sic_codes",
+    "matched_sic_codes",
+    "matched_sic_descriptions",
     "matched_icp_terms",
-    "address_line_1", "address_line_2", "locality", "region",
-    "postal_code", "country", "company_url",
-    "officer_names", "website", "website_confidence", "address_matched",
-    "phone", "email", "email_type", "contact_source",
+    "address_line_1",
+    "address_line_2",
+    "locality",
+    "region",
+    "postal_code",
+    "country",
+    "company_url",
+    "officer_names",
+    "website",
+    "website_confidence",
+    "address_matched",
+    "phone",
+    "email",
+    "email_type",
+    "contact_source",
 ]
 
 _CH_COMPANY_URL = "https://find-and-update.company-information.service.gov.uk/company/"
@@ -189,8 +210,13 @@ def company_to_row(enr: EnrichedCompany, matches: list[sic_match.SicMatch]) -> d
         "country": addr.get("country", "") or "",
         "company_url": (_CH_COMPANY_URL + num) if num else "",
         # Enrichment columns -- blank here, filled by smearch_enrich for the top-N.
-        "officer_names": "", "website": "", "website_confidence": "",
-        "address_matched": "", "phone": "", "email": "", "email_type": "",
+        "officer_names": "",
+        "website": "",
+        "website_confidence": "",
+        "address_matched": "",
+        "phone": "",
+        "email": "",
+        "email_type": "",
         "contact_source": "",
     }
 
@@ -205,28 +231,39 @@ def write_smes_csv(rows: list[dict], output: str) -> None:
 
 # --- orchestration ----------------------------------------------------------
 
+
 @dataclass
 class SmearchResult:
     match: sic_match.MatchResult
     rows: list[dict] = field(default_factory=list)
 
 
-def plan_matches(icp: str, *, sic_codes: list[str] | None = None,
-                 roles: list[str] | None = None,
-                 use_expansion: bool = True, use_llm: bool = True,
-                 provider: dict | None = None, max_sics: int = 5,
-                 min_score: float = 1.0) -> sic_match.MatchResult:
+def plan_matches(
+    icp: str,
+    *,
+    sic_codes: list[str] | None = None,
+    roles: list[str] | None = None,
+    use_expansion: bool = True,
+    use_llm: bool = True,
+    provider: dict | None = None,
+    max_sics: int = 5,
+    min_score: float = 1.0,
+) -> sic_match.MatchResult:
     """Resolve the SIC codes to query: explicit --sic override, else expand the
     ICP with synonyms and match it against the SIC list (steered by `roles`)."""
     if sic_codes:
-        return sic_match.MatchResult(
-            sic_match.matches_for_codes(sic_codes), "ok", [], roles or [])
+        return sic_match.MatchResult(sic_match.matches_for_codes(sic_codes), "ok", [], roles or [])
     expansion: set[str] = set()
     if use_expansion:
         from opencold import icp_expansion
+
         expansion = icp_expansion.expand_icp(icp, use_llm=use_llm, provider=provider)
     return sic_match.match_icp_to_sics(
-        icp, expansion, roles=roles, max_sics=max_sics, min_score=min_score,
+        icp,
+        expansion,
+        roles=roles,
+        max_sics=max_sics,
+        min_score=min_score,
     )
 
 
@@ -234,8 +271,14 @@ def plan_matches(icp: str, *, sic_codes: list[str] | None = None,
 # large; unknown/dormant lowest. A real factory is rarely a 1-person micro, but
 # we still keep SMEs (no preference for large). Used only for "factory" ranking.
 _FACTORY_ACCOUNT_RANK = {
-    "small": 3, "total-exemption-small": 3, "total-exemption-full": 3,
-    "abridged": 3, "medium": 3, "micro-entity": 2, "full": 1, "group": 1,
+    "small": 3,
+    "total-exemption-small": 3,
+    "total-exemption-full": 3,
+    "abridged": 3,
+    "medium": 3,
+    "micro-entity": 2,
+    "full": 1,
+    "group": 1,
 }
 
 
@@ -264,15 +307,20 @@ DEFAULT_MAX_PAGE_WALK = 10
 
 @dataclass
 class FreshPages:
-    rows: list[dict] = field(default_factory=list)   # fresh (unseen) ranked rows
+    rows: list[dict] = field(default_factory=list)  # fresh (unseen) ranked rows
     pages_walked: int = 0
-    skipped_seen: int = 0      # rows dropped because already recorded
-    saw_any: bool = False      # did any page return companies at all?
+    skipped_seen: int = 0  # rows dropped because already recorded
+    saw_any: bool = False  # did any page return companies at all?
 
 
-def gather_fresh_pages(collect, *, start_page: int = 1, target: int = 10,
-                       is_seen=None,
-                       max_pages: int = DEFAULT_MAX_PAGE_WALK) -> FreshPages:
+def gather_fresh_pages(
+    collect,
+    *,
+    start_page: int = 1,
+    target: int = 10,
+    is_seen=None,
+    max_pages: int = DEFAULT_MAX_PAGE_WALK,
+) -> FreshPages:
     """Walk pages from `start_page` accumulating ranked rows not already seen,
     until `target` fresh rows are gathered or the result set / page budget runs
     out. This is how smearch keeps surfacing *new* companies across runs.
@@ -301,13 +349,21 @@ def gather_fresh_pages(collect, *, start_page: int = 1, target: int = 10,
     return out
 
 
-def collect_smes(matches: list[sic_match.SicMatch], *, api_key: str, limit: int = 50,
-                 location: str = "", status: str = "active",
-                 company_types: tuple[str, ...] | list[str] | None = None,
-                 this_year: int | None = None, progress=None,
-                 exclude_dormant: bool = True, factory: bool = False,
-                 size_filter: list[str] | None = None,
-                 start_index: int = 0) -> list[dict]:
+def collect_smes(
+    matches: list[sic_match.SicMatch],
+    *,
+    api_key: str,
+    limit: int = 50,
+    location: str = "",
+    status: str = "active",
+    company_types: tuple[str, ...] | list[str] | None = None,
+    this_year: int | None = None,
+    progress=None,
+    exclude_dormant: bool = True,
+    factory: bool = False,
+    size_filter: list[str] | None = None,
+    start_index: int = 0,
+) -> list[dict]:
     """Search Companies House for the matched SICs, enrich each company, drop
     dormant ones (default), and return rows ranked strongest-SME-first.
 
@@ -324,8 +380,11 @@ def collect_smes(matches: list[sic_match.SicMatch], *, api_key: str, limit: int 
         this_year = datetime.date.today().year
     pool = limit * 2 if exclude_dormant else limit
     items = ch.search_companies(
-        [m.code for m in matches], api_key=api_key, limit=pool,
-        location=location, company_status=status,
+        [m.code for m in matches],
+        api_key=api_key,
+        limit=pool,
+        location=location,
+        company_status=status,
         company_types=company_types or ch.DEFAULT_SME_TYPES,
         start_index=start_index,
     )
@@ -342,45 +401,74 @@ def collect_smes(matches: list[sic_match.SicMatch], *, api_key: str, limit: int 
         if len(enriched) >= limit:
             break
     if factory:
-        enriched.sort(key=lambda e: (
-            -_factory_account_score(e.account_type), -e.sme,
-            e.officer_count if e.officer_count is not None else 999,
-            (e.item.get("company_name") or ""),
-        ))
+        enriched.sort(
+            key=lambda e: (
+                -_factory_account_score(e.account_type),
+                -e.sme,
+                e.officer_count if e.officer_count is not None else 999,
+                (e.item.get("company_name") or ""),
+            )
+        )
     else:
-        enriched.sort(key=lambda e: (
-            -e.sme,
-            e.officer_count if e.officer_count is not None else 999,
-            (e.item.get("company_name") or ""),
-        ))
+        enriched.sort(
+            key=lambda e: (
+                -e.sme,
+                e.officer_count if e.officer_count is not None else 999,
+                (e.item.get("company_name") or ""),
+            )
+        )
     return [company_to_row(e, matches) for e in enriched]
 
 
-def run_smearch(icp: str, *, output: str = "smes.csv", api_key: str | None = None,
-                dry_run: bool = False, sic_codes: list[str] | None = None,
-                roles: list[str] | None = None,
-                use_expansion: bool = True, use_llm: bool = True,
-                provider: dict | None = None, max_sics: int = 5,
-                min_score: float = 1.0, limit: int = 50, location: str = "",
-                status: str = "active",
-                company_types: tuple[str, ...] | list[str] | None = None,
-                this_year: int | None = None,
-                exclude_dormant: bool = True, factory: bool = False,
-                size_filter: list[str] | None = None,
-                start_index: int = 0) -> SmearchResult:
+def run_smearch(
+    icp: str,
+    *,
+    output: str = "smes.csv",
+    api_key: str | None = None,
+    dry_run: bool = False,
+    sic_codes: list[str] | None = None,
+    roles: list[str] | None = None,
+    use_expansion: bool = True,
+    use_llm: bool = True,
+    provider: dict | None = None,
+    max_sics: int = 5,
+    min_score: float = 1.0,
+    limit: int = 50,
+    location: str = "",
+    status: str = "active",
+    company_types: tuple[str, ...] | list[str] | None = None,
+    this_year: int | None = None,
+    exclude_dormant: bool = True,
+    factory: bool = False,
+    size_filter: list[str] | None = None,
+    start_index: int = 0,
+) -> SmearchResult:
     """Library convenience: plan -> collect -> write. The CLI orchestrates the
     same steps itself so it can interleave user messaging (and the factory walk).
     `start_index` offsets the CH search for pagination (see `page_to_start_index`)."""
     match = plan_matches(
-        icp, sic_codes=sic_codes, roles=roles, use_expansion=use_expansion,
-        use_llm=use_llm, provider=provider, max_sics=max_sics, min_score=min_score,
+        icp,
+        sic_codes=sic_codes,
+        roles=roles,
+        use_expansion=use_expansion,
+        use_llm=use_llm,
+        provider=provider,
+        max_sics=max_sics,
+        min_score=min_score,
     )
     if dry_run or not match.matches or not api_key:
         return SmearchResult(match, [])
     rows = collect_smes(
-        match.matches, api_key=api_key, limit=limit, location=location,
-        status=status, company_types=company_types, this_year=this_year,
-        exclude_dormant=exclude_dormant, factory=factory, size_filter=size_filter,
+        match.matches,
+        api_key=api_key,
+        limit=limit,
+        location=location,
+        status=status,
+        company_types=company_types,
+        this_year=this_year,
+        exclude_dormant=exclude_dormant,
+        factory=factory,
+        size_filter=size_filter,
         start_index=start_index,
     )
     if output:

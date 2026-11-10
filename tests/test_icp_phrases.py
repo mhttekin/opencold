@@ -55,8 +55,8 @@ class TestParseIcp:
     def test_all_generic_core_has_empty_gate_set(self):
         p = parse_icp("software companies")
         assert [c.tokens for c in p.chunks] == [("software", "companies")]
-        assert p.core_tokens == ()           # legacy gate semantics downstream
-        assert p.core_phrases == ()          # no required token -> not a phrase unit
+        assert p.core_tokens == ()  # legacy gate semantics downstream
+        assert p.core_phrases == ()  # no required token -> not a phrase unit
 
     def test_transparent_conjunction_keeps_one_chunk(self):
         p = parse_icp("Health and Safety Consultants")
@@ -98,16 +98,18 @@ class TestPhraseHit:
         return phrase_hit(tuple(tokens), text_words(text))
 
     def test_adjacent(self):
-        assert self._hit(["sustainability", "consultancy"],
-                         "We are a sustainability consultancy in Utrecht.")
+        assert self._hit(
+            ["sustainability", "consultancy"], "We are a sustainability consultancy in Utrecht."
+        )
 
     def test_morphology_inside_phrase(self):
         # "mills" stems to "mill"
         assert self._hit(["paper", "mill"], "One of Europe's largest paper mills.")
 
     def test_gap_window_allows_two_words(self):
-        assert self._hit(["health", "safety", "consultants"],
-                         "health and safety consultants for industry")
+        assert self._hit(
+            ["health", "safety", "consultants"], "health and safety consultants for industry"
+        )
         assert self._hit(["timber", "merchants"], "timber and wood merchants")
 
     def test_gap_window_rejects_far_apart(self):
@@ -117,8 +119,9 @@ class TestPhraseHit:
         )
 
     def test_hyphen_and_slug_text(self):
-        assert self._hit(["sustainability", "consulting"],
-                         "see /services/sustainability-consulting/ for details")
+        assert self._hit(
+            ["sustainability", "consulting"], "see /services/sustainability-consulting/ for details"
+        )
 
     def test_compound_concatenation(self):
         assert self._hit(["paper", "mill"], "the papermill has run since 1900")
@@ -133,8 +136,7 @@ class TestPhraseHit:
 class TestTokenEvidenced:
     def _ev(self, token, text, derived=None):
         words = text_words(text)
-        return token_evidenced(token, set(words), {stem(w) for w in words},
-                               text.lower(), derived)
+        return token_evidenced(token, set(words), {stem(w) for w in words}, text.lower(), derived)
 
     def test_stem_match(self):
         assert self._ev("consultancy", "consultancy services since 1990")
@@ -144,7 +146,7 @@ class TestTokenEvidenced:
         assert self._ev("tech", "a fintech scale-up")
 
     def test_short_token_needs_whole_word(self):
-        assert not self._ev("ai", "maintain our chains")   # no substring leak
+        assert not self._ev("ai", "maintain our chains")  # no substring leak
         assert self._ev("ai", "an AI lab")
 
     def test_singular_fallback_for_acronym_plural(self):
@@ -158,16 +160,16 @@ class TestTokenEvidenced:
         assert not self._ev("sustainability", "general business advice", derived={"esg"})
 
     def test_derived_multiword_phrase_substring(self):
-        assert self._ev("waste", "expert en gestion des déchets",
-                        derived={"gestion des déchets"})
+        assert self._ev("waste", "expert en gestion des déchets", derived={"gestion des déchets"})
 
 
 class TestEvidenceCore:
     ICP = "Sustainability Consultancy for SMEs"
 
     def test_phrase_hit_confirms(self):
-        core = evidence_core(parse_icp(self.ICP),
-                             "A sustainability consultancy serving Dutch SMEs.")
+        core = evidence_core(
+            parse_icp(self.ICP), "A sustainability consultancy serving Dutch SMEs."
+        )
         assert core.confirmed
         assert core.phrase_chunks == (("sustainability", "consultancy"),)
         assert core.matched_qualifiers == ("smes",)
@@ -204,10 +206,10 @@ class TestEvidenceCore:
 
     def test_native_compound_confirms_whole_chunk(self):
         # Whole-phrase translation attributed the Dutch compound to BOTH tokens.
-        prov = {"sustainability": {"duurzaamheidsadvies"},
-                "consultancy": {"duurzaamheidsadvies"}}
-        core = evidence_core(parse_icp(self.ICP),
-                             "Duurzaamheidsadvies voor het MKB.", provenance=prov)
+        prov = {"sustainability": {"duurzaamheidsadvies"}, "consultancy": {"duurzaamheidsadvies"}}
+        core = evidence_core(
+            parse_icp(self.ICP), "Duurzaamheidsadvies voor het MKB.", provenance=prov
+        )
         assert core.confirmed
 
     def test_single_token_core_behaves_like_today(self):
@@ -216,7 +218,6 @@ class TestEvidenceCore:
         assert core.evidenced == {"plumbing"}
 
     def test_all_generic_core_never_confirms_here(self):
-        core = evidence_core(parse_icp("software companies"),
-                             "software companies directory")
-        assert not core.confirmed      # legacy gate handles this case downstream
+        core = evidence_core(parse_icp("software companies"), "software companies directory")
+        assert not core.confirmed  # legacy gate handles this case downstream
         assert core.required == frozenset()

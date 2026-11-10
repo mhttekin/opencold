@@ -31,9 +31,13 @@ def _check_mx(domain: str, timeout: float = 5.0) -> bool:
         resolver.lifetime = timeout
         answers = resolver.resolve(domain, "MX")
         has_mx = len(answers) > 0
-    except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN,
-            dns.resolver.NoNameservers, dns.exception.Timeout,
-            dns.resolver.LifetimeTimeout):
+    except (
+        dns.resolver.NoAnswer,
+        dns.resolver.NXDOMAIN,
+        dns.resolver.NoNameservers,
+        dns.exception.Timeout,
+        dns.resolver.LifetimeTimeout,
+    ):
         has_mx = False
     except Exception:
         # DNS issue — don't block on transient errors

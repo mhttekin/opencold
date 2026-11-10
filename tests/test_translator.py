@@ -116,8 +116,8 @@ class TestMyMemoryFallback:
         def fake_get(url, timeout=translator._TIMEOUT):
             if "mymemory" in url:
                 return json.dumps(
-                    {"responseStatus": 200,
-                     "responseData": {"translatedText": "drewno"}})
+                    {"responseStatus": 200, "responseData": {"translatedText": "drewno"}}
+                )
             return None
 
         with patch.object(translator, "_get", side_effect=fake_get):
@@ -127,10 +127,14 @@ class TestMyMemoryFallback:
         def fake_get(url, timeout=translator._TIMEOUT):
             if "mymemory" in url:
                 return json.dumps(
-                    {"responseStatus": "403",
-                     "responseData": {"translatedText":
-                                      "MYMEMORY WARNING: YOU USED ALL AVAILABLE "
-                                      "FREE TRANSLATIONS FOR TODAY"}})
+                    {
+                        "responseStatus": "403",
+                        "responseData": {
+                            "translatedText": "MYMEMORY WARNING: YOU USED ALL AVAILABLE "
+                            "FREE TRANSLATIONS FOR TODAY"
+                        },
+                    }
+                )
             return None
 
         with patch.object(translator, "_get", side_effect=fake_get):

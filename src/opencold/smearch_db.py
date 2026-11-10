@@ -14,6 +14,7 @@ number -- a company surfaced under any search won't resurface under another.
 Path: COMPANIES_HOUSE-style override via OPENCOLD_SMEARCH_DB, else
 ~/.opencold/smearch.db (alongside config.json).
 """
+
 from __future__ import annotations
 
 import datetime
@@ -59,7 +60,7 @@ def seen_numbers(conn: sqlite3.Connection, numbers) -> set[str]:
     nums = [n for n in numbers if n]
     out: set[str] = set()
     for i in range(0, len(nums), _PARAM_CHUNK):
-        chunk = nums[i:i + _PARAM_CHUNK]
+        chunk = nums[i : i + _PARAM_CHUNK]
         placeholders = ",".join("?" * len(chunk))
         rows = conn.execute(
             f"SELECT company_number FROM enriched_companies "
@@ -77,9 +78,9 @@ def mark_enriched(conn: sqlite3.Connection, rows, *, icp: str = "") -> int:
     Rows without a company_number are skipped (nothing to dedup on)."""
     stamp = datetime.datetime.now().isoformat(timespec="seconds")
     payload = [
-        (r.get("company_number", ""), r.get("company_name", ""),
-         r.get("sic_codes", ""), icp, stamp)
-        for r in rows if r.get("company_number")
+        (r.get("company_number", ""), r.get("company_name", ""), r.get("sic_codes", ""), icp, stamp)
+        for r in rows
+        if r.get("company_number")
     ]
     if not payload:
         return 0

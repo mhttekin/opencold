@@ -69,7 +69,12 @@ class TestBuildUserPrompt:
         "email": "alice@acme.com",
     }
     IDENTITY = {"name": "Bob Builder", "email": "bob@test.com"}
-    PROFILE = {"company": "BuildCo", "role": "Founder", "bio": "I build tools", "pitch": "Automate everything"}
+    PROFILE = {
+        "company": "BuildCo",
+        "role": "Founder",
+        "bio": "I build tools",
+        "pitch": "Automate everything",
+    }
 
     def test_contains_recipient(self):
         campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
@@ -99,7 +104,10 @@ class TestBuildUserPrompt:
     def test_website_text_included_when_readable(self):
         campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
         prompt = build_user_prompt(
-            self.ROW, self.IDENTITY, self.PROFILE, campaign,
+            self.ROW,
+            self.IDENTITY,
+            self.PROFILE,
+            campaign,
             website_text="Acme builds rockets for Mars colonization and space exploration.",
         )
         assert "Acme builds rockets" in prompt
@@ -108,7 +116,10 @@ class TestBuildUserPrompt:
     def test_personalization_facts_take_priority(self):
         campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
         prompt = build_user_prompt(
-            self.ROW, self.IDENTITY, self.PROFILE, campaign,
+            self.ROW,
+            self.IDENTITY,
+            self.PROFILE,
+            campaign,
             website_text="Acme builds vague things for many teams.",
             personalization_facts="Acme provides invoice automation for finance teams.",
         )
@@ -119,7 +130,10 @@ class TestBuildUserPrompt:
     def test_garbled_website_text_excluded(self):
         campaign = {"title": "Test", "description": "We do X", "pitch": "Try X"}
         prompt = build_user_prompt(
-            self.ROW, self.IDENTITY, self.PROFILE, campaign,
+            self.ROW,
+            self.IDENTITY,
+            self.PROFILE,
+            campaign,
             website_text="abc",  # too short
         )
         assert "website content" not in prompt.lower()
@@ -142,8 +156,18 @@ class TestBuildUserPrompt:
 
     def test_different_emails_get_different_structures(self):
         structures = set()
-        for email in ["a@x.com", "b@y.com", "c@z.com", "d@w.com", "e@v.com",
-                       "f@u.com", "g@t.com", "h@s.com", "i@r.com", "j@q.com"]:
+        for email in [
+            "a@x.com",
+            "b@y.com",
+            "c@z.com",
+            "d@w.com",
+            "e@v.com",
+            "f@u.com",
+            "g@t.com",
+            "h@s.com",
+            "i@r.com",
+            "j@q.com",
+        ]:
             structures.add(_pick_structure(email))
         # With 10 emails and 5 structures, we should hit at least 2 different ones
         assert len(structures) >= 2

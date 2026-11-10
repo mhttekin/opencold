@@ -257,7 +257,9 @@ def extract_facts(pages: list[PageContent], max_facts: int = 5) -> list[Fact]:
                 if normalized in seen:
                     continue
                 seen.add(normalized)
-                confidence = max(0.05, _score_fact(sentence, source_type, page_index) - _page_penalty(page.url))
+                confidence = max(
+                    0.05, _score_fact(sentence, source_type, page_index) - _page_penalty(page.url)
+                )
                 facts.append(Fact(sentence, page.url, source_type, confidence))
 
     facts.sort(key=lambda f: f.confidence, reverse=True)
@@ -323,7 +325,9 @@ def enrich_row(row: dict, max_pages: int = 4) -> dict:
     """Return a CSV-safe enriched lead row."""
     result = dict(row)
     email_result = verifier.verify_email(row.get("email", ""))
-    result["verification_status"] = "valid" if email_result["valid"] else f"invalid: {email_result['reason']}"
+    result["verification_status"] = (
+        "valid" if email_result["valid"] else f"invalid: {email_result['reason']}"
+    )
 
     result.update(enrich_website(row.get("website", ""), max_pages=max_pages))
     return result

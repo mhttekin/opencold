@@ -21,6 +21,7 @@ then relaxed (any positive overlap). A generic ICP ("manufacturing companies"),
 whose only signal word is itself a role/filler word, is reported status="generic"
 so the caller can ask the user to narrow the subject.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -32,15 +33,57 @@ from opencold.sic_data import SIC_CODES
 CATEGORY_WEIGHT = 1.0  # a category member (food->meat) is full subject signal
 
 # Bureaucratic filler stripped from SIC descriptions before subject matching.
-SIC_FILLER: frozenset[str] = frozenset({
-    "activities", "activity", "of", "and", "or", "the", "for", "with", "in",
-    "to", "other", "sale", "sales", "repair", "repairing", "maintenance",
-    "services", "service", "nec", "general", "specialised", "specialized",
-    "own", "operation", "operations", "operating", "related", "support",
-    "supporting", "involving", "involved", "via", "by", "not", "elsewhere",
-    "classified", "including", "etc", "products", "goods", "non", "items",
-    "use", "based", "n", "e", "c",
-})
+SIC_FILLER: frozenset[str] = frozenset(
+    {
+        "activities",
+        "activity",
+        "of",
+        "and",
+        "or",
+        "the",
+        "for",
+        "with",
+        "in",
+        "to",
+        "other",
+        "sale",
+        "sales",
+        "repair",
+        "repairing",
+        "maintenance",
+        "services",
+        "service",
+        "nec",
+        "general",
+        "specialised",
+        "specialized",
+        "own",
+        "operation",
+        "operations",
+        "operating",
+        "related",
+        "support",
+        "supporting",
+        "involving",
+        "involved",
+        "via",
+        "by",
+        "not",
+        "elsewhere",
+        "classified",
+        "including",
+        "etc",
+        "products",
+        "goods",
+        "non",
+        "items",
+        "use",
+        "based",
+        "n",
+        "e",
+        "c",
+    }
+)
 # "except" opens an exclusion clause ("(except rice)") whose excluded term we
 # drop without losing the rest of the description.
 
@@ -50,33 +93,119 @@ SIC_FILLER: frozenset[str] = frozenset({
 # merges how users phrase it with how Companies House phrases it in SIC titles
 # (e.g. "Processing and preserving of ...", "Agents involved in the sale of ...").
 ROLE_WORDS: dict[str, frozenset[str]] = {
-    "manufacture": frozenset({
-        "manufacture", "manufacturer", "manufacturers", "manufacturing",
-        "manufactured", "manufactures", "make", "maker", "makers", "making",
-        "produce", "producer", "producers", "producing", "production",
-        "fabricate", "fabricator", "fabrication", "processing", "preserving",
-        "casting", "forging", "distilling", "brewing", "smelting", "milling",
-        "spinning", "weaving", "tanning", "factory", "factories", "manufactory",
-    }),
-    "wholesale": frozenset({
-        "wholesale", "wholesaler", "wholesalers", "wholesaling", "distributor",
-        "distributors", "distribution", "distribute", "supplier", "suppliers",
-        "supply", "supplying", "merchant", "merchants", "trader", "traders",
-        "trading", "importer", "import", "exporter", "export", "reseller",
-        "agents", "agent", "broker", "brokers", "dealer", "dealing",
-    }),
-    "retail": frozenset({
-        "retail", "retailer", "retailers", "retailing", "shop", "shops",
-        "store", "stores", "seller", "sellers", "sell", "selling",
-        "ecommerce", "dispensing",
-    }),
-    "primary": frozenset({
-        "growing", "raising", "farming", "farm", "farmer", "grower",
-        "agriculture", "agricultural", "fishing", "fishery", "fisheries",
-        "hunting", "trapping", "logging", "mining", "miner", "quarrying",
-        "extraction", "gathering", "silviculture", "aquaculture",
-        "cultivation", "breeding",
-    }),
+    "manufacture": frozenset(
+        {
+            "manufacture",
+            "manufacturer",
+            "manufacturers",
+            "manufacturing",
+            "manufactured",
+            "manufactures",
+            "make",
+            "maker",
+            "makers",
+            "making",
+            "produce",
+            "producer",
+            "producers",
+            "producing",
+            "production",
+            "fabricate",
+            "fabricator",
+            "fabrication",
+            "processing",
+            "preserving",
+            "casting",
+            "forging",
+            "distilling",
+            "brewing",
+            "smelting",
+            "milling",
+            "spinning",
+            "weaving",
+            "tanning",
+            "factory",
+            "factories",
+            "manufactory",
+        }
+    ),
+    "wholesale": frozenset(
+        {
+            "wholesale",
+            "wholesaler",
+            "wholesalers",
+            "wholesaling",
+            "distributor",
+            "distributors",
+            "distribution",
+            "distribute",
+            "supplier",
+            "suppliers",
+            "supply",
+            "supplying",
+            "merchant",
+            "merchants",
+            "trader",
+            "traders",
+            "trading",
+            "importer",
+            "import",
+            "exporter",
+            "export",
+            "reseller",
+            "agents",
+            "agent",
+            "broker",
+            "brokers",
+            "dealer",
+            "dealing",
+        }
+    ),
+    "retail": frozenset(
+        {
+            "retail",
+            "retailer",
+            "retailers",
+            "retailing",
+            "shop",
+            "shops",
+            "store",
+            "stores",
+            "seller",
+            "sellers",
+            "sell",
+            "selling",
+            "ecommerce",
+            "dispensing",
+        }
+    ),
+    "primary": frozenset(
+        {
+            "growing",
+            "raising",
+            "farming",
+            "farm",
+            "farmer",
+            "grower",
+            "agriculture",
+            "agricultural",
+            "fishing",
+            "fishery",
+            "fisheries",
+            "hunting",
+            "trapping",
+            "logging",
+            "mining",
+            "miner",
+            "quarrying",
+            "extraction",
+            "gathering",
+            "silviculture",
+            "aquaculture",
+            "cultivation",
+            "breeding",
+        }
+    ),
 }
 ROLE_ORDER: tuple[str, ...] = ("manufacture", "wholesale", "retail", "primary")
 ROLE_PRIORITY: dict[str, int] = {"manufacture": 3, "wholesale": 2, "retail": 1, "primary": 0}
@@ -126,8 +255,8 @@ class SicMatch:
 @dataclass
 class MatchResult:
     matches: list[SicMatch]
-    status: str               # "ok" | "relaxed" | "generic" | "empty"
-    signal_terms: list[str]   # the non-filler ICP subject signal we matched on
+    status: str  # "ok" | "relaxed" | "generic" | "empty"
+    signal_terms: list[str]  # the non-filler ICP subject signal we matched on
     roles: list[str] = field(default_factory=list)  # roles applied (empty = none)
 
     @property
@@ -143,14 +272,14 @@ def clean_sic_description(desc: str) -> set[str]:
     out: set[str] = set()
     skip_next = False
     for w in text_words(desc):
-        if skip_next:                      # the noun excluded by "except"
+        if skip_next:  # the noun excluded by "except"
             skip_next = False
             continue
         if w == "except":
             skip_next = True
             continue
         if len(w) <= 2 or w.isdigit() or w in SIC_FILLER or w in STRIP_WORDS:
-            continue                        # role words drive role, not subject
+            continue  # role words drive role, not subject
         out.add(stem(w))
     return out
 
@@ -180,8 +309,8 @@ def reset_cache() -> None:
 
 # --- ICP term construction & scoring ---
 
-def _term_weights(profile: icp_phrases.IcpProfile,
-                  expansion: set[str] | None) -> dict[str, float]:
+
+def _term_weights(profile: icp_phrases.IcpProfile, expansion: set[str] | None) -> dict[str, float]:
     """Subject match terms -> weight: ICP core/qualifier tokens 1.0, their
     SIC-grounded category members (food->meat/dairy/...) 1.0, expansion synonyms
     0.5. Role words are excluded (they drive role, not subject)."""
@@ -200,7 +329,7 @@ def _term_weights(profile: icp_phrases.IcpProfile,
     for t in subjects:  # category hyponyms grounded in SIC names: food -> meat...
         for member in sic_categories.category_members(t):
             weights.setdefault(member.lower(), CATEGORY_WEIGHT)
-    for term in (expansion or set()):
+    for term in expansion or set():
         t = term.lower().strip()
         if t and t not in weights and t not in STRIP_WORDS:
             weights[t] = 0.5
@@ -222,8 +351,9 @@ def _core_signal(profile: icp_phrases.IcpProfile) -> list[str]:
     return sig
 
 
-def _score_sic(stems: set[str], stem_to_terms: dict[str, list[str]],
-               weights: dict[str, float]) -> tuple[float, list[str]]:
+def _score_sic(
+    stems: set[str], stem_to_terms: dict[str, list[str]], weights: dict[str, float]
+) -> tuple[float, list[str]]:
     """Score one SIC's subject stems: a term hits when its stem is in the SIC
     stems or (>=4 chars) is a literal substring of the joined stems -- the same
     primitive as discovery._icp_match. Each hit stem credited once at its max
@@ -241,9 +371,14 @@ def _score_sic(stems: set[str], stem_to_terms: dict[str, list[str]],
     return score, sorted(set(matched))
 
 
-def match_icp_to_sics(icp: str, expansion: set[str] | None = None, *,
-                      roles: list[str] | None = None,
-                      max_sics: int = 5, min_score: float = 1.0) -> MatchResult:
+def match_icp_to_sics(
+    icp: str,
+    expansion: set[str] | None = None,
+    *,
+    roles: list[str] | None = None,
+    max_sics: int = 5,
+    min_score: float = 1.0,
+) -> MatchResult:
     """Rank SIC codes against the ICP subject, then apply the role dimension.
 
     `roles`: the business role(s) to target (manufacture/wholesale/retail). If
@@ -263,7 +398,9 @@ def match_icp_to_sics(icp: str, expansion: set[str] | None = None, *,
         stem_to_terms.setdefault(stem(term), []).append(term)
 
     reqset = set(roles or [])
-    scored: list[tuple[float, list[str], str, str, str | None]] = []  # (score, matched, code, desc, role)
+    scored: list[
+        tuple[float, list[str], str, str, str | None]
+    ] = []  # (score, matched, code, desc, role)
     for code, desc, stems, role in _cleaned_sics():
         sc, matched = _score_sic(stems, stem_to_terms, weights)
         if sc <= 0:
@@ -280,8 +417,7 @@ def match_icp_to_sics(icp: str, expansion: set[str] | None = None, *,
         scored.sort(key=lambda x: (-ROLE_PRIORITY.get(x[4] or "", 0), -x[0], x[2]))
 
     def _mk(x):
-        return SicMatch(code=x[2], description=x[3], score=x[0],
-                        matched_terms=x[1], role=x[4])
+        return SicMatch(code=x[2], description=x[3], score=x[0], matched_terms=x[1], role=x[4])
 
     strict = [_mk(x) for x in scored if x[0] >= min_score][:max_sics]
     chosen = strict if strict else [_mk(x) for x in scored][:max_sics]

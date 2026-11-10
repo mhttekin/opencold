@@ -72,7 +72,7 @@ def has_enough_context(campaign: dict) -> bool:
 
 @dataclass
 class PipelineResult:
-    rows: list[dict]            # result rows: input cols + generated_* + quality_warnings
+    rows: list[dict]  # result rows: input cols + generated_* + quality_warnings
     success_count: int
     total_count: int
     dropped: list[dict] = field(default_factory=list)  # [{"row": {...}, "reason": "..."}]
@@ -113,8 +113,7 @@ def _resolve_missing_websites(
     targets = [
         r
         for r in rows
-        if r.get("company", "").strip()
-        and not (r.get("website", "").strip() if has_col else "")
+        if r.get("company", "").strip() and not (r.get("website", "").strip() if has_col else "")
     ]
     if not targets:
         return rows
@@ -129,8 +128,13 @@ def _resolve_missing_websites(
 
     total = len(by_company)
     worker_count = max(1, min(clamp_workers(workers), total))
-    _emit(progress, phase="resolve", current=0, total=total,
-          message=f"Resolving {len(targets)} missing website(s) by company name")
+    _emit(
+        progress,
+        phase="resolve",
+        current=0,
+        total=total,
+        message=f"Resolving {len(targets)} missing website(s) by company name",
+    )
 
     resolved: dict[str, str] = {}
     done = 0
@@ -148,8 +152,13 @@ def _resolve_missing_websites(
             if url:
                 resolved[company] = url
             done += 1
-            _emit(progress, phase="resolve", current=done, total=total,
-                  message=f"{company} → {url or 'no match'}")
+            _emit(
+                progress,
+                phase="resolve",
+                current=done,
+                total=total,
+                message=f"{company} → {url or 'no match'}",
+            )
 
     for company, company_rows in by_company.items():
         url = resolved.get(company)
@@ -164,8 +173,7 @@ def _verify_rows(
 ) -> tuple[list[dict], list[dict]]:
     """Verify emails (format + MX). Drops invalid rows only when ``drop_invalid``."""
     total = len(rows)
-    _emit(progress, phase="verify", current=0, total=total,
-          message=f"Verifying {total} email(s)")
+    _emit(progress, phase="verify", current=0, total=total, message=f"Verifying {total} email(s)")
 
     kept: list[dict] = []
     dropped: list[dict] = []
@@ -176,8 +184,13 @@ def _verify_rows(
             kept.append(row)
         else:
             dropped.append({"row": row, "reason": result["reason"]})
-        _emit(progress, phase="verify", current=i, total=total,
-              message=f"{email or '(no email)'}: {'valid' if result['valid'] else result['reason']}")
+        _emit(
+            progress,
+            phase="verify",
+            current=i,
+            total=total,
+            message=f"{email or '(no email)'}: {'valid' if result['valid'] else result['reason']}",
+        )
     return kept, dropped
 
 
@@ -198,8 +211,13 @@ def _enrich_rows(
     website_results: dict[str, dict] = {}
     if websites:
         worker_count = max(1, min(workers, len(websites)))
-        _emit(progress, phase="enrich", current=0, total=len(websites),
-              message=f"Crawling {len(websites)} unique website(s)")
+        _emit(
+            progress,
+            phase="enrich",
+            current=0,
+            total=len(websites),
+            message=f"Crawling {len(websites)} unique website(s)",
+        )
         done = 0
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             future_to_website = {
@@ -221,8 +239,13 @@ def _enrich_rows(
                         "enrichment_json": "{}",
                     }
                 done += 1
-                _emit(progress, phase="enrich", current=done, total=len(websites),
-                      message=f"{website}: {website_results[website].get('website_status', '')}")
+                _emit(
+                    progress,
+                    phase="enrich",
+                    current=done,
+                    total=len(websites),
+                    message=f"{website}: {website_results[website].get('website_status', '')}",
+                )
 
     enriched: list[dict] = []
     for row in rows:
@@ -323,27 +346,41 @@ def _generate_all(
                 warnings = quality.merge_warnings(
                     row.get("quality_warnings", ""), ["generation_failed"]
                 )
-                results.append({
-                    **row,
-                    "quality_warnings": warnings,
-                    "generated_subject": "",
-                    "generated_email": f"ERROR: {result}",
-                })
-                _emit(progress, phase="generate", current=completed, total=total,
-                      message=f"[{completed}/{total}] {display_name(row)} — failed")
+                results.append(
+                    {
+                        **row,
+                        "quality_warnings": warnings,
+                        "generated_subject": "",
+                        "generated_email": f"ERROR: {result}",
+                    }
+                )
+                _emit(
+                    progress,
+                    phase="generate",
+                    current=completed,
+                    total=total,
+                    message=f"[{completed}/{total}] {display_name(row)} — failed",
+                )
             else:
                 draft_warnings = quality.evaluate_draft(
                     result["subject"], result["body"], row.get("personalization_facts", "")
                 )
                 warnings = quality.merge_warnings(row.get("quality_warnings", ""), draft_warnings)
-                results.append({
-                    **row,
-                    "quality_warnings": warnings,
-                    "generated_subject": result["subject"],
-                    "generated_email": result["body"],
-                })
-                _emit(progress, phase="generate", current=completed, total=total,
-                      message=f"[{completed}/{total}] {display_name(row)} — done")
+                results.append(
+                    {
+                        **row,
+                        "quality_warnings": warnings,
+                        "generated_subject": result["subject"],
+                        "generated_email": result["body"],
+                    }
+                )
+                _emit(
+                    progress,
+                    phase="generate",
+                    current=completed,
+                    total=total,
+                    message=f"[{completed}/{total}] {display_name(row)} — done",
+                )
 
         # Delay between batches, not between individual requests.
         if batch_start + batch_size < total:
@@ -428,8 +465,13 @@ def generate_drafts(
     sender_name = identity.get("name", "")
 
     total = len(rows)
-    _emit(progress, phase="generate", current=0, total=total,
-          message=f"Generating {total} draft(s) with {effective_model}")
+    _emit(
+        progress,
+        phase="generate",
+        current=0,
+        total=total,
+        message=f"Generating {total} draft(s) with {effective_model}",
+    )
 
     results = _generate_all(
         rows,
@@ -450,6 +492,11 @@ def generate_drafts(
     )
 
     success = sum(1 for r in results if not r["generated_email"].startswith("ERROR:"))
-    _emit(progress, phase="done", current=total, total=total,
-          message=f"Done — {success}/{total} generated")
+    _emit(
+        progress,
+        phase="done",
+        current=total,
+        total=total,
+        message=f"Done — {success}/{total} generated",
+    )
     return PipelineResult(results, success, total, dropped)

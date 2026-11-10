@@ -43,13 +43,37 @@ ICP_STOPWORDS = {"and", "for", "the", "with", "that", "this"}
 # mode permanently: everything after "for"/"serving"/"in"/... describes audience,
 # geography, or focus — supporting context, not the core industry concept.
 QUALIFIER_MARKERS = {
-    "for", "serving", "targeting", "helping", "catering",
-    "in", "within", "across", "near", "at", "around", "from", "to",
-    "toward", "towards",
-    "based", "located", "operating",
-    "with", "without", "via", "by",
-    "who", "that", "which", "whose",
-    "focused", "focusing", "specializing", "specialising", "on",
+    "for",
+    "serving",
+    "targeting",
+    "helping",
+    "catering",
+    "in",
+    "within",
+    "across",
+    "near",
+    "at",
+    "around",
+    "from",
+    "to",
+    "toward",
+    "towards",
+    "based",
+    "located",
+    "operating",
+    "with",
+    "without",
+    "via",
+    "by",
+    "who",
+    "that",
+    "which",
+    "whose",
+    "focused",
+    "focusing",
+    "specializing",
+    "specialising",
+    "on",
 }
 
 # "of" closes the current sub-chunk but its complement stays core:
@@ -83,9 +107,9 @@ def stem(word: str) -> str:
 
 @dataclass(frozen=True)
 class Chunk:
-    tokens: tuple[str, ...]      # ordered, lowercased, hyphens preserved
-    required: tuple[bool, ...]   # False for generic/stopword tokens
-    role: str                    # "core" | "qualifier"
+    tokens: tuple[str, ...]  # ordered, lowercased, hyphens preserved
+    required: tuple[bool, ...]  # False for generic/stopword tokens
+    role: str  # "core" | "qualifier"
 
     @property
     def head(self) -> str:
@@ -103,7 +127,7 @@ class Chunk:
 class IcpProfile:
     icp: str
     chunks: tuple[Chunk, ...]
-    core_tokens: tuple[str, ...]       # ordered required core tokens (gate set R)
+    core_tokens: tuple[str, ...]  # ordered required core tokens (gate set R)
     qualifier_tokens: tuple[str, ...]  # ordered required qualifier tokens
     # Multi-token core chunks with ≥1 required token: the units for phrase
     # matching, whole-phrase translation, and phrase-level Datamuse expansion.
@@ -123,9 +147,7 @@ def parse_icp(icp: str) -> IcpProfile:
 
     def close() -> None:
         if current:
-            required = tuple(
-                t not in GENERIC_ICP_TERMS and t not in ICP_STOPWORDS for t in current
-            )
+            required = tuple(t not in GENERIC_ICP_TERMS and t not in ICP_STOPWORDS for t in current)
             chunks.append(Chunk(tokens=tuple(current), required=required, role=state))
             current.clear()
 
@@ -160,8 +182,7 @@ def parse_icp(icp: str) -> IcpProfile:
         core_tokens=ordered_required("core"),
         qualifier_tokens=ordered_required("qualifier"),
         core_phrases=tuple(
-            c.tokens for c in chunks
-            if c.role == "core" and len(c.tokens) >= 2 and any(c.required)
+            c.tokens for c in chunks if c.role == "core" and len(c.tokens) >= 2 and any(c.required)
         ),
     )
 
@@ -173,7 +194,9 @@ def text_words(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", (text or "").lower())
 
 
-def phrase_hit(chunk_tokens: tuple[str, ...], words: list[str], stems: list[str] | None = None) -> bool:
+def phrase_hit(
+    chunk_tokens: tuple[str, ...], words: list[str], stems: list[str] | None = None
+) -> bool:
     """True when the chunk appears in `words` as an in-order stem sequence with at
     most 2 intervening words ("health AND safety consultants" still hits; tokens
     scattered across a page do not — that is co-occurrence, judged separately) OR
@@ -236,10 +259,10 @@ def token_evidenced(
 @dataclass(frozen=True)
 class CoreMatch:
     phrase_chunks: tuple[tuple[str, ...], ...]  # core chunks that hit as phrases
-    evidenced: frozenset[str]                   # required core tokens evidenced
-    required: frozenset[str]                    # gate set R
-    matched_qualifiers: tuple[str, ...]         # qualifier tokens evidenced
-    confirmed: bool                             # every required core token evidenced
+    evidenced: frozenset[str]  # required core tokens evidenced
+    required: frozenset[str]  # gate set R
+    matched_qualifiers: tuple[str, ...]  # qualifier tokens evidenced
+    confirmed: bool  # every required core token evidenced
 
 
 def evidence_core(
@@ -273,7 +296,8 @@ def evidence_core(
             evidenced.add(tok)
 
     matched_qualifiers = tuple(
-        t for t in profile.qualifier_tokens
+        t
+        for t in profile.qualifier_tokens
         if token_evidenced(t, word_set, stem_set, low, prov.get(t))
     )
     return CoreMatch(

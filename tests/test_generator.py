@@ -24,9 +24,18 @@ def _mock_openai_response(text: str):
     return resp
 
 
-ANTHROPIC_CONFIG = {"type": "anthropic", "api_key": "sk-ant-test", "default_model": "claude-sonnet-4-6"}
+ANTHROPIC_CONFIG = {
+    "type": "anthropic",
+    "api_key": "sk-ant-test",
+    "default_model": "claude-sonnet-4-6",
+}
 OPENAI_CONFIG = {"type": "openai", "api_key": "sk-test", "default_model": "gpt-4o"}
-PROXY_CONFIG = {"type": "proxy", "api_key": "sk-proxy", "default_model": "llama-3", "base_url": "https://proxy.test/v1"}
+PROXY_CONFIG = {
+    "type": "proxy",
+    "api_key": "sk-proxy",
+    "default_model": "llama-3",
+    "base_url": "https://proxy.test/v1",
+}
 
 
 class TestGenerateEmail:
@@ -50,8 +59,11 @@ class TestGenerateEmail:
         MockAnthropic.return_value = client
 
         generator.generate_email(
-            ANTHROPIC_CONFIG, "sys prompt", "user prompt",
-            model="claude-haiku-4-5", max_tokens=200,
+            ANTHROPIC_CONFIG,
+            "sys prompt",
+            "user prompt",
+            model="claude-haiku-4-5",
+            max_tokens=200,
         )
 
         call_kwargs = client.messages.create.call_args[1]
@@ -74,7 +86,9 @@ class TestGenerateEmail:
         result = generator.generate_email(PROXY_CONFIG, "sys", "user")
         assert result["subject"] == "Hey there"
         assert "Hello from proxy" in result["body"]
-        mock_gen.assert_called_once_with("sk-proxy", "sys", "user", "llama-3", 1024, "https://proxy.test/v1")
+        mock_gen.assert_called_once_with(
+            "sk-proxy", "sys", "user", "llama-3", 1024, "https://proxy.test/v1"
+        )
 
     @patch("opencold.generator._generate_openai")
     def test_proxy_uses_config_max_tokens(self, mock_gen):
@@ -94,6 +108,7 @@ class TestGenerateEmail:
 
     def test_unknown_type_raises(self):
         import pytest
+
         bad_config = {"type": "unknown", "api_key": "x", "default_model": "x"}
         with pytest.raises(ValueError, match="Unknown provider type"):
             generator.generate_email(bad_config, "sys", "user")
@@ -247,7 +262,7 @@ class TestCleanOutput:
         assert "Para 3." in result
 
     def test_strips_double_quotes_preserves_apostrophes(self):
-        text = 'He said "hello" and she said \'goodbye\'.'
+        text = "He said \"hello\" and she said 'goodbye'."
         result = generator._clean_output(text)
         assert '"' not in result
         assert "'" in result  # apostrophes preserved
@@ -356,7 +371,9 @@ class TestSplitSubjectBody:
         assert body == "Just a single block of text"
 
     def test_long_first_line_treated_as_body(self):
-        long_line = "This is way too long to be a subject line and should be treated as body text entirely"
+        long_line = (
+            "This is way too long to be a subject line and should be treated as body text entirely"
+        )
         subject, body = generator._split_subject_body(f"{long_line}\n\nSecond para.")
         assert subject == ""
         assert long_line in body

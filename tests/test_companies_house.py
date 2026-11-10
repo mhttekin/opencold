@@ -91,21 +91,24 @@ class TestCleanSicDescription:
 
     def test_drops_manufacture_and_other(self):
         stems = sic_match.clean_sic_description(
-            "Manufacture of other products of wood, cork, straw and plaiting materials")
+            "Manufacture of other products of wood, cork, straw and plaiting materials"
+        )
         assert "wood" in stems and "cork" in stems
         assert "manufactur" not in stems and "manufacture" not in stems
         assert "other" not in stems and "products" not in stems
 
     def test_drops_except_clause_term(self):
         stems = sic_match.clean_sic_description(
-            "Growing of cereals (except rice), leguminous crops and oil seeds")
-        assert "rice" not in stems              # the excluded term is dropped
-        assert "cereal" in stems                # but the rest survives
+            "Growing of cereals (except rice), leguminous crops and oil seeds"
+        )
+        assert "rice" not in stems  # the excluded term is dropped
+        assert "cereal" in stems  # but the rest survives
         assert "oil" in stems and "seed" in stems
 
     def test_drops_short_and_digit_tokens(self):
         stems = sic_match.clean_sic_description(
-            "Retail sale of fruit and vegetables in specialised stores")
+            "Retail sale of fruit and vegetables in specialised stores"
+        )
         assert "fruit" in stems and "vegetabl" in stems
         for filler in ("retail", "sale", "of", "in", "specialised", "stores"):
             assert filler not in stems
@@ -153,7 +156,10 @@ class TestRoleDimension:
     def test_detect_icp_roles(self):
         assert sic_match.detect_icp_roles("food manufacturing") == ["manufacture"]
         assert sic_match.detect_icp_roles("food") == []
-        assert sic_match.detect_icp_roles("manufacturer and wholesaler of food") == ["manufacture", "wholesale"]
+        assert sic_match.detect_icp_roles("manufacturer and wholesaler of food") == [
+            "manufacture",
+            "wholesale",
+        ]
         assert sic_match.detect_icp_roles("timber merchants") == ["wholesale"]
         assert sic_match.detect_icp_roles("a food shop") == ["retail"]
 
@@ -194,27 +200,31 @@ class TestCategoryExpansion:
     def test_category_members(self):
         m = sic_categories.category_members("food")
         assert {"meat", "dairy", "fish", "bread"} <= m
-        assert sic_categories.category_members("foods") == m            # plural via stem
-        assert sic_categories.category_members("drinks") == sic_categories.category_members("beverage")  # alias
-        assert sic_categories.category_members("widget") == set()       # not a category
+        assert sic_categories.category_members("foods") == m  # plural via stem
+        assert sic_categories.category_members("drinks") == sic_categories.category_members(
+            "beverage"
+        )  # alias
+        assert sic_categories.category_members("widget") == set()  # not a category
 
     def test_food_reaches_meat_and_fish(self):
         # The reported gap: "food manufacturing" must reach meat/fish SICs, not
         # only those with the literal word "food". Uses the real vendored list.
-        res = sic_match.match_icp_to_sics("food manufacturing", set(),
-                                          roles=["manufacture"], max_sics=30)
+        res = sic_match.match_icp_to_sics(
+            "food manufacturing", set(), roles=["manufacture"], max_sics=30
+        )
         codes = {m.code for m in res.matches}
-        assert {"10110", "10120", "10130"} & codes   # meat processing/production
-        assert "10200" in codes                        # fish processing
+        assert {"10110", "10120", "10130"} & codes  # meat processing/production
+        assert "10200" in codes  # fish processing
         # manufacture or role-less only -- never wholesale/retail/primary.
         assert all(m.role in ("manufacture", None) for m in res.matches)
 
     def test_primary_sics_excluded_from_manufacture(self):
-        res = sic_match.match_icp_to_sics("food manufacturing", set(),
-                                          roles=["manufacture"], max_sics=50)
+        res = sic_match.match_icp_to_sics(
+            "food manufacturing", set(), roles=["manufacture"], max_sics=50
+        )
         codes = {m.code for m in res.matches}
-        assert "01470" not in codes    # Raising of poultry (farming)
-        assert "03110" not in codes    # Marine fishing
+        assert "01470" not in codes  # Raising of poultry (farming)
+        assert "03110" not in codes  # Marine fishing
 
 
 class TestSearchCompanies:
@@ -237,8 +247,9 @@ class TestSearchCompanies:
             return _FakeResp({"hits": 0, "items": []})
 
         with patch("urllib.request.urlopen", side_effect=_fake):
-            ch.search_companies(["16100", "62012"], api_key="K", limit=5,
-                                company_types=("ltd", "llp"))
+            ch.search_companies(
+                ["16100", "62012"], api_key="K", limit=5, company_types=("ltd", "llp")
+            )
         assert "sic_codes=16100%2C62012" in captured["url"]
         assert "company_type=ltd%2Cllp" in captured["url"]
         assert "company_status=active" in captured["url"]
@@ -322,7 +333,7 @@ class TestDefaultSmeTypes:
     def test_excludes_api_rejected_types(self):
         # These were rejected by the live advanced-search company_type filter.
         assert "community-interest-company" not in ch.DEFAULT_SME_TYPES  # API 400
-        assert "limited-partnership" not in ch.DEFAULT_SME_TYPES         # API 404
+        assert "limited-partnership" not in ch.DEFAULT_SME_TYPES  # API 404
         assert "ltd" in ch.DEFAULT_SME_TYPES and "llp" in ch.DEFAULT_SME_TYPES
 
 
@@ -380,8 +391,9 @@ class TestCompanyToRowAndCsv:
         assert row["locality"] == "" and row["account_type"] == ""
 
     def test_matched_sic_overlap(self):
-        m = sic_match.SicMatch("62012", "Business and domestic software development",
-                               1.0, ["development"])
+        m = sic_match.SicMatch(
+            "62012", "Business and domestic software development", 1.0, ["development"]
+        )
         enr = sm.EnrichedCompany(item={"company_number": "1", "sic_codes": ["62012", "99999"]})
         row = sm.company_to_row(enr, [m])
         assert row["matched_sic_codes"] == "62012"
@@ -423,6 +435,7 @@ class TestLoadDotenv:
         monkeypatch.delenv("FOO", raising=False)
         config.load_dotenv(str(env))
         import os
+
         assert os.environ["COMPANIES_HOUSE_API_KEY"] == "fromfile"
         assert os.environ["FOO"] == "bar"
 
@@ -433,6 +446,7 @@ class TestLoadDotenv:
         monkeypatch.setattr(config, "_DOTENV_LOADED", False)
         config.load_dotenv(str(env))
         import os
+
         assert os.environ["COMPANIES_HOUSE_API_KEY"] == "preset"
 
 
@@ -443,14 +457,24 @@ class TestPipeline:
         search_payload = {
             "hits": 2,
             "items": [
-                {"company_number": "OLD", "company_name": "Old Oak Plc",
-                 "company_status": "active", "company_type": "ltd",
-                 "date_of_creation": "2001-01-01", "sic_codes": ["16100"],
-                 "registered_office_address": {"locality": "Leeds", "postal_code": "LS1"}},
-                {"company_number": "NEW", "company_name": "New Saw Ltd",
-                 "company_status": "active", "company_type": "ltd",
-                 "date_of_creation": "2024-01-01", "sic_codes": ["16100"],
-                 "registered_office_address": {"locality": "Hull", "postal_code": "HU1"}},
+                {
+                    "company_number": "OLD",
+                    "company_name": "Old Oak Plc",
+                    "company_status": "active",
+                    "company_type": "ltd",
+                    "date_of_creation": "2001-01-01",
+                    "sic_codes": ["16100"],
+                    "registered_office_address": {"locality": "Leeds", "postal_code": "LS1"},
+                },
+                {
+                    "company_number": "NEW",
+                    "company_name": "New Saw Ltd",
+                    "company_status": "active",
+                    "company_type": "ltd",
+                    "date_of_creation": "2024-01-01",
+                    "sic_codes": ["16100"],
+                    "registered_office_address": {"locality": "Hull", "postal_code": "HU1"},
+                },
             ],
         }
         profiles = {
@@ -471,8 +495,12 @@ class TestPipeline:
         out = tmp_path / "smes.csv"
         with patch("urllib.request.urlopen", side_effect=_fake):
             result = sm.run_smearch(
-                "", sic_codes=["16100"], api_key="K", output=str(out),
-                limit=10, this_year=2026,
+                "",
+                sic_codes=["16100"],
+                api_key="K",
+                output=str(out),
+                limit=10,
+                this_year=2026,
             )
         assert len(result.rows) == 2
         # Fresh micro-SME ranks above the old full-accounts company.
@@ -486,8 +514,9 @@ class TestPipeline:
 
     def test_dry_run_skips_network(self, tmp_path):
         # No urlopen patch: if it tried to call the network the test would error.
-        result = sm.run_smearch("", sic_codes=["16100"], api_key="K", dry_run=True,
-                                output=str(tmp_path / "x.csv"))
+        result = sm.run_smearch(
+            "", sic_codes=["16100"], api_key="K", dry_run=True, output=str(tmp_path / "x.csv")
+        )
         assert result.rows == []
         assert result.match.matches[0].code == "16100"
 
@@ -513,8 +542,15 @@ class TestPagination:
             return _FakeResp({"hits": 0, "items": []})
 
         with patch("urllib.request.urlopen", side_effect=_fake):
-            sm.run_smearch("", sic_codes=["16100"], api_key="K", output="",
-                           limit=10, start_index=20, this_year=2026)
+            sm.run_smearch(
+                "",
+                sic_codes=["16100"],
+                api_key="K",
+                output="",
+                limit=10,
+                start_index=20,
+                this_year=2026,
+            )
         assert urls and "start_index=20" in urls[0]
 
 
@@ -523,9 +559,11 @@ class TestSmearchDb:
 
     def test_roundtrip_and_dedup(self, tmp_path):
         conn = sdb.connect(tmp_path / "seen.db")
-        rows = [{"company_number": "A", "company_name": "Alpha", "sic_codes": "16100"},
-                {"company_number": "B", "company_name": "Bravo", "sic_codes": "16100"},
-                {"company_number": "", "company_name": "NoNumber"}]  # no number -> skipped
+        rows = [
+            {"company_number": "A", "company_name": "Alpha", "sic_codes": "16100"},
+            {"company_number": "B", "company_name": "Bravo", "sic_codes": "16100"},
+            {"company_number": "", "company_name": "NoNumber"},
+        ]  # no number -> skipped
         assert sdb.mark_enriched(conn, rows, icp="timber") == 2
         assert sdb.seen_numbers(conn, ["A", "B", "C"]) == {"A", "B"}
 
@@ -569,21 +607,27 @@ class TestGatherFreshPages:
     def test_whole_page_seen_advances(self):
         pages = {1: self._rows("A", "B"), 2: self._rows("C", "D")}
         # Page 1 (A,B) is entirely seen -> walk on to page 2.
-        g = sm.gather_fresh_pages(lambda pg: pages.get(pg, []), start_page=1,
-                                  target=2, is_seen=lambda rows: {"A", "B"})
+        g = sm.gather_fresh_pages(
+            lambda pg: pages.get(pg, []), start_page=1, target=2, is_seen=lambda rows: {"A", "B"}
+        )
         assert [r["company_number"] for r in g.rows] == ["C", "D"]
         assert g.pages_walked == 2 and g.skipped_seen == 2
 
     def test_partial_page_tops_up_from_next(self):
         pages = {1: self._rows("A", "B"), 2: self._rows("C", "D")}
-        g = sm.gather_fresh_pages(lambda pg: pages.get(pg, []), start_page=1,
-                                  target=3, is_seen=lambda rows: {"A"})
+        g = sm.gather_fresh_pages(
+            lambda pg: pages.get(pg, []), start_page=1, target=3, is_seen=lambda rows: {"A"}
+        )
         assert [r["company_number"] for r in g.rows] == ["B", "C", "D"]
         assert g.pages_walked == 2
 
     def test_empty_page_stops(self):
-        g = sm.gather_fresh_pages(lambda pg: self._rows("A") if pg == 1 else [],
-                                  start_page=1, target=5, is_seen=lambda rows: set())
+        g = sm.gather_fresh_pages(
+            lambda pg: self._rows("A") if pg == 1 else [],
+            start_page=1,
+            target=5,
+            is_seen=lambda rows: set(),
+        )
         assert [r["company_number"] for r in g.rows] == ["A"] and g.saw_any
 
     def test_max_pages_caps_the_walk(self):
@@ -593,8 +637,9 @@ class TestGatherFreshPages:
             calls.append(pg)
             return self._rows("X")  # always the same, always-seen row
 
-        g = sm.gather_fresh_pages(collect, start_page=1, target=5,
-                                  is_seen=lambda rows: {"X"}, max_pages=3)
+        g = sm.gather_fresh_pages(
+            collect, start_page=1, target=5, is_seen=lambda rows: {"X"}, max_pages=3
+        )
         assert g.rows == [] and len(calls) == 3 and g.skipped_seen == 3
 
 
@@ -603,18 +648,42 @@ class TestSmearchDedupCli:
     the ones it outputs); --no-db is a stateless test run."""
 
     _COMPANIES = [
-        {"company_number": "C1", "company_name": "Alpha Ltd", "company_status": "active",
-         "company_type": "ltd", "date_of_creation": "2020-01-01", "sic_codes": ["16100"],
-         "registered_office_address": {"locality": "Leeds"}},
-        {"company_number": "C2", "company_name": "Bravo Ltd", "company_status": "active",
-         "company_type": "ltd", "date_of_creation": "2020-01-01", "sic_codes": ["16100"],
-         "registered_office_address": {"locality": "Hull"}},
-        {"company_number": "C3", "company_name": "Charlie Ltd", "company_status": "active",
-         "company_type": "ltd", "date_of_creation": "2020-01-01", "sic_codes": ["16100"],
-         "registered_office_address": {"locality": "York"}},
-        {"company_number": "C4", "company_name": "Delta Ltd", "company_status": "active",
-         "company_type": "ltd", "date_of_creation": "2020-01-01", "sic_codes": ["16100"],
-         "registered_office_address": {"locality": "Hull"}},
+        {
+            "company_number": "C1",
+            "company_name": "Alpha Ltd",
+            "company_status": "active",
+            "company_type": "ltd",
+            "date_of_creation": "2020-01-01",
+            "sic_codes": ["16100"],
+            "registered_office_address": {"locality": "Leeds"},
+        },
+        {
+            "company_number": "C2",
+            "company_name": "Bravo Ltd",
+            "company_status": "active",
+            "company_type": "ltd",
+            "date_of_creation": "2020-01-01",
+            "sic_codes": ["16100"],
+            "registered_office_address": {"locality": "Hull"},
+        },
+        {
+            "company_number": "C3",
+            "company_name": "Charlie Ltd",
+            "company_status": "active",
+            "company_type": "ltd",
+            "date_of_creation": "2020-01-01",
+            "sic_codes": ["16100"],
+            "registered_office_address": {"locality": "York"},
+        },
+        {
+            "company_number": "C4",
+            "company_name": "Delta Ltd",
+            "company_status": "active",
+            "company_type": "ltd",
+            "date_of_creation": "2020-01-01",
+            "sic_codes": ["16100"],
+            "registered_office_address": {"locality": "Hull"},
+        },
     ]
     # Distinct account sizes give a stable rank C1>C2>C3>C4 (date/officers equal),
     # independent of the real clock.
@@ -635,6 +704,7 @@ class TestSmearchDedupCli:
             if "/officers" in url:
                 return _FakeResp({"active_count": 2})
             return _FakeResp(self._PROFILES.get(num, {}))
+
         return _fake
 
     @staticmethod
@@ -644,40 +714,59 @@ class TestSmearchDedupCli:
 
     def test_repeat_runs_surface_fresh_companies(self, tmp_path, monkeypatch, capsys):
         from opencold import cli
+
         monkeypatch.setenv("COMPANIES_HOUSE_API_KEY", "K")
         monkeypatch.delenv("OPENCOLD_SMEARCH_DB", raising=False)  # use isolated CONFIG_DIR
         out = str(tmp_path / "smes.csv")
 
         with patch("urllib.request.urlopen", side_effect=self._router()):
-            cli.do_smearch(sic="16100", output=out, top_n=2, enrich=False,
-                           use_llm=False, use_expansion=False)
+            cli.do_smearch(
+                sic="16100", output=out, top_n=2, enrich=False, use_llm=False, use_expansion=False
+            )
             run1 = self._nums(out)
-            cli.do_smearch(sic="16100", output=out, top_n=2, enrich=False,
-                           use_llm=False, use_expansion=False)
+            cli.do_smearch(
+                sic="16100", output=out, top_n=2, enrich=False, use_llm=False, use_expansion=False
+            )
             run2 = self._nums(out)
             # Third run: every company already enriched -> nothing new, CSV untouched.
-            cli.do_smearch(sic="16100", output=out, top_n=2, enrich=False,
-                           use_llm=False, use_expansion=False)
+            cli.do_smearch(
+                sic="16100", output=out, top_n=2, enrich=False, use_llm=False, use_expansion=False
+            )
             run3 = self._nums(out)
 
-        assert run1 == ["C1", "C2"]                 # top-2 ranked
-        assert run2 == ["C3", "C4"]                 # the next two -- all different
+        assert run1 == ["C1", "C2"]  # top-2 ranked
+        assert run2 == ["C3", "C4"]  # the next two -- all different
         assert set(run1).isdisjoint(run2)
-        assert run3 == ["C3", "C4"]                 # unchanged (nothing fresh written)
+        assert run3 == ["C3", "C4"]  # unchanged (nothing fresh written)
         assert "already enriched" in capsys.readouterr().out
 
     def test_no_db_is_stateless(self, tmp_path, monkeypatch):
         from opencold import cli
+
         monkeypatch.setenv("COMPANIES_HOUSE_API_KEY", "K")
         monkeypatch.delenv("OPENCOLD_SMEARCH_DB", raising=False)
         out = str(tmp_path / "smes.csv")
 
         with patch("urllib.request.urlopen", side_effect=self._router()):
-            cli.do_smearch(sic="16100", output=out, top_n=2, enrich=False,
-                           use_llm=False, use_expansion=False, no_db=True)
+            cli.do_smearch(
+                sic="16100",
+                output=out,
+                top_n=2,
+                enrich=False,
+                use_llm=False,
+                use_expansion=False,
+                no_db=True,
+            )
             first = self._nums(out)
-            cli.do_smearch(sic="16100", output=out, top_n=2, enrich=False,
-                           use_llm=False, use_expansion=False, no_db=True)
+            cli.do_smearch(
+                sic="16100",
+                output=out,
+                top_n=2,
+                enrich=False,
+                use_llm=False,
+                use_expansion=False,
+                no_db=True,
+            )
             second = self._nums(out)
 
         assert first == ["C1", "C2"] and second == ["C1", "C2"]  # nothing recorded -> same
@@ -688,7 +777,9 @@ class TestDormantFilter:
         assert sm.is_dormant(sm.EnrichedCompany(item={}, account_type="dormant"))
         assert sm.is_dormant(sm.EnrichedCompany(item={}, account_type="DORMANT"))
         assert not sm.is_dormant(sm.EnrichedCompany(item={}, account_type="micro-entity"))
-        assert not sm.is_dormant(sm.EnrichedCompany(item={}, account_type=""))  # new co, not dormant
+        assert not sm.is_dormant(
+            sm.EnrichedCompany(item={}, account_type="")
+        )  # new co, not dormant
 
     @staticmethod
     def _router(search_payload, profiles, officers):
@@ -700,42 +791,58 @@ class TestDormantFilter:
             if "/officers" in url:
                 return _FakeResp(officers.get(num, {}))
             return _FakeResp(profiles.get(num, {}))
+
         return _fake
 
-    _SEARCH = {"hits": 2, "items": [
-        {"company_number": "DOR", "company_name": "Sleepy Ltd", "sic_codes": ["10890"]},
-        {"company_number": "ACT", "company_name": "Busy Ltd", "sic_codes": ["10890"]},
-    ]}
-    _PROFILES = {"DOR": {"accounts": {"last_accounts": {"type": "dormant"}}},
-                 "ACT": {"accounts": {"last_accounts": {"type": "micro-entity"}}}}
+    _SEARCH = {
+        "hits": 2,
+        "items": [
+            {"company_number": "DOR", "company_name": "Sleepy Ltd", "sic_codes": ["10890"]},
+            {"company_number": "ACT", "company_name": "Busy Ltd", "sic_codes": ["10890"]},
+        ],
+    }
+    _PROFILES = {
+        "DOR": {"accounts": {"last_accounts": {"type": "dormant"}}},
+        "ACT": {"accounts": {"last_accounts": {"type": "micro-entity"}}},
+    }
     _OFFICERS = {"DOR": {"active_count": 1}, "ACT": {"active_count": 1}}
-    _MATCH = [sic_match.SicMatch("10890", "Manufacture of other food products n.e.c.",
-                                 1.0, ["food"], "manufacture")]
+    _MATCH = [
+        sic_match.SicMatch(
+            "10890", "Manufacture of other food products n.e.c.", 1.0, ["food"], "manufacture"
+        )
+    ]
 
     def test_excludes_dormant_by_default(self):
-        with patch("urllib.request.urlopen",
-                   side_effect=self._router(self._SEARCH, self._PROFILES, self._OFFICERS)):
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=self._router(self._SEARCH, self._PROFILES, self._OFFICERS),
+        ):
             rows = sm.collect_smes(self._MATCH, api_key="K", limit=10, this_year=2026)
         names = [r["company_name"] for r in rows]
         assert "Busy Ltd" in names
         assert "Sleepy Ltd" not in names
 
     def test_keeps_dormant_when_requested(self):
-        with patch("urllib.request.urlopen",
-                   side_effect=self._router(self._SEARCH, self._PROFILES, self._OFFICERS)):
-            rows = sm.collect_smes(self._MATCH, api_key="K", limit=10, this_year=2026,
-                                   exclude_dormant=False)
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=self._router(self._SEARCH, self._PROFILES, self._OFFICERS),
+        ):
+            rows = sm.collect_smes(
+                self._MATCH, api_key="K", limit=10, this_year=2026, exclude_dormant=False
+            )
         names = [r["company_name"] for r in rows]
         assert "Busy Ltd" in names and "Sleepy Ltd" in names
 
 
 class TestListActiveOfficers:
     def test_filters_resigned(self):
-        payload = {"items": [
-            {"name": "SMITH, John", "officer_role": "director"},
-            {"name": "JONES, Amy", "officer_role": "secretary", "resigned_on": "2020-01-01"},
-            {"name": "ACME SECRETARIES LIMITED", "officer_role": "corporate-nominee-secretary"},
-        ]}
+        payload = {
+            "items": [
+                {"name": "SMITH, John", "officer_role": "director"},
+                {"name": "JONES, Amy", "officer_role": "secretary", "resigned_on": "2020-01-01"},
+                {"name": "ACME SECRETARIES LIMITED", "officer_role": "corporate-nominee-secretary"},
+            ]
+        }
         with patch("urllib.request.urlopen", return_value=_FakeResp(payload)):
             offs = ch.list_active_officers("123", api_key="K")
         assert [o["name"] for o in offs] == ["SMITH, John", "ACME SECRETARIES LIMITED"]
@@ -748,10 +855,19 @@ class TestGooglePlaces:
         def _fake(req, timeout=None):
             captured["key"] = req.get_header("X-goog-api-key")
             captured["mask"] = req.get_header("X-goog-fieldmask")
-            return _FakeResp({"places": [{
-                "displayName": {"text": "Acme Foods"}, "formattedAddress": "1 Mill Rd, Leeds",
-                "websiteUri": "https://acmefoods.co.uk", "nationalPhoneNumber": "0113 200 0000",
-                "id": "PLACE1"}]})
+            return _FakeResp(
+                {
+                    "places": [
+                        {
+                            "displayName": {"text": "Acme Foods"},
+                            "formattedAddress": "1 Mill Rd, Leeds",
+                            "websiteUri": "https://acmefoods.co.uk",
+                            "nationalPhoneNumber": "0113 200 0000",
+                            "id": "PLACE1",
+                        }
+                    ]
+                }
+            )
 
         with patch("urllib.request.urlopen", side_effect=_fake):
             p = google_places.find_place("Acme Foods, Leeds", api_key="K")
@@ -786,12 +902,17 @@ class TestEnrichHelpers:
         assert se._address_on_site(row, "nothing relevant here") == ""
 
     def test_csv_fields_in_sync(self):
-        assert sm.CSV_FIELDS[-len(se.ENRICH_FIELDS):] == se.ENRICH_FIELDS
+        assert sm.CSV_FIELDS[-len(se.ENRICH_FIELDS) :] == se.ENRICH_FIELDS
 
 
 class TestEnrichRow:
-    _ROW = {"company_name": "Acme Foods Ltd", "company_number": "123",
-            "address_line_1": "1 Mill Rd", "locality": "Leeds", "postal_code": "LS1 1AA"}
+    _ROW = {
+        "company_name": "Acme Foods Ltd",
+        "company_number": "123",
+        "address_line_1": "1 Mill Rd",
+        "locality": "Leeds",
+        "postal_code": "LS1 1AA",
+    }
 
     class _Contacts:
         emails = [("info@acmefoods.co.uk", "https://acmefoods.co.uk")]
@@ -803,15 +924,29 @@ class TestEnrichRow:
 
     def test_website_path(self, monkeypatch):
         row = dict(self._ROW)
-        monkeypatch.setattr(se.ch, "list_active_officers",
-                            lambda number, api_key: [{"name": "SMITH, John", "role": "director"},
-                                                     {"name": "ACME SECRETARIES LIMITED", "role": "corp"}])
-        monkeypatch.setattr(se.discovery, "resolve_company_website", lambda name, **k: "https://acmefoods.co.uk")
+        monkeypatch.setattr(
+            se.ch,
+            "list_active_officers",
+            lambda number, api_key: [
+                {"name": "SMITH, John", "role": "director"},
+                {"name": "ACME SECRETARIES LIMITED", "role": "corp"},
+            ],
+        )
+        monkeypatch.setattr(
+            se.discovery, "resolve_company_website", lambda name, **k: "https://acmefoods.co.uk"
+        )
         monkeypatch.setattr(se.discovery, "normalize_domain", lambda u: "acmefoods.co.uk")
-        monkeypatch.setattr(se.discovery, "extract_company_contacts", lambda website, max_pages=4: self._Contacts())
-        monkeypatch.setattr(se.discovery, "pick_company_email",
-                            lambda emails, domain: ("info@acmefoods.co.uk", "role_inbox", emails[0][1]))
-        monkeypatch.setattr(se.discovery, "crawl_company_pages", lambda website, max_pages=4: [self._Page()])
+        monkeypatch.setattr(
+            se.discovery, "extract_company_contacts", lambda website, max_pages=4: self._Contacts()
+        )
+        monkeypatch.setattr(
+            se.discovery,
+            "pick_company_email",
+            lambda emails, domain: ("info@acmefoods.co.uk", "role_inbox", emails[0][1]),
+        )
+        monkeypatch.setattr(
+            se.discovery, "crawl_company_pages", lambda website, max_pages=4: [self._Page()]
+        )
         out = se.enrich_row(row, ch_key="K")
         assert out["officer_names"] == "John Smith; Acme Secretaries Limited"
         assert out["website"] == "https://acmefoods.co.uk"
@@ -820,15 +955,23 @@ class TestEnrichRow:
         assert out["email"] == "info@acmefoods.co.uk"
         assert out["address_matched"] == "postcode"
         assert out["contact_source"] == "website"
-        assert "officer_linkedin" not in out                # feature removed
+        assert "officer_linkedin" not in out  # feature removed
 
     def test_places_fallback(self, monkeypatch):
         row = dict(self._ROW)
         monkeypatch.setattr(se.ch, "list_active_officers", lambda number, api_key: [])
         monkeypatch.setattr(se.discovery, "resolve_company_website", lambda name, **k: None)
-        monkeypatch.setattr(se.google_places, "find_place",
-                            lambda query, api_key: {"phone": "0113 200 0000", "website": "",
-                                                    "address": "", "name": "", "id": ""})
+        monkeypatch.setattr(
+            se.google_places,
+            "find_place",
+            lambda query, api_key: {
+                "phone": "0113 200 0000",
+                "website": "",
+                "address": "",
+                "name": "",
+                "id": "",
+            },
+        )
         out = se.enrich_row(row, ch_key="K", places_key="PK")
         assert out["website"] == ""
         assert out["phone"] == "0113 200 0000"
@@ -840,32 +983,60 @@ class TestEnrichRow:
         monkeypatch.setattr(se.discovery, "resolve_company_website", lambda name, **k: None)
         out = se.enrich_row(row, ch_key="K", places_key=None)
         assert out["website"] == "" and out["phone"] == "" and out["contact_source"] == ""
-        assert set(se.ENRICH_FIELDS) <= set(out)   # all enrichment keys present
+        assert set(se.ENRICH_FIELDS) <= set(out)  # all enrichment keys present
 
     def test_llm_rejects_namesake(self, monkeypatch):
         # Address not on site + LLM says wrong company -> website discarded.
         row = dict(self._ROW)
         monkeypatch.setattr(se.ch, "list_active_officers", lambda number, api_key: [])
-        monkeypatch.setattr(se.discovery, "resolve_company_website", lambda name, **k: "https://wrongco.com")
+        monkeypatch.setattr(
+            se.discovery, "resolve_company_website", lambda name, **k: "https://wrongco.com"
+        )
         monkeypatch.setattr(se.discovery, "normalize_domain", lambda u: "wrongco.com")
-        monkeypatch.setattr(se.discovery, "extract_company_contacts", lambda website, max_pages=4: self._Contacts())
-        monkeypatch.setattr(se.discovery, "pick_company_email", lambda emails, domain: ("x@wrongco.com", "company_email", emails[0][1]))
-        monkeypatch.setattr(se.discovery, "crawl_company_pages", lambda website, max_pages=4: [type("P", (), {"text": "unrelated content"})()])
+        monkeypatch.setattr(
+            se.discovery, "extract_company_contacts", lambda website, max_pages=4: self._Contacts()
+        )
+        monkeypatch.setattr(
+            se.discovery,
+            "pick_company_email",
+            lambda emails, domain: ("x@wrongco.com", "company_email", emails[0][1]),
+        )
+        monkeypatch.setattr(
+            se.discovery,
+            "crawl_company_pages",
+            lambda website, max_pages=4: [type("P", (), {"text": "unrelated content"})()],
+        )
         monkeypatch.setattr(se, "_llm_confirms_website", lambda *a, **k: False)
-        out = se.enrich_row(row, ch_key="K", use_llm=True, provider={"type": "anthropic", "api_key": "x"})
+        out = se.enrich_row(
+            row, ch_key="K", use_llm=True, provider={"type": "anthropic", "api_key": "x"}
+        )
         assert out["website"] == "" and out["contact_source"] == "" and out["email"] == ""
 
     def test_llm_confirms_unverified_site(self, monkeypatch):
         # Address not on site but LLM confirms -> kept, confidence tagged +llm.
         row = dict(self._ROW)
         monkeypatch.setattr(se.ch, "list_active_officers", lambda number, api_key: [])
-        monkeypatch.setattr(se.discovery, "resolve_company_website", lambda name, **k: "https://acmefoods.co.uk")
+        monkeypatch.setattr(
+            se.discovery, "resolve_company_website", lambda name, **k: "https://acmefoods.co.uk"
+        )
         monkeypatch.setattr(se.discovery, "normalize_domain", lambda u: "acmefoods.co.uk")
-        monkeypatch.setattr(se.discovery, "extract_company_contacts", lambda website, max_pages=4: self._Contacts())
-        monkeypatch.setattr(se.discovery, "pick_company_email", lambda emails, domain: ("info@acmefoods.co.uk", "role_inbox", emails[0][1]))
-        monkeypatch.setattr(se.discovery, "crawl_company_pages", lambda website, max_pages=4: [type("P", (), {"text": "no postcode here"})()])
+        monkeypatch.setattr(
+            se.discovery, "extract_company_contacts", lambda website, max_pages=4: self._Contacts()
+        )
+        monkeypatch.setattr(
+            se.discovery,
+            "pick_company_email",
+            lambda emails, domain: ("info@acmefoods.co.uk", "role_inbox", emails[0][1]),
+        )
+        monkeypatch.setattr(
+            se.discovery,
+            "crawl_company_pages",
+            lambda website, max_pages=4: [type("P", (), {"text": "no postcode here"})()],
+        )
         monkeypatch.setattr(se, "_llm_confirms_website", lambda *a, **k: True)
-        out = se.enrich_row(row, ch_key="K", use_llm=True, provider={"type": "anthropic", "api_key": "x"})
+        out = se.enrich_row(
+            row, ch_key="K", use_llm=True, provider={"type": "anthropic", "api_key": "x"}
+        )
         assert out["website"] == "https://acmefoods.co.uk"
         assert out["website_confidence"].endswith("+llm")
         assert out["address_matched"] == ""
@@ -876,12 +1047,14 @@ class TestReplSmearchParse:
         # Bug fix: an unquoted multi-word ICP keeps all its words, so the role
         # ("manufacturers") is detected and the picker doesn't fire.
         from opencold.cli import _parse_smearch_args
+
         args = _parse_smearch_args(["metal", "manufacturers"])
         assert args["icp"] == "metal manufacturers"
         assert sic_match.detect_icp_roles(args["icp"]) == ["manufacture"]
 
     def test_icp_words_separated_from_options(self):
         from opencold.cli import _parse_smearch_args
+
         args = _parse_smearch_args(["timber", "merchants", "--top-n", "5", "--no-enrich"])
         assert args["icp"] == "timber merchants"
         assert args["top_n"] == 5 and args["enrich"] is False
@@ -899,14 +1072,16 @@ class TestFactoryMode:
     def test_factory_keywords_and_address(self):
         assert se._factory_keywords("our production facility ships bulk wholesale orders")
         assert not se._factory_keywords("handmade artisan sweets in our little shop")
-        assert se._industrial_address({"address_line_2": "Acme Industrial Estate", "locality": "Leeds"})
+        assert se._industrial_address(
+            {"address_line_2": "Acme Industrial Estate", "locality": "Leeds"}
+        )
         assert not se._industrial_address({"address_line_1": "5 High Street", "locality": "Leeds"})
 
     def test_is_factory_company_paths(self):
-        assert se.is_factory_company({"address_line_1": "Unit 2 Trading Estate"}, "")   # address
-        assert se.is_factory_company({}, "we run a large production line")              # keyword
-        assert not se.is_factory_company({}, "tiny handmade boutique")                  # neither
-        assert not se.is_factory_company({}, "")                                        # no content
+        assert se.is_factory_company({"address_line_1": "Unit 2 Trading Estate"}, "")  # address
+        assert se.is_factory_company({}, "we run a large production line")  # keyword
+        assert not se.is_factory_company({}, "tiny handmade boutique")  # neither
+        assert not se.is_factory_company({}, "")  # no content
 
     def test_factory_account_score_and_size_filter(self):
         assert sm._factory_account_score("small") > sm._factory_account_score("micro-entity")
@@ -918,6 +1093,7 @@ class TestFactoryMode:
     def test_enrich_top_factories_backfills_past_artisan(self, monkeypatch):
         class _C:
             emails, phones, address = [], [], ""
+
         pool = [
             {"company_name": "ARTISAN SWEETS LTD", "company_number": "1", "locality": "Leeds"},
             {"company_name": "BIG FOOD FACTORY LTD", "company_number": "2", "locality": "Hull"},
@@ -927,11 +1103,19 @@ class TestFactoryMode:
             "https://big.co.uk": "our 30,000 sq ft production facility, bulk wholesale supply",
         }
         monkeypatch.setattr(se.ch, "list_active_officers", lambda number, api_key: [])
-        monkeypatch.setattr(se.discovery, "resolve_company_website",
-                            lambda name, **k: f"https://{name.split()[0].lower()}.co.uk")
-        monkeypatch.setattr(se.discovery, "extract_company_contacts", lambda website, max_pages=4: _C())
-        monkeypatch.setattr(se.discovery, "crawl_company_pages",
-                            lambda website, max_pages=4: [type("P", (), {"text": texts.get(website, "")})()])
+        monkeypatch.setattr(
+            se.discovery,
+            "resolve_company_website",
+            lambda name, **k: f"https://{name.split()[0].lower()}.co.uk",
+        )
+        monkeypatch.setattr(
+            se.discovery, "extract_company_contacts", lambda website, max_pages=4: _C()
+        )
+        monkeypatch.setattr(
+            se.discovery,
+            "crawl_company_pages",
+            lambda website, max_pages=4: [type("P", (), {"text": texts.get(website, "")})()],
+        )
         kept, scanned = se.enrich_top_factories(pool, target=1, ch_key="K")
-        assert scanned == 2                                  # walked past the artisan
+        assert scanned == 2  # walked past the artisan
         assert [r["company_name"] for r in kept] == ["BIG FOOD FACTORY LTD"]

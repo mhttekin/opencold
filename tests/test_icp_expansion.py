@@ -32,6 +32,7 @@ def patch_complete_raises(exc):
 def _fetch_for(host_html: dict):
     def _fake(url, timeout=None):
         return host_html.get(discovery.normalize_domain(url))
+
     return _fake
 
 
@@ -45,6 +46,7 @@ def _isolate_cache(tmp_path, monkeypatch):
 
 class _FakeResp:
     """Minimal urlopen() context-manager stand-in returning a fixed JSON body."""
+
     def __init__(self, payload):
         self._body = json.dumps(payload).encode("utf-8")
 
@@ -71,10 +73,12 @@ class TestLexicon:
         assert icp_expansion._lexicon_terms("quux widgetry") == set()
 
     def test_user_override_merges(self, tmp_path):
-        (tmp_path / "icp_synonyms.json").write_text('{"timber": ["bespoke-thing"]}', encoding="utf-8")
+        (tmp_path / "icp_synonyms.json").write_text(
+            '{"timber": ["bespoke-thing"]}', encoding="utf-8"
+        )
         terms = icp_expansion._lexicon_terms("timber")
-        assert "bespoke-thing" in terms      # user term added
-        assert "sawmill" in terms            # built-ins still present
+        assert "bespoke-thing" in terms  # user term added
+        assert "sawmill" in terms  # built-ins still present
 
     def test_bad_override_ignored(self, tmp_path):
         (tmp_path / "icp_synonyms.json").write_text("{ not json", encoding="utf-8")
@@ -94,9 +98,9 @@ class TestLexicon:
 
     def test_short_key_not_substring_matched(self):
         # Short symmetric keys (ev, tax, hr) must NOT hit inside unrelated words.
-        assert icp_expansion._lexicon_terms("developer") == set()   # 'ev' inside developer
-        assert icp_expansion._lexicon_terms("taxi") == set()        # 'tax' inside taxi
-        assert icp_expansion._lexicon_terms("threads") == set()     # 'hr' inside threads
+        assert icp_expansion._lexicon_terms("developer") == set()  # 'ev' inside developer
+        assert icp_expansion._lexicon_terms("taxi") == set()  # 'tax' inside taxi
+        assert icp_expansion._lexicon_terms("threads") == set()  # 'hr' inside threads
 
     def test_polysemous_terms_excluded_as_keys(self):
         # Cross-industry-polysemous values are kept out of clusters, so they don't
@@ -128,11 +132,24 @@ class TestLexicon:
         # cross-industry polyseme, an everyday word measured to leak ("health"),
         # or geography (country/city/demonym — region fit has its own layer).
         from opencold import icp_phrases, icp_synonyms
+
         banned = (
             icp_phrases.GENERIC_ICP_TERMS
             | icp_expansion._EXTRA_STOPWORDS
-            | {"policy", "claims", "api", "developer", "agency", "platform",
-               "media", "power", "infrastructure", "health", "casting", "studio"}
+            | {
+                "policy",
+                "claims",
+                "api",
+                "developer",
+                "agency",
+                "platform",
+                "media",
+                "power",
+                "infrastructure",
+                "health",
+                "casting",
+                "studio",
+            }
         )
         geo = icp_expansion._geo_terms()
         for cluster in icp_synonyms.CLUSTERS:
@@ -165,8 +182,14 @@ class TestLexicon:
 
 class TestDatamuse:
     def test_parsed_and_filtered(self):
-        payload = [{"word": "lumber"}, {"word": "sawmill"}, {"word": "the"},
-                   {"word": "services"}, {"word": "123"}, {"word": "wood products"}]
+        payload = [
+            {"word": "lumber"},
+            {"word": "sawmill"},
+            {"word": "the"},
+            {"word": "services"},
+            {"word": "123"},
+            {"word": "wood products"},
+        ]
         with patch_urlopen(_FakeResp(payload)):
             out = icp_expansion._datamuse("timber")
         assert "lumber" in out and "sawmill" in out and "wood products" in out
@@ -177,11 +200,13 @@ class TestDatamuse:
         # Measured harm: ml("plumbing") returns water(278/M)/line(187)/health(161) —
         # enough for an insurance page to pass the weak-evidence gate. Specific
         # industry terms sit far below the ceiling; untagged results are kept.
-        payload = [{"word": "water", "tags": ["f:278.40"]},
-                   {"word": "health", "tags": ["f:161.05"]},
-                   {"word": "sewerage", "tags": ["f:0.52"]},
-                   {"word": "pipework", "tags": ["f:bogus"]},
-                   {"word": "drainlayer"}]
+        payload = [
+            {"word": "water", "tags": ["f:278.40"]},
+            {"word": "health", "tags": ["f:161.05"]},
+            {"word": "sewerage", "tags": ["f:0.52"]},
+            {"word": "pipework", "tags": ["f:bogus"]},
+            {"word": "drainlayer"},
+        ]
         with patch_urlopen(_FakeResp(payload)):
             out = icp_expansion._datamuse("plumbing")
         assert out == ["sewerage", "pipework", "drainlayer"]
@@ -218,20 +243,24 @@ class TestExpandIcp:
 
     def test_no_provider_skips_llm(self):
         with patch_complete('{"terms": ["x"]}') as comp:
-            out = icp_expansion.expand_icp("timber", use_llm=True, provider=None, use_datamuse=False)
+            out = icp_expansion.expand_icp(
+                "timber", use_llm=True, provider=None, use_datamuse=False
+            )
         comp.assert_not_called()
         assert "sawmill" in out
 
     def test_cap_enforced(self, monkeypatch):
-        monkeypatch.setattr(icp_expansion, "_lexicon_terms",
-                            lambda icp: {f"term{i}" for i in range(60)})
+        monkeypatch.setattr(
+            icp_expansion, "_lexicon_terms", lambda icp: {f"term{i}" for i in range(60)}
+        )
         out = icp_expansion.expand_icp("timber", use_llm=False, use_datamuse=False)
         assert len(out) <= icp_expansion.MAX_EXPANSION_TERMS
 
     def test_lexicon_prioritized_over_datamuse(self, monkeypatch):
         # Lexicon terms fill the cap before noisier Datamuse terms.
-        monkeypatch.setattr(icp_expansion, "_datamuse",
-                            lambda tok, rels=("ml", "rel_trg"): ["geyser", "blacksmith"])
+        monkeypatch.setattr(
+            icp_expansion, "_datamuse", lambda tok, rels=("ml", "rel_trg"): ["geyser", "blacksmith"]
+        )
         out = icp_expansion.expand_icp("timber", use_llm=False, use_datamuse=True)
         assert "sawmill" in out  # curated kept
 
@@ -258,7 +287,7 @@ class TestGroupedExpansion:
         # per-token associations (coffee -> urn) stay flat-only.
         def fake_dm(term, rels=("ml", "rel_trg")):
             if term == "paper mill":
-                return ["paperworks"]                      # phrase-level: flat only
+                return ["paperworks"]  # phrase-level: flat only
             if rels == ("ml",):
                 return {"paper": ["pulp"], "mill": ["milling"]}.get(term, [])
             if rels == ("rel_trg",):
@@ -271,8 +300,8 @@ class TestGroupedExpansion:
         assert "pulp" in result.by_token["paper"]
         assert "milling" in result.by_token["mill"]
         attributed = set().union(*result.by_token.values())
-        assert "paperworks" not in attributed      # phrase-level never attributes
-        assert "stationery" not in attributed      # associations never attribute
+        assert "paperworks" not in attributed  # phrase-level never attributes
+        assert "stationery" not in attributed  # associations never attribute
         assert "grindstone" not in attributed
         # ...while lexicon phrase-key members ARE attributed, to both tokens.
         assert "pulp mill" in result.by_token["paper"]
@@ -311,17 +340,20 @@ class TestGroupedExpansion:
             a = icp_expansion.expand_icp_grouped("timber", use_llm=False)
             first_calls = dm.call_count
             b = icp_expansion.expand_icp_grouped("timber", use_llm=False)
-        assert dm.call_count == first_calls       # second call served from cache
+        assert dm.call_count == first_calls  # second call served from cache
         assert a.flat == b.flat and a.by_token == b.by_token
 
     def test_flat_view_delegates(self):
         with patch.object(icp_expansion, "_datamuse", return_value=[]):
-            assert icp_expansion.expand_icp("timber", use_llm=False) == \
-                icp_expansion.expand_icp_grouped("timber", use_llm=False).flat
+            assert (
+                icp_expansion.expand_icp("timber", use_llm=False)
+                == icp_expansion.expand_icp_grouped("timber", use_llm=False).flat
+            )
 
     def test_cache_key_preserves_core_order(self):
-        assert icp_expansion._norm_v2("Sustainability Consultancy") != \
-            icp_expansion._norm_v2("Consultancy for Sustainability")
+        assert icp_expansion._norm_v2("Sustainability Consultancy") != icp_expansion._norm_v2(
+            "Consultancy for Sustainability"
+        )
 
 
 class TestCache:
@@ -344,7 +376,9 @@ class TestCache:
         monkeypatch.setattr(icp_expansion, "_datamuse", lambda tok, rels=("ml", "rel_trg"): [])
         icp_expansion.expand_icp("timber", use_llm=False, use_datamuse=True)
         with patch_complete('{"terms": ["sawmill"]}'):
-            icp_expansion.expand_icp("timber", use_llm=True, provider={"type": "x"}, use_datamuse=True)
+            icp_expansion.expand_icp(
+                "timber", use_llm=True, provider={"type": "x"}, use_datamuse=True
+            )
         keys = list(icp_expansion._load_cache().keys())
         assert any(k.endswith("|v6l1d") for k in keys)
         assert any(k.endswith("|v6l1dm") for k in keys)
@@ -364,11 +398,14 @@ class TestIntegrationMatching:
         return CandidateCompany("Acme", "https://acme.test", "src", "search", "search")
 
     def test_expansion_scores_and_appears_in_matched(self):
-        enr = {"website_status": "ok",
-               "company_summary": "local sawmill and plywood supplier",
-               "personalization_facts": ""}
-        score, matched = discovery.score_company(self._cand(), enr, "timber",
-                                                 weak_terms={"sawmill", "plywood"})
+        enr = {
+            "website_status": "ok",
+            "company_summary": "local sawmill and plywood supplier",
+            "personalization_facts": "",
+        }
+        score, matched = discovery.score_company(
+            self._cand(), enr, "timber", weak_terms={"sawmill", "plywood"}
+        )
         assert score > 35
         assert "sawmill" in matched and "plywood" in matched
 
@@ -379,8 +416,16 @@ class TestIntegrationMatching:
 
     def test_core_term_outscores_expansion_only(self):
         cand = self._cand()
-        core = {"website_status": "ok", "company_summary": "timber yard", "personalization_facts": ""}
-        weak = {"website_status": "ok", "company_summary": "sawmill yard", "personalization_facts": ""}
+        core = {
+            "website_status": "ok",
+            "company_summary": "timber yard",
+            "personalization_facts": "",
+        }
+        weak = {
+            "website_status": "ok",
+            "company_summary": "sawmill yard",
+            "personalization_facts": "",
+        }
         core_score, _ = discovery.score_company(cand, core, "timber", weak_terms={"sawmill"})
         weak_score, _ = discovery.score_company(cand, weak, "timber", weak_terms={"sawmill"})
         assert core_score > weak_score
@@ -388,16 +433,26 @@ class TestIntegrationMatching:
 
 class TestExpansionEndToEnd:
     def test_expansion_flows_into_company_row(self):
-        candidates = [CandidateCompany("Yildiz Wood", "https://yildiz.test", "src", "search", "search")]
-        html = {"yildiz.test": "<html><body><h1>Yildiz Wood</h1>"
-                               "<p>We run a modern sawmill and plywood plant.</p></body></html>"}
-        with patch("opencold.discovery.discover_company_candidates", return_value=candidates), \
-             patch("opencold.discovery.web_search", return_value=[]), \
-             patch("opencold.enricher._fetch_html", _fetch_for(html)), \
-             patch("opencold.icp_expansion.expand_icp_grouped",
-                   return_value=icp_expansion.ExpansionResult(
-                       flat={"sawmill", "plywood"},
-                       by_token={"timber": {"sawmill", "plywood"}})):
-            rows = discovery.discover_company_rows("timber", "United States", limit=5, use_llm=False)
+        candidates = [
+            CandidateCompany("Yildiz Wood", "https://yildiz.test", "src", "search", "search")
+        ]
+        html = {
+            "yildiz.test": "<html><body><h1>Yildiz Wood</h1>"
+            "<p>We run a modern sawmill and plywood plant.</p></body></html>"
+        }
+        with (
+            patch("opencold.discovery.discover_company_candidates", return_value=candidates),
+            patch("opencold.discovery.web_search", return_value=[]),
+            patch("opencold.enricher._fetch_html", _fetch_for(html)),
+            patch(
+                "opencold.icp_expansion.expand_icp_grouped",
+                return_value=icp_expansion.ExpansionResult(
+                    flat={"sawmill", "plywood"}, by_token={"timber": {"sawmill", "plywood"}}
+                ),
+            ),
+        ):
+            rows = discovery.discover_company_rows(
+                "timber", "United States", limit=5, use_llm=False
+            )
         row = next(r for r in rows if "Yildiz" in (r.get("company") or ""))
         assert "sawmill" in row["matched_terms"] or "plywood" in row["matched_terms"]

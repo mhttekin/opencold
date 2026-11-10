@@ -110,7 +110,9 @@ class TestCrawlWebsite:
         """
         with patch("opencold.crawler.trafilatura") as mock_traf:
             mock_traf.fetch_url.return_value = fake_html
-            mock_traf.extract.return_value = "TestCo is the leading widget platform for modern teams."
+            mock_traf.extract.return_value = (
+                "TestCo is the leading widget platform for modern teams."
+            )
 
             result = crawl_website("https://testco.com")
             assert result is not None
@@ -118,7 +120,9 @@ class TestCrawlWebsite:
             assert "widget" in result
 
     def test_falls_back_to_bs4(self):
-        fake_html = "<html><body><main><p>Fallback content from BeautifulSoup</p></main></body></html>"
+        fake_html = (
+            "<html><body><main><p>Fallback content from BeautifulSoup</p></main></body></html>"
+        )
         with patch("opencold.crawler.trafilatura") as mock_traf:
             mock_traf.fetch_url.return_value = fake_html
             mock_traf.extract.return_value = None  # trafilatura fails

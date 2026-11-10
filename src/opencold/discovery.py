@@ -323,7 +323,10 @@ SEARCH_PATH_HINTS = (
 
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 SPACE_RE = re.compile(r"\s+")
-CTA_TEXT = re.compile(r"^(visit|visit website|website|open|learn more|view|go|launch|try it|demo)\s*(→|->)?$", re.IGNORECASE)
+CTA_TEXT = re.compile(
+    r"^(visit|visit website|website|open|learn more|view|go|launch|try it|demo)\s*(→|->)?$",
+    re.IGNORECASE,
+)
 PERSON_LOCAL_RE = re.compile(r"^[a-z]+([._\-][a-z]+)?$")
 PERSON_HINT_RE = re.compile(
     r"\b(?P<role>(?i:founder|co-founder|ceo|cto|cfo|coo|cpo|president|"
@@ -407,8 +410,20 @@ def _clean_text(text: str) -> str:
 # registrable name (e.g. gov.bd, ac.uk, or.jp). Keeps jbc.gov.bd from collapsing
 # to gov.bd. Triggered only when the final label is a 2-letter ccTLD.
 _SECOND_LEVEL_TLDS = {
-    "co", "com", "net", "org", "gov", "govt", "edu", "ac", "mil",
-    "go", "or", "ne", "gob", "gouv",
+    "co",
+    "com",
+    "net",
+    "org",
+    "gov",
+    "govt",
+    "edu",
+    "ac",
+    "mil",
+    "go",
+    "or",
+    "ne",
+    "gob",
+    "gouv",
 }
 
 
@@ -451,11 +466,27 @@ def _company_from_domain(domain: str) -> str:
 # company in any one country. Matched by stem so ccTLD variants (europages.com.tr) also
 # hit. Routed to 'review', never 'verified'.
 _AGGREGATOR_DOMAINS = {
-    "fordaq.com", "europages.com", "kompass.com", "go4worldbusiness.com",
-    "globalwood.org", "bulurum.com", "isdunyasirehberi.net", "tradeindia.com",
-    "exporthub.com", "alibaba.com", "made-in-china.com", "globalsources.com",
-    "indiamart.com", "thomasnet.com", "ec21.com", "tradekey.com", "yellowpages.com",
-    "telecontact.ma", "kerix.net", "kerix-export.net", "goafricaonline.com",
+    "fordaq.com",
+    "europages.com",
+    "kompass.com",
+    "go4worldbusiness.com",
+    "globalwood.org",
+    "bulurum.com",
+    "isdunyasirehberi.net",
+    "tradeindia.com",
+    "exporthub.com",
+    "alibaba.com",
+    "made-in-china.com",
+    "globalsources.com",
+    "indiamart.com",
+    "thomasnet.com",
+    "ec21.com",
+    "tradekey.com",
+    "yellowpages.com",
+    "telecontact.ma",
+    "kerix.net",
+    "kerix-export.net",
+    "goafricaonline.com",
     "enfrecycling.com",
 }
 _AGGREGATOR_STEMS = {d.split(".")[0] for d in _AGGREGATOR_DOMAINS}
@@ -588,7 +619,9 @@ def _internal_detail_links(html: str, source_url: str, limit: int = 30) -> list[
     return links
 
 
-def discover_from_source(source: str, source_limit: int = 25, follow_internal: bool = True) -> list[CandidateCompany]:
+def discover_from_source(
+    source: str, source_limit: int = 25, follow_internal: bool = True
+) -> list[CandidateCompany]:
     """Discover company candidates from one source page and likely detail pages."""
     html = _fetch_source(source)
     if not html:
@@ -684,9 +717,11 @@ def _fetch_search_html(url: str) -> str | None:
 # Unified search: Serper API (preferred) with DDG HTML fallback
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SearchResult:
     """A single search result with title, URL, and optional snippet."""
+
     title: str
     url: str
     snippet: str = ""
@@ -701,6 +736,7 @@ def _get_serper_key() -> str | None:
         return key
     try:
         from opencold import config
+
         prov = config.get_provider("serper")
         if prov:
             return prov.get("api_key")
@@ -728,11 +764,13 @@ def _serper_search(query: str, num: int = 10) -> list[SearchResult]:
             data = json.loads(resp.read().decode())
         results = []
         for item in data.get("organic", []):
-            results.append(SearchResult(
-                title=item.get("title", ""),
-                url=item.get("link", ""),
-                snippet=item.get("snippet", ""),
-            ))
+            results.append(
+                SearchResult(
+                    title=item.get("title", ""),
+                    url=item.get("link", ""),
+                    snippet=item.get("snippet", ""),
+                )
+            )
         return results
     except Exception:
         return []
@@ -742,16 +780,19 @@ def _ddgs_search(query: str, num: int = 10) -> list[SearchResult]:
     """Search using ddgs package (zero-auth, uses DDG internal API)."""
     try:
         from ddgs import DDGS
+
         with DDGS() as ddgs:
             raw = list(ddgs.text(query, max_results=num))
         results: list[SearchResult] = []
         for item in raw:
-            results.append(SearchResult(
-                title=item.get("title", ""),
-                url=item.get("href", ""),
-                snippet=item.get("body", ""),
-                engine="ddgs",
-            ))
+            results.append(
+                SearchResult(
+                    title=item.get("title", ""),
+                    url=item.get("href", ""),
+                    snippet=item.get("body", ""),
+                    engine="ddgs",
+                )
+            )
         return results
     except Exception:
         return []
@@ -762,21 +803,25 @@ def _brave_search(query: str, num: int = 10) -> list[SearchResult]:
     try:
         encoded = urllib.parse.quote_plus(query)
         url = f"https://search.brave.com/search?q={encoded}"
-        req = urllib.request.Request(url, headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            "Accept": "text/html,application/xhtml+xml",
-            "Accept-Encoding": "gzip, deflate",
-            "Accept-Language": "en-US,en;q=0.9",
-        })
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                "Accept": "text/html,application/xhtml+xml",
+                "Accept-Encoding": "gzip, deflate",
+                "Accept-Language": "en-US,en;q=0.9",
+            },
+        )
         with urllib.request.urlopen(req, timeout=SEARCH_TIMEOUT) as resp:
             data = resp.read()
             enc = resp.headers.get("Content-Encoding", "")
             if enc == "gzip":
                 import gzip
+
                 data = gzip.decompress(data)
             html = data.decode("utf-8", errors="replace")
         soup = BeautifulSoup(html, "html.parser")
@@ -798,7 +843,7 @@ def _brave_search(query: str, num: int = 10) -> list[SearchResult]:
             # by finding the URL slug in the text and taking what follows
             slug = parsed.path.rstrip("/").rsplit("/", 1)[-1]
             if slug and slug in text:
-                title = text[text.index(slug) + len(slug):]
+                title = text[text.index(slug) + len(slug) :]
             else:
                 title = text
             title = title.strip()
@@ -818,15 +863,18 @@ def _mojeek_search(query: str, num: int = 10) -> list[SearchResult]:
     try:
         encoded = urllib.parse.quote_plus(query)
         url = f"https://www.mojeek.com/search?q={encoded}"
-        req = urllib.request.Request(url, headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            "Accept": "text/html,application/xhtml+xml",
-            "Accept-Language": "en-US,en;q=0.9",
-        })
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                "Accept": "text/html,application/xhtml+xml",
+                "Accept-Language": "en-US,en;q=0.9",
+            },
+        )
         with urllib.request.urlopen(req, timeout=SEARCH_TIMEOUT) as resp:
             html = resp.read().decode("utf-8", errors="replace")
         soup = BeautifulSoup(html, "html.parser")
@@ -851,10 +899,15 @@ def _mojeek_search(query: str, num: int = 10) -> list[SearchResult]:
             date_tag = li.find("span", class_="date")
             pub_date = date_tag.get_text(strip=True) if date_tag else ""
             if title:
-                results.append(SearchResult(
-                    title=title, url=href, snippet=snippet,
-                    published_date=pub_date, engine="mojeek",
-                ))
+                results.append(
+                    SearchResult(
+                        title=title,
+                        url=href,
+                        snippet=snippet,
+                        published_date=pub_date,
+                        engine="mojeek",
+                    )
+                )
             if len(results) >= num:
                 break
         return results
@@ -868,14 +921,17 @@ def _searxng_search(query: str, num: int = 10) -> list[SearchResult]:
         try:
             encoded = urllib.parse.quote_plus(query)
             url = f"{instance}/search?q={encoded}&format=json&language=en-US"
-            req = urllib.request.Request(url, headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
-                ),
-                "Accept": "application/json",
-            })
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/120.0.0.0 Safari/537.36"
+                    ),
+                    "Accept": "application/json",
+                },
+            )
             with urllib.request.urlopen(req, timeout=SEARCH_TIMEOUT + 2) as resp:
                 data = json.loads(resp.read().decode())
             results: list[SearchResult] = []
@@ -887,13 +943,15 @@ def _searxng_search(query: str, num: int = 10) -> list[SearchResult]:
                 pub_date = item.get("publishedDate", "")
                 # Also note which engines SearXNG aggregated from
                 engines = ", ".join(item.get("engines", []))
-                results.append(SearchResult(
-                    title=item.get("title", ""),
-                    url=result_url,
-                    snippet=item.get("content", ""),
-                    published_date=pub_date,
-                    engine=f"searxng({engines})" if engines else "searxng",
-                ))
+                results.append(
+                    SearchResult(
+                        title=item.get("title", ""),
+                        url=result_url,
+                        snippet=item.get("content", ""),
+                        published_date=pub_date,
+                        engine=f"searxng({engines})" if engines else "searxng",
+                    )
+                )
                 if len(results) >= num:
                     break
             if results:
@@ -1078,9 +1136,11 @@ def resolve_company_website(
             if _is_blocked_domain(domain) or _is_directory_domain(domain):
                 continue
             matched = _domain_matches_company(domain, tokens)
-            on_cc = bool(prefer_cc) and (domain.endswith("." + prefer_cc) or domain.rsplit(".", 1)[-1] == prefer_cc)
+            on_cc = bool(prefer_cc) and (
+                domain.endswith("." + prefer_cc) or domain.rsplit(".", 1)[-1] == prefer_cc
+            )
             if matched and on_cc:
-                return f"https://{domain}"          # right name AND right country
+                return f"https://{domain}"  # right name AND right country
             if matched and name_match is None:
                 name_match = f"https://{domain}"
             if fallback is None:
@@ -1142,8 +1202,10 @@ def parse_search_result_urls(html: str, base_url: str = "https://duckduckgo.com"
 # LinkedIn contact discovery via DuckDuckGo search result metadata
 # ---------------------------------------------------------------------------
 
+
 def _company_name_matches(candidate: str, target: str) -> bool:
     """Fuzzy-match a company name from a LinkedIn title against the target."""
+
     def _normalize(name: str) -> str:
         return COMPANY_SUFFIXES_RE.sub("", name).strip().lower()
 
@@ -1188,8 +1250,7 @@ def _is_name_company_coincidence(name: str, company: str, linkedin_url: str) -> 
     last_name = name_parts[-1]
     # Check if person's first or last name matches the company name
     name_matches_company = (
-        last_name == company_lower or company_lower in last_name
-        or first_name == company_lower
+        last_name == company_lower or company_lower in last_name or first_name == company_lower
     )
     if not name_matches_company:
         return False
@@ -1204,13 +1265,13 @@ def _is_name_company_coincidence(name: str, company: str, linkedin_url: str) -> 
     # Build expected slug patterns from the name
     first = name_parts[0]
     name_slugs = {
-        f"{first}{last_name}",           # mattcrisp
-        f"{first}-{last_name}",          # matt-crisp
-        f"{first}_{last_name}",          # matt_crisp
-        f"{last_name}{first}",           # crispmatt
-        f"{last_name}-{first}",          # crisp-matt
-        f"{first}{last_name[0]}",        # mattc
-        f"{first[0]}{last_name}",        # mcrisp
+        f"{first}{last_name}",  # mattcrisp
+        f"{first}-{last_name}",  # matt-crisp
+        f"{first}_{last_name}",  # matt_crisp
+        f"{last_name}{first}",  # crispmatt
+        f"{last_name}-{first}",  # crisp-matt
+        f"{first}{last_name[0]}",  # mattc
+        f"{first[0]}{last_name}",  # mcrisp
     }
     # For multi-part names (e.g., "Mixo Oral Baloyi"), also try middle+last combos
     if len(name_parts) > 2:
@@ -1376,15 +1437,15 @@ def _reacher_check(email: str, from_email: str = "noreply@opencold.dev") -> dict
 def _generate_email_patterns(first: str, last: str, domain: str) -> list[str]:
     """Generate common email address patterns from first/last name."""
     patterns = [
-        f"{first}.{last}@{domain}",      # jane.smith@
-        f"{first}@{domain}",              # jane@
-        f"{first}{last}@{domain}",        # janesmith@
-        f"{first[0]}{last}@{domain}",     # jsmith@
-        f"{first}{last[0]}@{domain}",     # janes@
-        f"{first[0]}.{last}@{domain}",    # j.smith@
-        f"{last}.{first}@{domain}",       # smith.jane@
-        f"{first}_{last}@{domain}",       # jane_smith@
-        f"{first}-{last}@{domain}",       # jane-smith@
+        f"{first}.{last}@{domain}",  # jane.smith@
+        f"{first}@{domain}",  # jane@
+        f"{first}{last}@{domain}",  # janesmith@
+        f"{first[0]}{last}@{domain}",  # jsmith@
+        f"{first}{last[0]}@{domain}",  # janes@
+        f"{first[0]}.{last}@{domain}",  # j.smith@
+        f"{last}.{first}@{domain}",  # smith.jane@
+        f"{first}_{last}@{domain}",  # jane_smith@
+        f"{first}-{last}@{domain}",  # jane-smith@
     ]
     return patterns
 
@@ -1403,6 +1464,7 @@ def _guess_email_from_name(name: str, domain: str) -> str | None:
     # Quick MX check first — no point trying patterns if domain doesn't accept mail
     try:
         from opencold.verifier import _check_mx
+
         if not _check_mx(domain):
             return None
     except Exception:
@@ -1516,7 +1578,7 @@ def _check_employment_dates(text: str, company: str) -> tuple[str, bool] | None:
     for m in _EMPLOYMENT_DATE_RE.finditer(text):
         # Check if company name is near this date range (within 200 chars)
         start = max(0, m.start() - 200)
-        context = text[start:m.end() + 50].lower()
+        context = text[start : m.end() + 50].lower()
         if company_lower not in context:
             continue
         end_date = m.group(2).strip()
@@ -1526,9 +1588,7 @@ def _check_employment_dates(text: str, company: str) -> tuple[str, bool] | None:
     return None
 
 
-def _analyze_engine_results(
-    results: list[SearchResult], company: str
-) -> dict:
+def _analyze_engine_results(results: list[SearchResult], company: str) -> dict:
     """Analyze a single engine's results for employment signals.
 
     Returns a dict with keys: confirms, contradicts, not_employed,
@@ -1557,8 +1617,11 @@ def _analyze_engine_results(
     match = _MOVED_PATTERNS.search(combined_text)
     if match:
         new_company = (
-            match.group("new1") or match.group("new2")
-            or match.group("new3") or match.group("new4") or ""
+            match.group("new1")
+            or match.group("new2")
+            or match.group("new3")
+            or match.group("new4")
+            or ""
         ).strip()
         if new_company and not _company_name_matches(new_company, company):
             analysis["moved_to"] = new_company
@@ -1572,7 +1635,7 @@ def _analyze_engine_results(
         title = result.title
         pipe_idx = title.find("| LinkedIn")
         if pipe_idx > 0:
-            title = title[:pipe_idx + len("| LinkedIn")]
+            title = title[: pipe_idx + len("| LinkedIn")]
 
         if _company_in_title(title, company_lower, company_tokens):
             analysis["company_in_title"] = True
@@ -1585,9 +1648,7 @@ def _analyze_engine_results(
                 analysis["contradicts"] = True
 
         # Check for employment dates in snippet
-        date_info = _check_employment_dates(
-            f"{title} {result.snippet}", company
-        )
+        date_info = _check_employment_dates(f"{title} {result.snippet}", company)
         if date_info:
             analysis["date_info"] = date_info
 
@@ -1631,10 +1692,7 @@ def verify_current_employment(name: str, company: str) -> tuple[bool, str]:
     engine_results: dict[str, list[SearchResult]] = {}
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = {
-            executor.submit(fn, q, 5): label
-            for label, (q, fn) in queries.items()
-        }
+        futures = {executor.submit(fn, q, 5): label for label, (q, fn) in queries.items()}
         for future in as_completed(futures):
             label = futures[future]
             try:
@@ -1691,7 +1749,9 @@ def verify_current_employment(name: str, company: str) -> tuple[bool, str]:
 
     # site: query contradicts → this is very reliable (fresh LinkedIn titles)
     if site_analysis and site_analysis["contradicts"] and not site_analysis["confirms"]:
-        other = site_analysis["other_company"] or (other_companies[0] if other_companies else "unknown")
+        other = site_analysis["other_company"] or (
+            other_companies[0] if other_companies else "unknown"
+        )
         return False, f"contradicted_by:linkedin_title:now_at:{other}"
 
     # Both queries confirm
@@ -1771,19 +1831,21 @@ def search_linkedin_contacts(
                 continue
             seen_names.add(name.lower())
             confidence = 70 if LINKEDIN_TARGET_ROLES_RE.search(role) else 50
-            contacts.append(Contact(
-                name=name,
-                role=role.strip().rstrip(",").strip(),
-                contact_type="linkedin_profile",
-                confidence=confidence,
-                source_url=result.url,
-            ))
+            contacts.append(
+                Contact(
+                    name=name,
+                    role=role.strip().rstrip(",").strip(),
+                    contact_type="linkedin_profile",
+                    confidence=confidence,
+                    source_url=result.url,
+                )
+            )
             found_any = True
         if found_any:
             break  # short-circuit: first successful query is enough
 
     # Sort by role relevance: targeted roles first
-    contacts.sort(key=lambda c: (0 if LINKEDIN_TARGET_ROLES_RE.search(c.role or "") else 1))
+    contacts.sort(key=lambda c: 0 if LINKEDIN_TARGET_ROLES_RE.search(c.role or "") else 1)
 
     # Verify employment for the top candidates
     if _VERIFY_EMPLOYMENT and contacts:
@@ -1795,13 +1857,15 @@ def search_linkedin_contacts(
                 confidence = contact.confidence
                 if "disagreement" in reason:
                     confidence = max(confidence - 15, 30)
-                verified.append(Contact(
-                    name=contact.name,
-                    role=contact.role,
-                    contact_type=contact.contact_type,
-                    confidence=confidence,
-                    source_url=contact.source_url,
-                ))
+                verified.append(
+                    Contact(
+                        name=contact.name,
+                        role=contact.role,
+                        contact_type=contact.contact_type,
+                        confidence=confidence,
+                        source_url=contact.source_url,
+                    )
+                )
             elif "contradict" in reason or "moved_to" in reason or "not_currently" in reason:
                 any_hard_reject = True
             time.sleep(0.3)
@@ -1810,13 +1874,15 @@ def search_linkedin_contacts(
         # Only use fallback for soft rejections (no results, search failed, etc.)
         # If verification explicitly contradicted, don't return the contact
         if not any_hard_reject and contacts[0].confidence >= 70:
-            return [Contact(
-                name=contacts[0].name,
-                role=contacts[0].role,
-                contact_type=contacts[0].contact_type,
-                confidence=max(contacts[0].confidence - 20, 30),
-                source_url=contacts[0].source_url,
-            )]
+            return [
+                Contact(
+                    name=contacts[0].name,
+                    role=contacts[0].role,
+                    contact_type=contacts[0].contact_type,
+                    confidence=max(contacts[0].confidence - 20, 30),
+                    source_url=contacts[0].source_url,
+                )
+            ]
         return []
 
     return contacts
@@ -1833,14 +1899,21 @@ def _search_result_allowed(url: str, domain: str) -> bool:
     path = parsed.path.lower()
     if not path or path == "/":
         return False
-    if any(ext in path for ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".pdf", ".zip")):
+    if any(
+        ext in path for ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".pdf", ".zip")
+    ):
         return False
-    if any(skip in path for skip in ("login", "signin", "sign-up", "signup", "privacy", "terms", "cookie")):
+    if any(
+        skip in path
+        for skip in ("login", "signin", "sign-up", "signup", "privacy", "terms", "cookie")
+    ):
         return False
     return any(hint in path for hint in SEARCH_PATH_HINTS)
 
 
-def search_company_page_urls(company: CandidateCompany, limit: int = SEARCH_RESULT_LIMIT) -> list[str]:
+def search_company_page_urls(
+    company: CandidateCompany, limit: int = SEARCH_RESULT_LIMIT
+) -> list[str]:
     """Find likely company-owned contact/team pages via web search."""
     domain = normalize_domain(company.website)
     urls = []
@@ -1861,7 +1934,9 @@ def search_company_page_urls(company: CandidateCompany, limit: int = SEARCH_RESU
     return urls
 
 
-def search_company_pages(company: CandidateCompany, limit: int = SEARCH_PAGE_LIMIT) -> list[enricher.PageContent]:
+def search_company_pages(
+    company: CandidateCompany, limit: int = SEARCH_PAGE_LIMIT
+) -> list[enricher.PageContent]:
     """Fetch useful company-owned pages found through public search results."""
     pages = []
     for url in search_company_page_urls(company, limit=limit * SEARCH_FETCH_MULTIPLIER):
@@ -1873,7 +1948,9 @@ def search_company_pages(company: CandidateCompany, limit: int = SEARCH_PAGE_LIM
     return pages
 
 
-def _merge_pages(pages: list[enricher.PageContent], extra_pages: list[enricher.PageContent]) -> list[enricher.PageContent]:
+def _merge_pages(
+    pages: list[enricher.PageContent], extra_pages: list[enricher.PageContent]
+) -> list[enricher.PageContent]:
     seen = {page.url.rstrip("/") for page in pages}
     merged = list(pages)
     for page in extra_pages:
@@ -1908,8 +1985,11 @@ def _icp_match(terms: set[str], text: str) -> list[str]:
 
 
 def score_company(
-    company: CandidateCompany, enrichment: dict, icp: str,
-    extra_terms: set[str] | None = None, weak_terms: set[str] | None = None,
+    company: CandidateCompany,
+    enrichment: dict,
+    icp: str,
+    extra_terms: set[str] | None = None,
+    weak_terms: set[str] | None = None,
     provenance: dict[str, set[str]] | None = None,
 ) -> tuple[int, str]:
     # NOTE: company.discovery_reason is deliberately excluded — for LLM/search
@@ -1929,11 +2009,13 @@ def score_company(
     icp_tokens = set(profile.core_tokens) | set(profile.qualifier_tokens) | _icp_terms(icp)
     weak = (weak_terms or set()) - extras - icp_tokens
     prov_terms = set().union(*provenance.values()) if provenance else set()
-    haystack = " ".join([
-        company.company,
-        enrichment.get("company_summary", ""),
-        enrichment.get("personalization_facts", ""),
-    ]).lower()
+    haystack = " ".join(
+        [
+            company.company,
+            enrichment.get("company_summary", ""),
+            enrichment.get("personalization_facts", ""),
+        ]
+    ).lower()
 
     core = icp_phrases.evidence_core(profile, haystack, provenance)
     matched_extra = _icp_match(extras, haystack)
@@ -1953,15 +2035,18 @@ def score_company(
     bonus += 7 * sum(1 for t in matched_weak if t not in prov_terms)
     score = min(100, base + min(bonus, 50))
 
-    display = sorted(set(matched_extra) | set(matched_weak)
-                     | core.evidenced | set(core.matched_qualifiers))
+    display = sorted(
+        set(matched_extra) | set(matched_weak) | core.evidenced | set(core.matched_qualifiers)
+    )
     parts = [f"phrase:{' '.join(c)}" for c in core.phrase_chunks] + display
     return score, enricher.FACT_SEPARATOR.join(parts)
 
 
 def _icp_evidence(
-    icp: str, enrichment: dict,
-    extra_terms: set[str] | None = None, weak_terms: set[str] | None = None,
+    icp: str,
+    enrichment: dict,
+    extra_terms: set[str] | None = None,
+    weak_terms: set[str] | None = None,
     provenance: dict[str, set[str]] | None = None,
 ) -> bool:
     """True when the ICP's CORE CONCEPT is evidenced in the company's own crawled
@@ -1990,10 +2075,12 @@ def _icp_evidence(
     extras = extra_terms or set()
     icp_tokens = set(profile.core_tokens) | set(profile.qualifier_tokens) | _icp_terms(icp)
     weak = (weak_terms or set()) - extras - icp_tokens
-    content = " ".join([
-        enrichment.get("company_summary", ""),
-        enrichment.get("personalization_facts", ""),
-    ])
+    content = " ".join(
+        [
+            enrichment.get("company_summary", ""),
+            enrichment.get("personalization_facts", ""),
+        ]
+    )
     core = icp_phrases.evidence_core(profile, content, provenance)
     if core.confirmed:
         return True
@@ -2011,11 +2098,44 @@ def _icp_evidence(
 # text in that language, so it must never become a matcher term. Tokens under 4
 # chars are dropped outright; this list covers the common >=4-char leaks.
 _NATIVE_FUNCTION_WORDS = {
-    "pour", "avec", "dans", "sans", "sous", "chez", "leur", "elles", "vers",
-    "para", "como", "sobre", "entre", "desde", "hasta", "unas", "unos",
-    "della", "delle", "degli", "dello", "dalla", "nella", "alla",
-    "eine", "einer", "eines", "einem", "einen", "nach", "über", "unter",
-    "voor", "naar", "deze", "onder", "için", "veya",
+    "pour",
+    "avec",
+    "dans",
+    "sans",
+    "sous",
+    "chez",
+    "leur",
+    "elles",
+    "vers",
+    "para",
+    "como",
+    "sobre",
+    "entre",
+    "desde",
+    "hasta",
+    "unas",
+    "unos",
+    "della",
+    "delle",
+    "degli",
+    "dello",
+    "dalla",
+    "nella",
+    "alla",
+    "eine",
+    "einer",
+    "eines",
+    "einem",
+    "einen",
+    "nach",
+    "über",
+    "unter",
+    "voor",
+    "naar",
+    "deze",
+    "onder",
+    "için",
+    "veya",
 }
 
 
@@ -2145,7 +2265,9 @@ def _translate_expansion_terms(terms: set[str], target_lang: str) -> tuple[set[s
 
 
 def _localize_enrichment(
-    enrichment: dict, icp: str, extra_terms: set[str] | None,
+    enrichment: dict,
+    icp: str,
+    extra_terms: set[str] | None,
     provenance: dict[str, set[str]] | None = None,
 ) -> dict:
     """Translate-on-miss: when neither English nor native ICP terms are evidenced
@@ -2187,11 +2309,13 @@ def score_lead(row: dict) -> tuple[int, str]:
     reasons = []
 
     name = row.get("company", "")
-    facts = " ".join([
-        row.get("discovery_reason", ""),
-        row.get("company_summary", ""),
-        row.get("personalization_facts", ""),
-    ])
+    facts = " ".join(
+        [
+            row.get("discovery_reason", ""),
+            row.get("company_summary", ""),
+            row.get("personalization_facts", ""),
+        ]
+    )
     facts_lower = facts.lower()
 
     if _bad_company_name(name):
@@ -2364,7 +2488,9 @@ def score_contact(contact: Contact) -> tuple[int, str]:
     return max(0, min(score, 100)), enricher.FACT_SEPARATOR.join(reasons)
 
 
-def find_contact(pages: list[enricher.PageContent], domain: str, guess_role_email: bool = False) -> Contact:
+def find_contact(
+    pages: list[enricher.PageContent], domain: str, guess_role_email: bool = False
+) -> Contact:
     same_domain_emails = []
     public_person = Contact(contact_type="not_found", confidence=0)
     for page in pages:
@@ -2414,14 +2540,18 @@ def find_contact(pages: list[enricher.PageContent], domain: str, guess_role_emai
                 alt_local = alt_email.split("@", 1)[0].lower()
                 if alt_local not in ROLE_PREFIXES:
                     return Contact(
-                        name=alt_name, email=alt_email,
+                        name=alt_name,
+                        email=alt_email,
                         contact_type="public_email",
-                        confidence=min(alt_rank, 95), source_url=alt_url,
+                        confidence=min(alt_rank, 95),
+                        source_url=alt_url,
                     )
                 if alt_local not in OUTREACH_USELESS_PREFIXES:
                     return Contact(
-                        email=alt_email, contact_type="role_inbox",
-                        confidence=alt_rank, source_url=alt_url,
+                        email=alt_email,
+                        contact_type="role_inbox",
+                        confidence=alt_rank,
+                        source_url=alt_url,
                     )
             # All emails are useless — fall through to LinkedIn search
         else:
@@ -2471,7 +2601,9 @@ def discover_rows(
         progress_callback: Optional callable(processed, total, found, elapsed_seconds)
             called after each company is processed for live progress updates.
     """
-    companies = discover_company_pool(sources, limit=limit, source_limit=source_limit, workers=workers)
+    companies = discover_company_pool(
+        sources, limit=limit, source_limit=source_limit, workers=workers
+    )
     rows = []
     workers = _clamp_workers(workers)
     _discover_start = time.monotonic()
@@ -2491,7 +2623,9 @@ def discover_rows(
             "personalization_score": str(enricher.personalization_score(facts)),
             "quality_warnings": enricher.FACT_SEPARATOR.join(warnings),
         }
-        contact = find_contact(pages, normalize_domain(company.website), guess_role_email=guess_role_email)
+        contact = find_contact(
+            pages, normalize_domain(company.website), guess_role_email=guess_role_email
+        )
         # Check if this is a useless role inbox (support@, contact@, info@, etc.)
         _is_useless_inbox = (
             contact.contact_type == "role_inbox"
@@ -2499,8 +2633,13 @@ def discover_rows(
             and contact.email.split("@", 1)[0].lower() in OUTREACH_USELESS_PREFIXES
         )
         # LinkedIn fallback for weak or useless contacts
-        if contact.contact_type in ("public_person", "contact_page", "role_guess", "not_found") or _is_useless_inbox:
-            linkedin_contacts = search_linkedin_contacts(company.company, normalize_domain(company.website))
+        if (
+            contact.contact_type in ("public_person", "contact_page", "role_guess", "not_found")
+            or _is_useless_inbox
+        ):
+            linkedin_contacts = search_linkedin_contacts(
+                company.company, normalize_domain(company.website)
+            )
             if linkedin_contacts:
                 best = linkedin_contacts[0]
                 # Always use LinkedIn profile URL — never guess first.last@ emails
@@ -2517,8 +2656,11 @@ def discover_rows(
         if contact.contact_type == "public_person":
             contact = Contact(contact_type="not_found", confidence=0)
         # Drop useless role inboxes — they are worthless for cold outreach
-        if (contact.contact_type == "role_inbox" and contact.email
-                and contact.email.split("@", 1)[0].lower() in OUTREACH_USELESS_PREFIXES):
+        if (
+            contact.contact_type == "role_inbox"
+            and contact.email
+            and contact.email.split("@", 1)[0].lower() in OUTREACH_USELESS_PREFIXES
+        ):
             return None
         # Drop leads without a usable email — this is an outreach tool
         if not contact.email:
@@ -2610,14 +2752,31 @@ def discover_rows(
 
 def write_csv(rows: list[dict], output: str) -> None:
     fieldnames = [
-        "email", "first_name", "last_name", "company", "website",
-        "discovery_source_url", "discovery_reason", "lead_score", "lead_score_reasons",
-        "icp_score", "matched_terms",
-        "contact_name", "contact_role", "contact_email", "contact_type",
-        "contact_confidence", "contact_score", "contact_score_reasons",
-        "contact_source_url", "website_status",
-        "company_summary", "personalization_facts", "source_urls",
-        "personalization_score", "quality_warnings",
+        "email",
+        "first_name",
+        "last_name",
+        "company",
+        "website",
+        "discovery_source_url",
+        "discovery_reason",
+        "lead_score",
+        "lead_score_reasons",
+        "icp_score",
+        "matched_terms",
+        "contact_name",
+        "contact_role",
+        "contact_email",
+        "contact_type",
+        "contact_confidence",
+        "contact_score",
+        "contact_score_reasons",
+        "contact_source_url",
+        "website_status",
+        "company_summary",
+        "personalization_facts",
+        "source_urls",
+        "personalization_score",
+        "quality_warnings",
     ]
     with open(output, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -2638,23 +2797,46 @@ _LINKEDIN_COMPANY_RE = re.compile(
 _PHONE_RE = re.compile(r"(?<!\w)(\+?\d[\d\s().\-]{6,16}\d)(?!\w)")
 
 PARTNERSHIP_PATH_HINTS = (
-    "partners", "partner", "partnership", "partnerships",
-    "become-a-partner", "reseller", "resellers", "affiliate", "affiliates",
+    "partners",
+    "partner",
+    "partnership",
+    "partnerships",
+    "become-a-partner",
+    "reseller",
+    "resellers",
+    "affiliate",
+    "affiliates",
 )
 
 # Company-level email policy (the inverse of the person-finder): generic inboxes
 # like info@/contact@ are KEPT — they are a legitimate first touch for partnership
 # outreach. Partnership/BD inboxes rank highest.
 COMPANY_EMAIL_PRIORITY = {
-    "partnerships": 95, "partner": 93, "bd": 90, "business-development": 90,
-    "growth": 86, "marketing": 84, "sales": 82, "hello": 70, "contact": 66,
-    "info": 64, "enquiries": 62, "enquiry": 62, "team": 60, "press": 50,
-    "media": 48, "support": 40,
+    "partnerships": 95,
+    "partner": 93,
+    "bd": 90,
+    "business-development": 90,
+    "growth": 86,
+    "marketing": 84,
+    "sales": 82,
+    "hello": 70,
+    "contact": 66,
+    "info": 64,
+    "enquiries": 62,
+    "enquiry": 62,
+    "team": 60,
+    "press": 50,
+    "media": 48,
+    "support": 40,
 }
 
 _SOCIAL_HOSTS = (
-    "linkedin.com", "twitter.com", "x.com", "facebook.com",
-    "instagram.com", "youtube.com",
+    "linkedin.com",
+    "twitter.com",
+    "x.com",
+    "facebook.com",
+    "instagram.com",
+    "youtube.com",
 )
 
 # Region hint maps — keyed by a CANONICAL region name. Freeform user input
@@ -2787,7 +2969,8 @@ def _detect_address_country(text: str) -> str | None:
 # the place after "in", stopping at a comma) and "<place>-based" (adjective form).
 _HQ_PLACE = r"([^\W\d_][^\d\n,;:|]{1,38})"
 _HQ_VERB_RE = re.compile(
-    r"\b(?:based|headquarter(?:ed|s)?|head\s*offices?|hq|registered|incorporated)\s+in\s+" + _HQ_PLACE,
+    r"\b(?:based|headquarter(?:ed|s)?|head\s*offices?|hq|registered|incorporated)\s+in\s+"
+    + _HQ_PLACE,
     re.IGNORECASE,
 )
 _HQ_ADJ_RE = re.compile(r"\b([^\W\d_][^\d\n,;:|]{0,28}?)[ \-]based\b", re.IGNORECASE)
@@ -2809,7 +2992,7 @@ def _detect_prose_location(text: str) -> str | None:
     low = text.lower()
     for rx in (_HQ_VERB_RE, _HQ_ADJ_RE):
         for m in rx.finditer(low):
-            if _HQ_CUSTOMER_RE.search(low[max(0, m.start() - 45):m.start()]):
+            if _HQ_CUSTOMER_RE.search(low[max(0, m.start() - 45) : m.start()]):
                 continue
             rk = _resolve_place(m.group(1))
             if rk:
@@ -2837,7 +3020,9 @@ def _detect_domain_country(domain: str) -> str | None:
     return None
 
 
-_SIZE_BAND_RE = re.compile(r"(\d[\d,\.]*)\s*\+?\s*(?:employees|staff|people|team members)", re.IGNORECASE)
+_SIZE_BAND_RE = re.compile(
+    r"(\d[\d,\.]*)\s*\+?\s*(?:employees|staff|people|team members)", re.IGNORECASE
+)
 _SME_HINT_RE = re.compile(
     r"\b(family[- ]owned|family business|since \d{4}|founded in \d{4}|small team|boutique)\b",
     re.IGNORECASE,
@@ -2847,6 +3032,7 @@ _SME_HINT_RE = re.compile(
 # ---------------------------------------------------------------------------
 # Front-end: candidate companies from LLM seed + search (sources optional)
 # ---------------------------------------------------------------------------
+
 
 def _resolve_llm_provider() -> dict | None:
     """Resolve an LLM provider config for discovery seeding, or None if unavailable.
@@ -2867,7 +3053,9 @@ def _resolve_llm_provider() -> dict | None:
         if prov and prov.get("type") in ("anthropic", "openai", "proxy") and prov.get("api_key"):
             return prov
         for candidate in providers.values():
-            if candidate.get("type") in ("anthropic", "openai", "proxy") and candidate.get("api_key"):
+            if candidate.get("type") in ("anthropic", "openai", "proxy") and candidate.get(
+                "api_key"
+            ):
                 return candidate
         legacy = config.get_api_key("anthropic")
         if legacy:
@@ -2886,7 +3074,9 @@ _SEED_SYSTEM = (
 def _build_seed_prompt(icp: str, region: str, count: int, related: set[str] | None = None) -> str:
     hint = ""
     if related:
-        hint = f"Related terms (same industry, treat as in-scope): {', '.join(sorted(related)[:8])}\n"
+        hint = (
+            f"Related terms (same industry, treat as in-scope): {', '.join(sorted(related)[:8])}\n"
+        )
     return (
         f"Target profile: {icp}\n"
         f"Region/country: {region}\n"
@@ -2916,7 +3106,7 @@ def _parse_json_object(text: str) -> dict:
     start, end = cleaned.find("{"), cleaned.rfind("}")
     if start != -1 and end > start:
         try:
-            data = json.loads(cleaned[start:end + 1])
+            data = json.loads(cleaned[start : end + 1])
             if isinstance(data, dict):
                 return data
         except Exception:
@@ -2925,7 +3115,10 @@ def _parse_json_object(text: str) -> dict:
 
 
 def seed_companies_via_llm(
-    icp: str, region: str, count: int = 30, provider_config: dict | None = None,
+    icp: str,
+    region: str,
+    count: int = 30,
+    provider_config: dict | None = None,
     related: set[str] | None = None,
 ) -> dict:
     """Ask an LLM for known companies + local directories for (ICP, region).
@@ -2939,12 +3132,17 @@ def seed_companies_via_llm(
         return {"companies": [], "local_directories": []}
     try:
         from opencold import generator as _gen
-        raw = _gen.complete(prov, _SEED_SYSTEM, _build_seed_prompt(icp, region, count, related), max_tokens=1024)
+
+        raw = _gen.complete(
+            prov, _SEED_SYSTEM, _build_seed_prompt(icp, region, count, related), max_tokens=1024
+        )
     except Exception:
         return {"companies": [], "local_directories": []}
     data = _parse_json_object(raw)
     companies = [c.strip() for c in data.get("companies", []) if isinstance(c, str) and c.strip()]
-    directories = [d.strip() for d in data.get("local_directories", []) if isinstance(d, str) and d.strip()]
+    directories = [
+        d.strip() for d in data.get("local_directories", []) if isinstance(d, str) and d.strip()
+    ]
     seen: set[str] = set()
     uniq: list[str] = []
     for c in companies:
@@ -2969,8 +3167,7 @@ def region_query_templates(icp: str, region: str) -> list[str]:
     # consultancy"): search engines treat the quoted form as adjacency, which
     # finds companies the bare bag-of-words queries bury under generic matches.
     templates += [
-        f'"{" ".join(chunk)}" {region}'
-        for chunk in icp_phrases.parse_icp(icp).core_phrases
+        f'"{" ".join(chunk)}" {region}' for chunk in icp_phrases.parse_icp(icp).core_phrases
     ]
     return [q for q in templates if q.strip()]
 
@@ -3016,7 +3213,10 @@ def _interleave_translations(texts: list[str], langs: list[str]) -> list[str]:
 
 
 def discover_companies_by_query(
-    icp: str, region: str, limit: int = 50, extra_queries: list[str] | None = None,
+    icp: str,
+    region: str,
+    limit: int = 50,
+    extra_queries: list[str] | None = None,
     target_langs: list[str] | None = None,
 ) -> list[CandidateCompany]:
     base = region_query_templates(icp, region)
@@ -3060,9 +3260,22 @@ _WIKI_UA = "opencold/0.1 (company discovery channel)"
 
 # Section headings whose entries are not active target companies.
 _WIKI_SKIP_SECTIONS = (
-    "defunct", "former", "closed", "merged", "dissolved", "renamed",
-    "regulator", "regulators", "association", "associations", "see also",
-    "references", "external links", "further reading", "notes", "bibliography",
+    "defunct",
+    "former",
+    "closed",
+    "merged",
+    "dissolved",
+    "renamed",
+    "regulator",
+    "regulators",
+    "association",
+    "associations",
+    "see also",
+    "references",
+    "external links",
+    "further reading",
+    "notes",
+    "bibliography",
 )
 
 # Names that are clearly not operating companies (regulators/indexes/meta).
@@ -3099,7 +3312,7 @@ def _clean_wiki_name(raw: str) -> str:
     opening paren) so 'Acme Ltd – the best (est. 1990)' -> 'Acme Ltd'. Keeps
     intra-name hyphens like 'Bradley-Hole' (only spaced dashes split)."""
     s = raw or ""
-    s = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]|]+)\]\]", r"\1", s)      # [[a|b]] -> b
+    s = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]|]+)\]\]", r"\1", s)  # [[a|b]] -> b
     s = re.sub(r"<ref[^>]*?/>", "", s)
     s = re.sub(r"<ref.*?</ref>", "", s, flags=re.DOTALL | re.IGNORECASE)
     s = re.sub(r"<!--.*?-->", "", s, flags=re.DOTALL)
@@ -3119,13 +3332,13 @@ def _wikitable_first_cells(block: str) -> list[str]:
             s = line.strip()
             if not s or s.startswith(("{|", "|}", "|+")):
                 continue
-            if s.startswith("!"):        # header row — no data cell
+            if s.startswith("!"):  # header row — no data cell
                 break
             if s.startswith("|"):
                 cell = s[1:]
-                if "||" in cell:         # inline row: keep the first cell
+                if "||" in cell:  # inline row: keep the first cell
                     cell = cell.split("||", 1)[0]
-                if "|" in cell:          # strip a "style=...|" cell attribute
+                if "|" in cell:  # strip a "style=...|" cell attribute
                     left, right = cell.split("|", 1)
                     if "=" in left and len(left) < 60:
                         cell = right
@@ -3210,10 +3423,15 @@ def wikipedia_list_titles(icp: str, region: str, limit: int = 3) -> list[str]:
     titles: list[str] = []
     seen: set[str] = set()
     for q in (f"list of {icp} in {region}", f"list of {icp} of {region}"):
-        data = _wiki_api_get({
-            "action": "query", "list": "search", "srsearch": q,
-            "srlimit": 5, "srnamespace": 0,
-        })
+        data = _wiki_api_get(
+            {
+                "action": "query",
+                "list": "search",
+                "srsearch": q,
+                "srlimit": 5,
+                "srnamespace": 0,
+            }
+        )
         for hit in data.get("query", {}).get("search", []):
             title = hit.get("title", "")
             if title.lower().startswith("list of") and title not in seen and _relevant(title):
@@ -3233,12 +3451,20 @@ def wikipedia_category_members(icp: str, region: str) -> list[tuple[str, str]]:
     industry = industry[:1].upper() + industry[1:]
     out: list[tuple[str, str]] = []
     seen: set[str] = set()
-    for cat in (f"Category:{industry} companies of {region}",
-                f"Category:{industry} companies in {region}"):
-        data = _wiki_api_get({
-            "action": "query", "list": "categorymembers", "cmtitle": cat,
-            "cmlimit": 60, "cmtype": "page", "cmnamespace": 0,
-        })
+    for cat in (
+        f"Category:{industry} companies of {region}",
+        f"Category:{industry} companies in {region}",
+    ):
+        data = _wiki_api_get(
+            {
+                "action": "query",
+                "list": "categorymembers",
+                "cmtitle": cat,
+                "cmlimit": 60,
+                "cmtype": "page",
+                "cmnamespace": 0,
+            }
+        )
         cat_url = "https://en.wikipedia.org/wiki/" + quote_plus(cat.replace(" ", "_"))
         for m in data.get("query", {}).get("categorymembers", []):
             name = _clean_wiki_name(m.get("title", ""))
@@ -3296,8 +3522,9 @@ def _resolve_names(names: list[str], icp: str, region: str, workers: int) -> lis
     resolved: list[tuple[str, str]] = []
     with ThreadPoolExecutor(max_workers=worker_n) as executor:
         future_to_name = {
-            executor.submit(resolve_company_website, n, require_match=True,
-                            context=context, prefer_cc=prefer_cc): n
+            executor.submit(
+                resolve_company_website, n, require_match=True, context=context, prefer_cc=prefer_cc
+            ): n
             for n in names
         }
         for future in as_completed(future_to_name):
@@ -3347,18 +3574,26 @@ def discover_company_candidates(
     if use_llm:
         prov = _resolve_llm_provider()
         if prov:
-            seed = seed_companies_via_llm(icp, region, count=seed_count, provider_config=prov, related=expansion)
+            seed = seed_companies_via_llm(
+                icp, region, count=seed_count, provider_config=prov, related=expansion
+            )
             extra_queries = [f"{d} {region}" for d in seed.get("local_directories", [])]
             for name, url in _resolve_names(seed.get("companies", []), icp, region, workers):
-                _add(CandidateCompany(
-                    company=name, website=url, discovery_source_url=url,
-                    discovery_reason=f"llm seed: {icp} in {region}",
-                ), "llm")
+                _add(
+                    CandidateCompany(
+                        company=name,
+                        website=url,
+                        discovery_source_url=url,
+                        discovery_reason=f"llm seed: {icp} in {region}",
+                    ),
+                    "llm",
+                )
 
     # Bounded expansion queries (top-N related terms, ONE template each) appended to
     # the search-harvest extras — capped in expansion_queries to avoid a query explosion.
     if use_expansion and expansion:
         from opencold import icp_expansion
+
         extra_queries += icp_expansion.expansion_queries(expansion, region)
 
     # Channel A2: Wikipedia "List of ..." names (deterministic, no LLM). Additive.
@@ -3366,10 +3601,15 @@ def discover_company_candidates(
         wiki = wikipedia_company_names(icp, region, max_names=seed_count)
         wiki_src = {name: src for name, src in wiki}
         for name, url in _resolve_names([name for name, _ in wiki], icp, region, workers):
-            _add(CandidateCompany(
-                company=name, website=url, discovery_source_url=wiki_src.get(name, url),
-                discovery_reason=f"wikipedia list: {icp} in {region}",
-            ), "wikipedia")
+            _add(
+                CandidateCompany(
+                    company=name,
+                    website=url,
+                    discovery_source_url=wiki_src.get(name, url),
+                    discovery_reason=f"wikipedia list: {icp} in {region}",
+                ),
+                "wikipedia",
+            )
 
     # Channel B: search harvest (always runs).
     for cand in discover_companies_by_query(
@@ -3382,16 +3622,17 @@ def discover_company_candidates(
         for cand in discover_company_pool(sources, limit=limit, workers=workers):
             _add(cand, "sources")
 
-    return list(candidates.values())[:max(limit, 1)]
+    return list(candidates.values())[: max(limit, 1)]
 
 
 # ---------------------------------------------------------------------------
 # Back-end: structured-data-first contact extraction
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class CompanyContacts:
-    emails: list = field(default_factory=list)   # list[tuple[email, source_url]]
+    emails: list = field(default_factory=list)  # list[tuple[email, source_url]]
     phones: list = field(default_factory=list)
     socials: list = field(default_factory=list)
     address: str = ""
@@ -3400,7 +3641,16 @@ class CompanyContacts:
     company_name: str = ""
 
 
-_CONTACT_PATHS = ("", "/contact", "/contact-us", "/about", "/about-us", "/imprint", "/legal", "/company")
+_CONTACT_PATHS = (
+    "",
+    "/contact",
+    "/contact-us",
+    "/about",
+    "/about-us",
+    "/imprint",
+    "/legal",
+    "/company",
+)
 
 
 def _clean_phone(raw: str) -> str:
@@ -3507,8 +3757,16 @@ def _extract_jsonld_org(soup: BeautifulSoup) -> dict:
             if not out["address"]:
                 addr = item.get("address")
                 if isinstance(addr, dict):
-                    parts = [str(addr.get(k, "")) for k in
-                             ("streetAddress", "addressLocality", "addressRegion", "postalCode", "addressCountry")]
+                    parts = [
+                        str(addr.get(k, ""))
+                        for k in (
+                            "streetAddress",
+                            "addressLocality",
+                            "addressRegion",
+                            "postalCode",
+                            "addressCountry",
+                        )
+                    ]
                     out["address"] = ", ".join(p for p in parts if p and p != "None").strip(", ")
                 elif isinstance(addr, str) and addr.strip():
                     out["address"] = addr.strip()
@@ -3586,7 +3844,11 @@ def extract_company_contacts(website: str, max_pages: int = 5) -> CompanyContact
         if not contacts.emails:
             for email in EMAIL_RE.findall(soup.get_text(" ", strip=True)):
                 el = email.lower()
-                if "@" in el and normalize_domain(el.split("@", 1)[1]) == domain and el not in seen_emails:
+                if (
+                    "@" in el
+                    and normalize_domain(el.split("@", 1)[1]) == domain
+                    and el not in seen_emails
+                ):
                     seen_emails.add(el)
                     contacts.emails.append((el, url))
 
@@ -3676,7 +3938,10 @@ def find_company_linkedin(company: str, contacts: CompanyContacts, domain: str) 
 # Value-add signals: region fit + coarse size tier
 # ---------------------------------------------------------------------------
 
-def region_fit(contacts: CompanyContacts, website: str, region: str, pages_text: str = "") -> tuple[int, str]:
+
+def region_fit(
+    contacts: CompanyContacts, website: str, region: str, pages_text: str = ""
+) -> tuple[int, str]:
     """Score how strongly a company is anchored in the target region (0-100), and
     flag a region_conflict when it is clearly domiciled elsewhere.
 
@@ -3730,7 +3995,11 @@ def region_fit(contacts: CompanyContacts, website: str, region: str, pages_text:
     conflict = ""
     if region_key and not score:
         for cc in set(_REGION_CCTLD.values()):
-            if cc != target_cc and cc not in rd.GENERIC_TLDS and (tld == cc or domain.endswith("." + cc)):
+            if (
+                cc != target_cc
+                and cc not in rd.GENERIC_TLDS
+                and (tld == cc or domain.endswith("." + cc))
+            ):
                 conflict = f".{cc}"
                 break
         if not conflict:
@@ -3780,6 +4049,7 @@ def size_tier(pages_text: str, contacts: CompanyContacts) -> str:
 # Verification: LLM judge (grounded) + deterministic gate
 # ---------------------------------------------------------------------------
 
+
 def _country_matches(region: str, country: str) -> bool:
     """True when a detected country resolves to the same canonical region."""
     if not country:
@@ -3793,7 +4063,7 @@ _JUDGE_SYSTEM = (
     "You verify whether companies match a target profile and region, using ONLY "
     "the provided website summary as evidence. You output compact JSON, no prose, "
     "no markdown fences. If a summary does not clearly establish a company's "
-    "industry or country, you answer \"unknown\" — you never guess from the name."
+    'industry or country, you answer "unknown" — you never guess from the name.'
 )
 
 
@@ -3807,7 +4077,7 @@ def _build_judge_prompt(items: list[dict], icp: str, region: str) -> str:
         'Reply JSON: {"results":[{"i":0,"match":"yes|no|unknown","industry":"...",'
         '"country":"...","evidence":"<short quote from the summary>"}]}',
         "Rules: base every field ONLY on the summary text. If the summary is too "
-        "thin to tell, use \"unknown\" (do not guess). Quote real words from the "
+        'thin to tell, use "unknown" (do not guess). Quote real words from the '
         "summary as evidence.",
         "",
         "Companies:",
@@ -3826,20 +4096,28 @@ def judge_companies(rows: list[dict], icp: str, region: str, provider_config: di
     """
     items = []
     for idx, row in enumerate(rows):
-        summary = " ".join([
-            row.get("company_summary", ""), row.get("personalization_facts", ""),
-        ]).strip()
-        items.append({
-            "i": idx,
-            "name": row.get("company", ""),
-            "domain": normalize_domain(row.get("website", "")),
-            "summary": summary,
-        })
+        summary = " ".join(
+            [
+                row.get("company_summary", ""),
+                row.get("personalization_facts", ""),
+            ]
+        ).strip()
+        items.append(
+            {
+                "i": idx,
+                "name": row.get("company", ""),
+                "domain": normalize_domain(row.get("website", "")),
+                "summary": summary,
+            }
+        )
     if not items:
         return {}
     try:
         from opencold import generator as _gen
-        raw = _gen.complete(provider_config, _JUDGE_SYSTEM, _build_judge_prompt(items, icp, region), max_tokens=1500)
+
+        raw = _gen.complete(
+            provider_config, _JUDGE_SYSTEM, _build_judge_prompt(items, icp, region), max_tokens=1500
+        )
     except Exception:
         return {}
     data = _parse_json_object(raw)
@@ -3855,7 +4133,9 @@ def judge_companies(rows: list[dict], icp: str, region: str, provider_config: di
     return out
 
 
-def _classify_company(row: dict, icp_evidence: bool, region_conflict: bool, llm: dict | None) -> tuple[str, str]:
+def _classify_company(
+    row: dict, icp_evidence: bool, region_conflict: bool, llm: dict | None
+) -> tuple[str, str]:
     """Combine deterministic evidence with the (optional) LLM verdict.
 
     Authority split: deterministic signals own REGION (ccTLD/phone/address are hard
@@ -3879,7 +4159,9 @@ def _classify_company(row: dict, icp_evidence: bool, region_conflict: bool, llm:
         return "review", "marketplace_directory"
 
     industry_ok = icp_evidence or llm_match == "yes"
-    region_ok = bool(row.get("_region_anchor")) or _country_matches(row.get("country", ""), llm.get("country", ""))
+    region_ok = bool(row.get("_region_anchor")) or _country_matches(
+        row.get("country", ""), llm.get("country", "")
+    )
 
     if industry_ok and region_ok:
         suffix = "+llm" if llm_match == "yes" else ""
@@ -3894,17 +4176,41 @@ def _classify_company(row: dict, icp_evidence: bool, region_conflict: bool, llm:
 # ---------------------------------------------------------------------------
 
 COMPANY_CSV_FIELDS = [
-    "email", "name", "company", "website",
-    "match_confidence", "verification",
-    "country", "region_fit", "company_email", "email_type", "phone", "address",
-    "linkedin_company_url", "partnership_channel", "size_tier",
-    "icp_score", "matched_terms",
-    "website_status", "company_summary", "personalization_facts", "source_urls",
+    "email",
+    "name",
+    "company",
+    "website",
+    "match_confidence",
+    "verification",
+    "country",
+    "region_fit",
+    "company_email",
+    "email_type",
+    "phone",
+    "address",
+    "linkedin_company_url",
+    "partnership_channel",
+    "size_tier",
+    "icp_score",
+    "matched_terms",
+    "website_status",
+    "company_summary",
+    "personalization_facts",
+    "source_urls",
     "personalization_score",
-    "discovery_channel", "discovery_source_url", "discovered_at",
-    "lead_score", "lead_score_reasons", "quality_warnings",
+    "discovery_channel",
+    "discovery_source_url",
+    "discovered_at",
+    "lead_score",
+    "lead_score_reasons",
+    "quality_warnings",
 ]
-COMPANY_PEOPLE_FIELDS = ["contact_name", "contact_role", "contact_linkedin", "contact_stale_warning"]
+COMPANY_PEOPLE_FIELDS = [
+    "contact_name",
+    "contact_role",
+    "contact_linkedin",
+    "contact_stale_warning",
+]
 
 # Banner drawn in the CSV between verified Top-N and the review pile below.
 WALL_BANNER = "═════ REVIEW BELOW — ICP/region NOT verified ═════"
@@ -3962,7 +4268,9 @@ def _score_company_lead(
     elif region_targeted and region_fit_score == 0:
         score -= 15
         reasons.append("region_unconfirmed")
-    if B2B_SIGNAL_RE.search(" ".join([row.get("company_summary", ""), row.get("personalization_facts", "")])):
+    if B2B_SIGNAL_RE.search(
+        " ".join([row.get("company_summary", ""), row.get("personalization_facts", "")])
+    ):
         score += 6
         reasons.append("b2b_signal")
     return max(0, min(score, 100)), enricher.FACT_SEPARATOR.join(reasons)
@@ -4002,8 +4310,10 @@ def build_company_row(
 
     contacts = extract_company_contacts(company.website, max_pages=max_pages)
     name = company.company
-    if contacts.company_name and not _bad_company_name(contacts.company_name) and (
-        not name or name == _company_from_domain(domain) or _bad_company_name(name)
+    if (
+        contacts.company_name
+        and not _bad_company_name(contacts.company_name)
+        and (not name or name == _company_from_domain(domain) or _bad_company_name(name))
     ):
         name = contacts.company_name
     if _bad_company_name(name):
@@ -4015,7 +4325,9 @@ def build_company_row(
     linkedin = find_company_linkedin(name, contacts, domain)
     rfit, rfit_reasons = region_fit(contacts, company.website, region, pages_text)
     region_conflict = "region_conflict" in rfit_reasons
-    region_anchor = any(a in rfit_reasons for a in ("cctld:", "phone:", "addr_region_match", "hq_region_match"))
+    region_anchor = any(
+        a in rfit_reasons for a in ("cctld:", "phone:", "addr_region_match", "hq_region_match")
+    )
     detected = _detected_country(contacts, company.website, enrichment.get("company_summary", ""))
     tier = size_tier(pages_text, contacts)
 
@@ -4026,10 +4338,13 @@ def build_company_row(
     else:
         partnership = ""
 
-    icp_score, matched_terms = score_company(company, enrichment, icp, extra_terms, weak_terms,
-                                             provenance)
+    icp_score, matched_terms = score_company(
+        company, enrichment, icp, extra_terms, weak_terms, provenance
+    )
     if rfit_reasons:
-        matched_terms = (matched_terms + (enricher.FACT_SEPARATOR if matched_terms else "") + rfit_reasons)
+        matched_terms = (
+            matched_terms + (enricher.FACT_SEPARATOR if matched_terms else "") + rfit_reasons
+        )
 
     row = {
         "email": email,
@@ -4053,8 +4368,11 @@ def build_company_row(
         **enrichment,
     }
     lead_score, lead_reasons = _score_company_lead(
-        row, rfit, email_type,
-        region_targeted=bool(region), region_conflict=region_conflict,
+        row,
+        rfit,
+        email_type,
+        region_targeted=bool(region),
+        region_conflict=region_conflict,
     )
     row["lead_score"] = str(lead_score)
     row["lead_score_reasons"] = lead_reasons
@@ -4063,10 +4381,15 @@ def build_company_row(
     row["_icp_evidence"] = _icp_evidence(icp, enrichment, extra_terms, weak_terms, provenance)
     row["_region_conflict"] = region_conflict
     row["_region_anchor"] = region_anchor
-    row["_is_aggregator"] = _is_aggregator(domain, " ".join([
-        enrichment.get("company_summary", ""),
-        enrichment.get("personalization_facts", ""),
-    ]))
+    row["_is_aggregator"] = _is_aggregator(
+        domain,
+        " ".join(
+            [
+                enrichment.get("company_summary", ""),
+                enrichment.get("personalization_facts", ""),
+            ]
+        ),
+    )
     row["_is_government"] = _is_government_domain(domain)
 
     if find_people:
@@ -4136,8 +4459,11 @@ def discover_company_rows(
     expansion: set[str] = set()
     if use_expansion:
         from opencold import icp_expansion
+
         grouped = icp_expansion.expand_icp_grouped(
-            icp, use_llm=use_llm, provider=_resolve_llm_provider() if use_llm else None,
+            icp,
+            use_llm=use_llm,
+            provider=_resolve_llm_provider() if use_llm else None,
         )
         expansion = grouped.flat
         weak_terms |= grouped.flat
@@ -4153,9 +4479,17 @@ def discover_company_rows(
                 weak_terms |= native
                 _attribute(token, safe)
     candidates = discover_company_candidates(
-        icp, region, sources=sources, limit=pool,
-        workers=workers, use_llm=use_llm, seed_count=seed_count, use_wiki=use_wiki,
-        use_translation=use_translation, expansion=expansion, use_expansion=use_expansion,
+        icp,
+        region,
+        sources=sources,
+        limit=pool,
+        workers=workers,
+        use_llm=use_llm,
+        seed_count=seed_count,
+        use_wiki=use_wiki,
+        use_translation=use_translation,
+        expansion=expansion,
+        use_expansion=use_expansion,
     )
     # Dedupe by domain up front (channels already dedupe, but be safe).
     seen: set[str] = set()
@@ -4176,8 +4510,16 @@ def discover_company_rows(
     with ThreadPoolExecutor(max_workers=workers) as executor:
         future_to_company = {
             executor.submit(
-                build_company_row, company, icp, region, max_pages, find_people,
-                target_langs, extra_terms, weak_terms, provenance,
+                build_company_row,
+                company,
+                icp,
+                region,
+                max_pages,
+                find_people,
+                target_langs,
+                extra_terms,
+                weak_terms,
+                provenance,
             ): company
             for company in candidates
         }
@@ -4205,7 +4547,10 @@ def discover_company_rows(
     # Classify each row, then rank within its confidence band by lead score.
     for idx, row in enumerate(rows):
         confidence, why = _classify_company(
-            row, bool(row.get("_icp_evidence")), bool(row.get("_region_conflict")), verdicts.get(idx),
+            row,
+            bool(row.get("_icp_evidence")),
+            bool(row.get("_region_conflict")),
+            verdicts.get(idx),
         )
         row["match_confidence"] = confidence
         row["verification"] = why
@@ -4213,9 +4558,13 @@ def discover_company_rows(
     def _rank(row: dict) -> int:
         return int(row.get("lead_score", "0"))
 
-    verified = sorted((r for r in rows if r["match_confidence"] == "verified"), key=_rank, reverse=True)
+    verified = sorted(
+        (r for r in rows if r["match_confidence"] == "verified"), key=_rank, reverse=True
+    )
     review = sorted((r for r in rows if r["match_confidence"] == "review"), key=_rank, reverse=True)
-    rejected = sorted((r for r in rows if r["match_confidence"] == "rejected"), key=_rank, reverse=True)
+    rejected = sorted(
+        (r for r in rows if r["match_confidence"] == "rejected"), key=_rank, reverse=True
+    )
 
     # Verified fill the Top-N; the review/rejected pile (capped) goes below the wall.
     return verified[:limit] + (review + rejected)[:limit]
@@ -4237,8 +4586,11 @@ def write_company_csv(rows: list[dict], output: str) -> None:
         writer.writeheader()
         wall_drawn = False
         for row in rows:
-            if (not wall_drawn and has_verified
-                    and row.get("match_confidence") not in ("verified", "", None)):
+            if (
+                not wall_drawn
+                and has_verified
+                and row.get("match_confidence") not in ("verified", "", None)
+            ):
                 writer.writerow({})  # blank gap row
                 writer.writerow({"company": WALL_BANNER})
                 wall_drawn = True
