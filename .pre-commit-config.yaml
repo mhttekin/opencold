@@ -7,6 +7,12 @@ repos:
       - id: ruff-format
   - repo: local
     hooks:
+      - id: protect-labels
+        name: protect evals/labels
+        entry: bash -c 'if [[ "${ALLOW_LABEL_EDIT:-}" != "1" ]]; then echo "evals/labels is ground truth owned by Mehmet" >&2; exit 1; fi'
+        language: system
+        files: ^evals/labels/
+        pass_filenames: false
       - id: pytest
         name: pytest
         entry: .venv/bin/python -m pytest -q
