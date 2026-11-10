@@ -944,7 +944,7 @@ class TestEnrichRow:
         monkeypatch.setattr(
             se.discovery,
             "pick_company_email",
-            lambda emails, domain: ("info@acmefoods.co.uk", "role_inbox", emails[0][1]),
+            lambda emails, domain, *a: ("info@acmefoods.co.uk", "role_inbox", emails[0][1]),
         )
         monkeypatch.setattr(
             se.discovery, "crawl_company_pages", lambda website, max_pages=4: [self._Page()]
@@ -1003,7 +1003,7 @@ class TestEnrichRow:
         monkeypatch.setattr(
             se.discovery,
             "pick_company_email",
-            lambda emails, domain: ("x@wrongco.com", "company_email", emails[0][1]),
+            lambda emails, domain, *a: ("x@wrongco.com", "company_email", emails[0][1]),
         )
         monkeypatch.setattr(
             se.discovery,
@@ -1032,7 +1032,7 @@ class TestEnrichRow:
         monkeypatch.setattr(
             se.discovery,
             "pick_company_email",
-            lambda emails, domain: ("info@acmefoods.co.uk", "role_inbox", emails[0][1]),
+            lambda emails, domain, *a: ("info@acmefoods.co.uk", "role_inbox", emails[0][1]),
         )
         monkeypatch.setattr(
             se.discovery,

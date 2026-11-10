@@ -23,6 +23,7 @@ from bs4 import BeautifulSoup
 
 from opencold import enricher, icp_phrases, translator
 from opencold import regions_data as rd
+from opencold.emails import pick_company_email
 
 # Re-exported names: tests and icp_expansion resolve these via opencold.discovery.
 from opencold.icp_phrases import GENERIC_ICP_TERMS
@@ -3854,39 +3855,6 @@ def extract_company_contacts(
     return contacts
 
 
-def pick_company_email(emails: list, domain: str) -> tuple[str, str, str]:
-    """Choose the best company email. Returns (email, email_type, source_url).
-
-    Company policy keeps generic inboxes (info@/contact@) — legitimate first
-    touch for partnership outreach — and ranks partnership/BD inboxes highest. A
-    named-person email outranks all role inboxes. On-domain emails are preferred.
-    """
-    best: tuple[int, str, str, str] | None = None
-    for email, url in emails:
-        if "@" not in email:
-            continue
-        local, email_host = email.split("@", 1)
-        local = local.lower()
-        on_domain = normalize_domain(email_host) == domain
-        if local in COMPANY_EMAIL_PRIORITY or local in ROLE_PREFIXES:
-            rank = COMPANY_EMAIL_PRIORITY.get(local, 45)
-            etype = "role_inbox"
-        elif PERSON_LOCAL_RE.match(local):
-            rank = 98 if any(sep in local for sep in (".", "_", "-")) else 92
-            etype = "person_email"
-        else:
-            rank, etype = 55, "company_email"
-        if not on_domain:
-            # Penalize off-domain emails enough that any on-domain inbox wins, but
-            # a sole freemail address (common for local SMEs) is still returned.
-            rank -= 35
-        if best is None or rank > best[0]:
-            best = (rank, email, etype, url)
-    if not best:
-        return "", "", ""
-    return best[1], best[2], best[3]
-
-
 def _linkedin_slug_matches(url: str, company: str, domain: str) -> bool:
     """Does a linkedin.com/company/<slug> plausibly belong to this company?
 
@@ -4309,7 +4277,8 @@ def build_company_row(
         # and the site offered nothing structured — the domain stem beats garbage.
         name = _company_from_domain(domain)
 
-    email, email_type, _email_src = pick_company_email(contacts.emails, domain)
+    page_person = _person_from_text(pages_text)[0]  # a named person on the site, if any
+    email, email_type, _email_src = pick_company_email(contacts.emails, domain, [page_person])
     linkedin = find_company_linkedin(name, contacts, domain)
     rfit, rfit_reasons = region_fit(contacts, company.website, region, pages_text)
     region_conflict = "region_conflict" in rfit_reasons

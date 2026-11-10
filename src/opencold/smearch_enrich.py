@@ -93,13 +93,13 @@ def _resolve_website(name: str, locality: str) -> tuple[str, str]:
     return "", ""
 
 
-def _site_contacts(website: str, pages: int) -> tuple[str, str, str]:
+def _site_contacts(website: str, pages: int, names=()) -> tuple[str, str, str]:
     """(phone, email, email_type) extracted from the site via discovery."""
     contacts = discovery.extract_company_contacts(website, max_pages=pages, region_cc="uk")
     phone = contacts.phones[0] if contacts.phones else ""
     if contacts.emails:
         email, etype, _ = discovery.pick_company_email(
-            contacts.emails, discovery.normalize_domain(website)
+            contacts.emails, discovery.normalize_domain(website), names
         )
     else:
         email, etype = "", ""
@@ -257,9 +257,10 @@ def _finish_enrich(
 
     officers = ch.list_active_officers(number, api_key=ch_key) if number else []
     row["officer_names"] = "; ".join(_format_officer_name(o["name"]) for o in officers)
+    names = [o["name"] for o in officers]  # person_email only if it names an officer
 
     if website:
-        phone, email, etype = _site_contacts(website, pages)
+        phone, email, etype = _site_contacts(website, pages, names)
         matched = _address_on_site(row, text)
         # Address not on site => namesake risk; let the LLM confirm/reject when on.
         if use_llm and provider and not matched:
@@ -280,7 +281,7 @@ def _finish_enrich(
             row["contact_source"] = "google_places"
             if place.get("website"):
                 website, conf = place["website"], "google_places"
-                _p, row["email"], row["email_type"] = _site_contacts(website, pages)
+                _p, row["email"], row["email_type"] = _site_contacts(website, pages, names)
                 row["phone"] = row["phone"] or _p
                 row["address_matched"] = _address_on_site(row, _pages_text(website, pages))
                 row["contact_source"] = "google_places+website"

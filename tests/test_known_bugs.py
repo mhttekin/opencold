@@ -33,7 +33,6 @@ def _contacts_from_home(html: str, website: str = "https://firma.com.tr") -> Com
 # ── e-mail ───────────────────────────────────────────────────────────────────
 
 
-@known_bug("reserved example.com placeholder from a site theme is picked as the contact email")
 def test_example_com_email_is_not_the_contact():
     html = '<html><body><a href="mailto:consalti@example.com">Mail</a></body></html>'
     contacts = _contacts_from_home(html)
@@ -44,11 +43,8 @@ def test_example_com_email_is_not_the_contact():
 @pytest.mark.parametrize(
     "address",
     [
-        pytest.param("palet@firma.com.tr", marks=known_bug("palet@ typed as person_email")),
-        pytest.param(
-            "service-cooling@firma.com.tr",
-            marks=known_bug("service-cooling@ typed as person_email"),
-        ),
+        "palet@firma.com.tr",
+        "service-cooling@firma.com.tr",
         "info@firma.com.tr",  # already correct today; kept as a regression guard
     ],
 )

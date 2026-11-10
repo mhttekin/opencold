@@ -82,30 +82,42 @@ class TestContactExtraction:
 class TestEmailPolicy:
     def test_partnerships_beats_info_beats_support(self):
         emails = [
-            ("support@acme.test", "u"),
-            ("info@acme.test", "u"),
-            ("partnerships@acme.test", "u"),
+            ("support@acmewidgets.com", "u"),
+            ("info@acmewidgets.com", "u"),
+            ("partnerships@acmewidgets.com", "u"),
         ]
-        email, etype, _ = discovery.pick_company_email(emails, "acme.test")
-        assert email == "partnerships@acme.test"
+        email, etype, _ = discovery.pick_company_email(emails, "acmewidgets.com")
+        assert email == "partnerships@acmewidgets.com"
         assert etype == "role_inbox"
 
     def test_info_is_kept_not_dropped(self):
         # Unlike the person-finder, generic inboxes are valid company contacts.
-        email, etype, _ = discovery.pick_company_email([("info@acme.test", "u")], "acme.test")
-        assert email == "info@acme.test"
+        email, etype, _ = discovery.pick_company_email(
+            [("info@acmewidgets.com", "u")], "acmewidgets.com"
+        )
+        assert email == "info@acmewidgets.com"
         assert etype == "role_inbox"
 
     def test_person_email_outranks_role_inbox(self):
-        emails = [("info@acme.test", "u"), ("jane.smith@acme.test", "u")]
-        email, etype, _ = discovery.pick_company_email(emails, "acme.test")
-        assert email == "jane.smith@acme.test"
+        emails = [("info@acmewidgets.com", "u"), ("jane.smith@acmewidgets.com", "u")]
+        email, etype, _ = discovery.pick_company_email(emails, "acmewidgets.com", ["Jane Smith"])
+        assert email == "jane.smith@acmewidgets.com"
         assert etype == "person_email"
 
+    def test_unknown_name_shaped_local_is_a_role_inbox(self):
+        # No known person called Jane Smith: the local-part's shape proves nothing.
+        emails = [("info@acmewidgets.com", "u"), ("jane.smith@acmewidgets.com", "u")]
+        email, etype, _ = discovery.pick_company_email(emails, "acmewidgets.com")
+        assert (email, etype) == ("info@acmewidgets.com", "role_inbox")
+
+    def test_reserved_and_placeholder_emails_are_never_picked(self):
+        for bad in ("a@example.org", "x@shop.test", "logo@2x.png", "you@yourdomain.com"):
+            assert discovery.pick_company_email([(bad, "u")], "acmewidgets.com")[0] == ""
+
     def test_off_domain_is_penalized(self):
-        emails = [("info@acme.test", "u"), ("partnerships@gmail.com", "u")]
-        email, _, _ = discovery.pick_company_email(emails, "acme.test")
-        assert email == "info@acme.test"
+        emails = [("info@acmewidgets.com", "u"), ("partnerships@gmail.com", "u")]
+        email, _, _ = discovery.pick_company_email(emails, "acmewidgets.com")
+        assert email == "info@acmewidgets.com"
 
 
 class TestRegionFit:
