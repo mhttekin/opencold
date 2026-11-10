@@ -34,7 +34,7 @@ class TestCleanText:
         text = "We Build Products\nwe build products\nUnique line for testing"
         cleaned = _clean_text(text)
         lines = cleaned.splitlines()
-        lower_lines = [l.lower() for l in lines]
+        lower_lines = [line.lower() for line in lines]
         assert lower_lines.count("we build products") == 1
 
 

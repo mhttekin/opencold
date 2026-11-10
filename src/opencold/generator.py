@@ -1,5 +1,6 @@
 """Multi-provider email generation (Anthropic, OpenAI, proxy)."""
 
+import re
 import time
 
 import anthropic
@@ -82,10 +83,10 @@ def _generate_openai(
 ) -> str:
     try:
         from openai import OpenAI
-    except ImportError:
+    except ImportError as e:
         raise ImportError(
             "OpenAI package is required for this provider. Install it with: pip install openai"
-        )
+        ) from e
 
     kwargs = {"api_key": api_key}
     if base_url:
@@ -104,8 +105,6 @@ def _generate_openai(
 
 
 # ── Post-processing (strip meta-commentary from weak models) ─────────────────
-
-import re
 
 _META_PATTERNS = [
     re.compile(

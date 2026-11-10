@@ -94,7 +94,9 @@ def _extract_bs4(html: str) -> str:
     main = soup.find("main") or soup.find("article") or soup.find(role="main")
     target = main if main else soup
 
-    lines = [l for l in target.get_text(separator="\n", strip=True).splitlines() if l.strip()]
+    lines = [
+        line for line in target.get_text(separator="\n", strip=True).splitlines() if line.strip()
+    ]
     return "\n".join(lines)
 
 

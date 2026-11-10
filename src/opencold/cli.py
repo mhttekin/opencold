@@ -109,8 +109,8 @@ def _ask(text: str, default: str = "", hide: bool = False) -> str:
             is_password=hide,
         )
         return result.strip() or default
-    except KeyboardInterrupt:
-        raise Cancelled()
+    except KeyboardInterrupt as e:
+        raise Cancelled() from e
 
 
 def _confirm(text: str, default: bool = False) -> bool:
@@ -123,8 +123,8 @@ def _confirm(text: str, default: bool = False) -> bool:
         if not result.strip():
             return default
         return result.strip().lower() in ("y", "yes")
-    except (KeyboardInterrupt, EOFError, OSError):
-        raise Cancelled()
+    except (KeyboardInterrupt, EOFError, OSError) as e:
+        raise Cancelled() from e
 
 
 # ── interactive campaign selector ───────────────────────────────────────────
@@ -161,22 +161,22 @@ def _select_campaign() -> dict | None:
         @kb.add("up")
         @kb.add("k")
         def _up(event):
-            selected[0] = (selected[0] - 1) % total
+            selected[0] = (selected[0] - 1) % total  # noqa: B023 — closure only runs inside this iteration's blocking Application.run()
 
         @kb.add("down")
         @kb.add("j")
         def _down(event):
-            selected[0] = (selected[0] + 1) % total
+            selected[0] = (selected[0] + 1) % total  # noqa: B023 — closure only runs inside this iteration's blocking Application.run()
 
         @kb.add("enter")
         def _select(event):
-            event.app.exit(result=selected[0])
+            event.app.exit(result=selected[0])  # noqa: B023 — closure only runs inside this iteration's blocking Application.run()
 
         @kb.add("d")
         def _delete(event):
-            idx = selected[0]
-            if idx < len(campaigns):
-                deleted[0] = True
+            idx = selected[0]  # noqa: B023 — closure only runs inside this iteration's blocking Application.run()
+            if idx < len(campaigns):  # noqa: B023 — closure only runs inside this iteration's blocking Application.run()
+                deleted[0] = True  # noqa: B023 — closure only runs inside this iteration's blocking Application.run()
                 event.app.exit(result=idx)
 
         @kb.add("escape")
@@ -194,14 +194,14 @@ def _select_campaign() -> dict | None:
                     "(\u2191\u2193 move, Enter select, d delete, Esc cancel)\n\n",
                 )
             )
-            for i, label in enumerate(items):
-                is_add_new = i == len(items) - 1
-                if i == selected[0]:
+            for i, label in enumerate(items):  # noqa: B023 — closure only runs inside this iteration's blocking Application.run()
+                is_add_new = i == len(items) - 1  # noqa: B023 — closure only runs inside this iteration's blocking Application.run()
+                if i == selected[0]:  # noqa: B023 — closure only runs inside this iteration's blocking Application.run()
                     if is_add_new:
                         lines.append(("fg:green bold", f"  \u25b8 {label}\n"))
                     else:
-                        desc = _truncate(campaigns[i].get("description", ""))
-                        pitch = _truncate(campaigns[i].get("pitch", ""))
+                        desc = _truncate(campaigns[i].get("description", ""))  # noqa: B023 — closure only runs inside this iteration's blocking Application.run()
+                        pitch = _truncate(campaigns[i].get("pitch", ""))  # noqa: B023 — closure only runs inside this iteration's blocking Application.run()
                         lines.append(("fg:cyan bold", f"  \u25b8 {label}\n"))
                         if desc:
                             lines.append(("", f"    {desc}\n"))
@@ -212,7 +212,7 @@ def _select_campaign() -> dict | None:
                         lines.append(("fg:ansibrightblack", f"    {label}\n"))
                     else:
                         lines.append(("", f"    {label}\n"))
-                if not is_add_new and i < len(items) - 2:
+                if not is_add_new and i < len(items) - 2:  # noqa: B023 — closure only runs inside this iteration's blocking Application.run()
                     lines.append(("fg:ansibrightblack", "    ────────────────────────────\n"))
             return FormattedText(lines)
 
@@ -907,8 +907,7 @@ def _select_provider_type() -> tuple[str, str, str] | None:
         lines = []
         lines.append(("", "\n"))
         lines.append(("bold", "  Select provider:\n\n"))
-        for i, (label, ptype, dm, already) in enumerate(items):
-            check = f" {GREEN}\u2713{RESET}" if already else ""
+        for i, (label, _ptype, _dm, already) in enumerate(items):
             if i == selected[0]:
                 lines.append(("fg:cyan bold", f"  \u25b8 {label}"))
                 if already:
@@ -1103,9 +1102,9 @@ def _read_csv(path: str, require_email: bool = True) -> list[dict]:
     try:
         with open(path, newline="", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         typer.echo(f"Error: file '{path}' not found.", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     if not rows:
         typer.echo("Error: CSV is empty.", err=True)
         raise typer.Exit(1)
@@ -1723,7 +1722,7 @@ def _do_discover_people(
     typer.echo(f"\n  {YELLOW}[experimental]{RESET} People discovery (legacy) — results may vary")
     typer.echo(f"  {YELLOW}⚠ Person→company data can be stale; verify before outreach.{RESET}")
     try:
-        from ddgs import DDGS
+        from ddgs import DDGS  # noqa: F401 — availability check only
 
         typer.echo(f"  {GREEN}✓{RESET} Searching with DuckDuckGo")
     except ImportError:
@@ -1783,7 +1782,7 @@ def _do_discover_companies(
         return
 
     try:
-        from ddgs import DDGS
+        from ddgs import DDGS  # noqa: F401 — availability check only
 
         typer.echo(f"  {GREEN}✓{RESET} Searching with DuckDuckGo")
     except ImportError:

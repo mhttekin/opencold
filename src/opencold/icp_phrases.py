@@ -120,7 +120,7 @@ class Chunk:
 
     @property
     def required_tokens(self) -> tuple[str, ...]:
-        return tuple(t for t, r in zip(self.tokens, self.required) if r)
+        return tuple(t for t, r in zip(self.tokens, self.required, strict=False) if r)
 
 
 @dataclass(frozen=True)

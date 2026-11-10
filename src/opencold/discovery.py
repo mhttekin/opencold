@@ -1720,7 +1720,6 @@ def verify_current_employment(name: str, company: str) -> tuple[bool, str]:
     # The site: query is more authoritative for LinkedIn titles
     # (returns actual profile pages with current titles)
     site_analysis = engine_analyses.get("ddgs_site")
-    general_analysis = engine_analyses.get("ddgs_general")
 
     # Aggregate signals
     any_confirms = any(a["confirms"] for a in engine_analyses.values())
@@ -1729,7 +1728,6 @@ def verify_current_employment(name: str, company: str) -> tuple[bool, str]:
     moved_to_companies = [a["moved_to"] for a in engine_analyses.values() if a["moved_to"]]
     other_companies = [a["other_company"] for a in engine_analyses.values() if a["other_company"]]
     confirming_sources = [e for e, a in engine_analyses.items() if a["confirms"]]
-    contradicting_sources = [e for e, a in engine_analyses.items() if a["contradicts"]]
 
     # Check for employment dates
     date_infos = [a["date_info"] for a in engine_analyses.values() if a["date_info"]]
