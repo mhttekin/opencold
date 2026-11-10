@@ -27,6 +27,8 @@ from opencold import regions_data as rd
 # Re-exported names: tests and icp_expansion resolve these via opencold.discovery.
 from opencold.icp_phrases import GENERIC_ICP_TERMS
 from opencold.icp_phrases import stem as _stem
+from opencold.phones import calling_code, region_hint
+from opencold.phones import normalize_phone as _clean_phone
 from opencold.textnorm import fold
 
 BLOCKED_DOMAINS = {
@@ -3651,22 +3653,6 @@ _CONTACT_PATHS = (
 )
 
 
-def _clean_phone(raw: str) -> str:
-    cleaned = re.sub(r"[^\d+]", "", (raw or "").strip())
-    digits = re.sub(r"\D", "", cleaned)
-    if len(digits) < 7 or len(digits) > 15:
-        return ""
-    # Year spans ("2005-2026" copyright lines, "2021-2030" programme ranges) and
-    # doubled quads ("1000 1000") regex-match as phones; a "+" marks a real number.
-    if "+" not in cleaned and len(digits) == 8:
-        first, second = digits[:4], digits[4:]
-        if first == second:
-            return ""
-        if all(1900 <= int(half) <= 2099 for half in (first, second)):
-            return ""
-    return cleaned
-
-
 def _detect_phone_country(phones_joined: str) -> str | None:
     """Map a leading E.164 calling code to a canonical region key (longest prefix
     wins, so +1 and +880 disambiguate correctly), or None."""
@@ -3771,7 +3757,9 @@ def _extract_jsonld_org(soup: BeautifulSoup) -> dict:
     return out
 
 
-def extract_company_contacts(website: str, max_pages: int = 5) -> CompanyContacts:
+def extract_company_contacts(
+    website: str, max_pages: int = 5, region_cc: str = ""
+) -> CompanyContacts:
     """Extract a durable company contact bundle, structured-data first.
 
     Parses JSON-LD Organization/LocalBusiness (email/telephone/address/sameAs),
@@ -3789,6 +3777,7 @@ def extract_company_contacts(website: str, max_pages: int = 5) -> CompanyContact
     seen_emails: set[str] = set()
     seen_phones: set[str] = set()
     home_text = ""
+    hint = region_hint(website, region_cc)  # parse local numbers (05...) for this country
 
     for path in _CONTACT_PATHS[:max_pages]:
         url = origin if not path else urljoin(origin, path)
@@ -3806,7 +3795,7 @@ def extract_company_contacts(website: str, max_pages: int = 5) -> CompanyContact
             seen_emails.add(org["email"].lower())
             contacts.emails.append((org["email"].lower(), url))
         if org["telephone"]:
-            tel = _clean_phone(org["telephone"])
+            tel = _clean_phone(org["telephone"], hint)
             if tel and tel not in seen_phones:
                 seen_phones.add(tel)
                 contacts.phones.append(tel)
@@ -3824,7 +3813,7 @@ def extract_company_contacts(website: str, max_pages: int = 5) -> CompanyContact
                     seen_emails.add(email)
                     contacts.emails.append((email, url))
             elif low.startswith("tel:"):
-                tel = _clean_phone(href[4:])
+                tel = _clean_phone(href[4:], hint)
                 if tel and tel not in seen_phones:
                     seen_phones.add(tel)
                     contacts.phones.append(tel)
@@ -3858,7 +3847,7 @@ def extract_company_contacts(website: str, max_pages: int = 5) -> CompanyContact
         if match:
             raw = match.group(1)
             formatted = raw.lstrip().startswith("+") or len(re.findall(r"[\s().\-]", raw)) >= 2
-            tel = _clean_phone(raw) if formatted else ""
+            tel = _clean_phone(raw, hint) if formatted else ""
             if tel:
                 contacts.phones.append(tel)
 
@@ -3964,7 +3953,7 @@ def region_fit(
     if target_cc and (domain.endswith("." + target_cc) or tld == target_cc):
         score += 40
         reasons.append(f"cctld:.{target_cc}")
-    if target_code and target_code in phones_joined:
+    if target_code and target_code in {calling_code(p) for p in contacts.phones}:
         score += 35
         reasons.append(f"phone:{target_code}")
 
@@ -4306,7 +4295,8 @@ def build_company_row(
         enrichment = _localize_enrichment(enrichment, icp, all_extra, provenance)
     pages_text = " ".join(f"{p.title} {p.description} {p.text}" for p in pages)
 
-    contacts = extract_company_contacts(company.website, max_pages=max_pages)
+    cc = _REGION_CCTLD.get(_resolve_region_key(region) or "", "")
+    contacts = extract_company_contacts(company.website, max_pages, cc)
     name = company.company
     if (
         contacts.company_name

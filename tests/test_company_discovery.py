@@ -792,7 +792,9 @@ class TestAggregator:
 class TestPhoneCleaning:
     def test_real_numbers_kept(self):
         assert discovery._clean_phone("+212 522 66 28 37") == "+212522662837"
-        assert discovery._clean_phone("05 22 77 71 00") == "0522777100"
+        # Local formats need the country to become E.164 (here: Morocco).
+        assert discovery._clean_phone("05 22 77 71 00", "ma") == "+212522777100"
+        assert discovery._clean_phone("05 22 77 71 00") == ""
 
     def test_year_spans_rejected(self):
         # Copyright lines ("2005-2026") and programme ranges ("2021-2030")
@@ -803,8 +805,9 @@ class TestPhoneCleaning:
     def test_doubled_quad_rejected(self):
         assert discovery._clean_phone("1000 1000") == ""
 
-    def test_plus_prefix_trusted(self):
-        assert discovery._clean_phone("+20212030") == "+20212030"
+    def test_plus_numbers_are_validated(self):
+        assert discovery._clean_phone("+20 2 2795 1234") == "+20227951234"
+        assert discovery._clean_phone("+20212030") == ""  # "+" alone is not proof
 
 
 class TestLinkedinSlugMatch:

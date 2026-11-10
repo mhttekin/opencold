@@ -16,6 +16,9 @@ import unicodedata
 from pathlib import Path
 from urllib.parse import urlparse
 
+from opencold import discovery
+from opencold.phones import normalize_phone, region_hint
+
 ROOT = Path(__file__).resolve().parent
 LABELS = ROOT / "labels" / "discover_tr_pallets.csv"
 RESERVED_EMAIL_DOMAINS = {"example.com", "example.org", "example.net"}
@@ -46,15 +49,27 @@ def email_invalid(email: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in RESERVED_EMAIL_DOMAINS)
 
 
-def phone_invalid(phone: str) -> bool:
-    """Invalid unless it is E.164-shaped: a leading '+' and 8-15 digits. Local
-    formats with no country code ('05333932020') can't be converted without
-    guessing the country, so they count as invalid."""
+PHONE_CATEGORIES = ("valid_e164", "local_unnormalized", "garbage")
+
+
+def phone_category(phone: str, row: dict) -> str | None:
+    """None for an empty phone (missing, not wrong); otherwise:
+    valid_e164         -- already a valid number in E.164 form ("+905333932020")
+    local_unnormalized -- a valid number, but not stored as E.164 ("05333932020")
+    garbage            -- not a valid phone number at all ("1779228338")
+    "Valid" is phonenumbers' is_valid_number, with the row's country (website
+    ccTLD, else its `country` column) as the hint for local formats."""
     p = (phone or "").strip()
     if not p:
-        return False  # empty is "missing", not "invalid"
-    digits = re.sub(r"\D", "", p)
-    return not (p.startswith("+") and 8 <= len(digits) <= 15)
+        return None
+    if normalize_phone(p) == p:
+        return "valid_e164"
+    cc = discovery._REGION_CCTLD.get(discovery._resolve_region_key(row.get("country", "")) or "")
+    return (
+        "local_unnormalized"
+        if normalize_phone(p, region_hint(row.get("website", ""), cc))
+        else "garbage"
+    )
 
 
 def load_labels(path: Path = LABELS) -> dict[str, dict]:
@@ -98,7 +113,11 @@ def score(output_csv: Path, labels_csv: Path = LABELS) -> dict:
             if email_invalid(e)
         }
     )
-    bad_phones = sorted({r["phone"] for r in out.values() if phone_invalid(r.get("phone", ""))})
+    phones: dict[str, list[str]] = {c: [] for c in PHONE_CATEGORIES}
+    for r in out.values():
+        cat = phone_category(r.get("phone", ""), r)
+        if cat:
+            phones[cat].append(r["phone"])
 
     rows = []
     for d in sorted(set(labels) | set(out)):
@@ -127,10 +146,10 @@ def score(output_csv: Path, labels_csv: Path = LABELS) -> dict:
             "exclude_total": len(exclude),
             "name_accuracy": _ratio(len(name_ok), len(named)),
             "invalid_emails": len(bad_emails),
-            "invalid_phones": len(bad_phones),
+            **{f"phones_{c}": len(v) for c, v in phones.items()},
         },
         "invalid_emails": bad_emails,
-        "invalid_phones": bad_phones,
+        "phones": {c: sorted(v) for c, v in phones.items()},
         "name_mismatches": [
             {"domain": d, "got": out[d]["company"], "expected": labels[d]["expected_name"]}
             for d in named
@@ -157,14 +176,17 @@ def print_report(result: dict) -> None:
         "exclude_leakage",
         "name_accuracy",
         "invalid_emails",
-        "invalid_phones",
+        "phones_valid_e164",
+        "phones_local_unnormalized",
+        "phones_garbage",
     ):
         extra = f" / {m['exclude_total']}" if k == "exclude_leakage" else ""
-        print(f"  {k:18} {_fmt(m[k])}{extra}")
+        print(f"  {k:26} {_fmt(m[k])}{extra}")
     if result["invalid_emails"]:
         print("  invalid emails:", ", ".join(result["invalid_emails"]))
-    if result["invalid_phones"]:
-        print("  invalid phones:", ", ".join(result["invalid_phones"]))
+    for cat in ("local_unnormalized", "garbage"):
+        if result["phones"][cat]:
+            print(f"  {cat} phones:", ", ".join(result["phones"][cat]))
 
 
 def main() -> None:

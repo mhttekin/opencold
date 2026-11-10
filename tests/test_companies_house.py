@@ -937,7 +937,9 @@ class TestEnrichRow:
         )
         monkeypatch.setattr(se.discovery, "normalize_domain", lambda u: "acmefoods.co.uk")
         monkeypatch.setattr(
-            se.discovery, "extract_company_contacts", lambda website, max_pages=4: self._Contacts()
+            se.discovery,
+            "extract_company_contacts",
+            lambda website, max_pages=4, **kw: self._Contacts(),
         )
         monkeypatch.setattr(
             se.discovery,
@@ -994,7 +996,9 @@ class TestEnrichRow:
         )
         monkeypatch.setattr(se.discovery, "normalize_domain", lambda u: "wrongco.com")
         monkeypatch.setattr(
-            se.discovery, "extract_company_contacts", lambda website, max_pages=4: self._Contacts()
+            se.discovery,
+            "extract_company_contacts",
+            lambda website, max_pages=4, **kw: self._Contacts(),
         )
         monkeypatch.setattr(
             se.discovery,
@@ -1021,7 +1025,9 @@ class TestEnrichRow:
         )
         monkeypatch.setattr(se.discovery, "normalize_domain", lambda u: "acmefoods.co.uk")
         monkeypatch.setattr(
-            se.discovery, "extract_company_contacts", lambda website, max_pages=4: self._Contacts()
+            se.discovery,
+            "extract_company_contacts",
+            lambda website, max_pages=4, **kw: self._Contacts(),
         )
         monkeypatch.setattr(
             se.discovery,
@@ -1109,7 +1115,7 @@ class TestFactoryMode:
             lambda name, **k: f"https://{name.split()[0].lower()}.co.uk",
         )
         monkeypatch.setattr(
-            se.discovery, "extract_company_contacts", lambda website, max_pages=4: _C()
+            se.discovery, "extract_company_contacts", lambda website, max_pages=4, **kw: _C()
         )
         monkeypatch.setattr(
             se.discovery,

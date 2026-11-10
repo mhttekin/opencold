@@ -230,7 +230,7 @@
     ]
   },
   "discover": {
-    "output": "/Users/mehmettekin/projects/opencold/evals/artifacts/discover_tr_pallets_2026-11-10.csv",
+    "output": "evals/artifacts/discover_tr_pallets_2026-11-10.csv",
     "metrics": {
       "output_rows": 17,
       "verified": 7,
@@ -243,18 +243,33 @@
       "exclude_total": 5,
       "name_accuracy": 0.16666666666666666,
       "invalid_emails": 1,
-      "invalid_phones": 5
+      "phones_valid_e164": 7,
+      "phones_local_unnormalized": 4,
+      "phones_garbage": 1
     },
     "invalid_emails": [
       "consalti@example.com"
     ],
-    "invalid_phones": [
-      "02169994998",
-      "05333932020",
-      "05380503181",
-      "08507750850",
-      "1779228338"
-    ],
+    "phones": {
+      "valid_e164": [
+        "+902122902929",
+        "+902247141826",
+        "+902563476925",
+        "+905324088233",
+        "+905324798344",
+        "+905333277373",
+        "+905356501938"
+      ],
+      "local_unnormalized": [
+        "02169994998",
+        "05333932020",
+        "05380503181",
+        "08507750850"
+      ],
+      "garbage": [
+        "1779228338"
+      ]
+    },
     "name_mismatches": [
       {
         "domain": "sahinlerpalet.com.tr",
@@ -428,5 +443,6 @@
         "expected_name": "Türkiye Palet"
       }
     ]
-  }
+  },
+  "discover_rescored_with": "step 2 scorer (phone categories); same artifact"
 }

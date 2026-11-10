@@ -63,24 +63,21 @@ def test_role_inboxes_are_typed_role_inbox(address):
 @pytest.mark.parametrize(
     "raw",
     [
-        pytest.param("1779228338", marks=known_bug("unix timestamp accepted as a phone")),
-        pytest.param("20261234", marks=known_bug("8-digit year-like run accepted as a phone")),
-        pytest.param("012062058120341", marks=known_bug("15-digit ID accepted as a phone")),
+        "1779228338",
+        "20261234",
+        "012062058120341",
     ],
 )
 def test_digit_runs_are_not_phones(raw):
     assert discovery._clean_phone(raw) == ""
+    assert discovery._clean_phone(raw, "tr") == ""  # still rejected with a TR hint
 
 
 @pytest.mark.parametrize(
     "local, e164",
     [
-        pytest.param(
-            "05333932020", "+905333932020", marks=known_bug("TR mobile kept in local format")
-        ),
-        pytest.param(
-            "02169994998", "+902169994998", marks=known_bug("TR landline kept in local format")
-        ),
+        ("05333932020", "+905333932020"),
+        ("02169994998", "+902169994998"),
     ],
 )
 def test_turkish_local_numbers_normalize_to_plus90_and_count_for_region(local, e164):

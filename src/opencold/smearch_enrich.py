@@ -95,7 +95,7 @@ def _resolve_website(name: str, locality: str) -> tuple[str, str]:
 
 def _site_contacts(website: str, pages: int) -> tuple[str, str, str]:
     """(phone, email, email_type) extracted from the site via discovery."""
-    contacts = discovery.extract_company_contacts(website, max_pages=pages)
+    contacts = discovery.extract_company_contacts(website, max_pages=pages, region_cc="uk")
     phone = contacts.phones[0] if contacts.phones else ""
     if contacts.emails:
         email, etype, _ = discovery.pick_company_email(
