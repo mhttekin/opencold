@@ -53,6 +53,7 @@
       "_build_phone_cc"
     ],
     "target_module": "src/opencold/discovery_region_data.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -72,6 +73,7 @@
       "seed_companies_via_llm"
     ],
     "target_module": "src/opencold/discovery_seed.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -105,6 +107,7 @@
       "_company_from_anchor"
     ],
     "target_module": "src/opencold/discovery_domains.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -114,6 +117,7 @@
       "crawl_company_pages"
     ],
     "target_module": "src/opencold/discovery_pages.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -158,6 +162,7 @@
       "_icp_evidence"
     ],
     "target_module": "src/opencold/discovery_icp_score.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -174,6 +179,7 @@
       "_detect_domain_country"
     ],
     "target_module": "src/opencold/discovery_region.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -208,6 +214,7 @@
       "discover_company_pool"
     ],
     "target_module": "src/opencold/discovery_sources.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -233,6 +240,7 @@
       "_localize_enrichment"
     ],
     "target_module": "src/opencold/discovery_translation.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -267,6 +275,7 @@
       "_detected_country"
     ],
     "target_module": "src/opencold/discovery_country.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -289,6 +298,7 @@
       "judge_companies"
     ],
     "target_module": "src/opencold/discovery_judge.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -322,6 +332,7 @@
       "_analyze_engine_results"
     ],
     "target_module": "src/opencold/discovery_employment_parse.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -340,6 +351,7 @@
       "region_fit"
     ],
     "target_module": "src/opencold/discovery_region_fit.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -349,6 +361,7 @@
       "_classify_company"
     ],
     "target_module": "src/opencold/discovery_classify.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -358,6 +371,7 @@
       "web_search"
     ],
     "target_module": "src/opencold/discovery_search.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -367,6 +381,7 @@
       "verify_current_employment"
     ],
     "target_module": "src/opencold/discovery_employment.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -379,6 +394,7 @@
       "resolve_company_website"
     ],
     "target_module": "src/opencold/discovery_website.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -388,6 +404,7 @@
       "search_linkedin_contacts"
     ],
     "target_module": "src/opencold/discovery_linkedin.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -400,6 +417,7 @@
       "_merge_pages"
     ],
     "target_module": "src/opencold/discovery_page_search.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -410,6 +428,7 @@
       "write_csv"
     ],
     "target_module": "src/opencold/discovery_people.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -422,6 +441,7 @@
       "discover_companies_by_query"
     ],
     "target_module": "src/opencold/discovery_query.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -444,6 +464,7 @@
       "find_company_linkedin"
     ],
     "target_module": "src/opencold/discovery_company_linkedin.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -455,6 +476,7 @@
       "wikipedia_company_names"
     ],
     "target_module": "src/opencold/discovery_wiki.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -466,6 +488,7 @@
       "build_company_row"
     ],
     "target_module": "src/opencold/discovery_company_row.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -476,6 +499,7 @@
       "discover_company_candidates"
     ],
     "target_module": "src/opencold/discovery_candidates.py",
+    "requires": "golden-v2",
     "passes": false
   },
   {
@@ -485,6 +509,7 @@
       "discover_company_rows"
     ],
     "target_module": "src/opencold/discovery_company_pipeline.py",
+    "requires": "golden-v2",
     "passes": false
   }
 ]

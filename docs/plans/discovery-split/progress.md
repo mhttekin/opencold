@@ -176,3 +176,44 @@ in that session. See plan.md for the field template.
 - Reviewer verdict: `VERDICT: PASS`.
 - Retries/surprises: the first post-extraction check flagged import spacing in
   both modules. Applied Ruff's fix and adjusted the ratchet to the final count.
+
+### 04-reacher mutable-state audit
+
+- `_REACHER_BIN` moved from `discovery` to `discovery_reacher`. This was a
+  mutable-state move because `_find_reacher_binary` rebinds the cached value.
+- Searched tracked Python for assignments to `discovery._REACHER_BIN` and
+  inspected all references for dynamic writes or mock patches. Found no facade
+  writes or cache patches. The Reacher platform, subprocess and helper mocks in
+  `test_linkedin_discovery.py` target `opencold.discovery_reacher`. The MX mock
+  targets `opencold.verifier`, which owns that lookup.
+- A mocked lookup with the owner cache reset confirmed that calls through the
+  facade and owner share one cache lookup and the facade reads the rebound value.
+
+## golden-v2 — done
+
+- Added `discover_golden_v2.json` alongside the original snapshot, whose nine
+  rows are byte-identical. The new fixture records full row values, field order,
+  ranking and progress for judged and timeout runs with a fake provider.
+- Judge coverage: Ashmill is verified on a positive judge verdict despite no
+  deterministic industry match. Birch is rejected by a negative verdict despite
+  a deterministic match. Unknown leaves Cedar verified and Drift in review.
+  Fjord is rejected on deterministic region conflict despite a positive judge
+  verdict. On timeout, deterministic evidence verifies Birch and Cedar, and
+  Ashmill and Drift go to review.
+- Website coverage: a matching subdomain resolves to `ashmill.co.uk`, ahead of
+  a `.com` namesake. Misbound's only search result is an unrelated registrable
+  domain, which does not attach.
+- Progress coverage: all 20 subprocess runs (`PYTHONHASHSEED` 1 through 20)
+  matched the raw sequence with three workers. Every fixture worker returns a
+  row, so completion order cannot affect cumulative counts. The fake monotonic
+  clock advances by 0.25 seconds, and scores within each confidence band are
+  distinct. The golden compares the sequence directly.
+- Mutation proofs: ignoring yes, ignoring no, rejecting explicit unknown, and
+  letting yes override a region conflict each broke judged-row equality.
+  Propagating the timeout failed the timeout case. Substituting the absolute
+  clock value failed progress equality at event one (`100.25` vs `0.25`).
+  Truncating the public suffix yielded `https://co.uk`, allowing a fallback
+  attached `https://unrelated.co.uk`, and ignoring the country preference changed
+  the selected row. Each failed row equality. All nine mutations were reverted.
+- Added prerequisite tags for 25 pending units covering resolution, verification
+  and orchestration. No extraction status changed.

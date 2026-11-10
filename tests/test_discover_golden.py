@@ -1,20 +1,25 @@
-"""Offline characterization of the discovery runtime after split unit 01-data.
+"""Offline characterization of the discovery runtime during the split.
 
-The snapshot contains every returned field, including internal verification flags,
-and preserves ranked row order. Regeneration requires Mehmet's approval. Only
+The snapshots contain every returned field, including internal verification flags,
+and preserve ranked row order. Regeneration requires Mehmet's approval. Only
 external inputs and the clock are replaced; discovery, crawling, HTML extraction,
 website resolution, translation orchestration, scoring and classification run.
 """
 
 import json
+import re
 import time
+from itertools import count
 from pathlib import Path
 from unittest.mock import Mock
 from urllib.parse import urlparse
 
-from opencold import discovery, enricher, translator
+import pytest
+
+from opencold import config, discovery, enricher, generator, translator
 
 GOLDEN = Path(__file__).parent / "fixtures" / "discover_golden.json"
+GOLDEN_V2 = GOLDEN.with_name("discover_golden_v2.json")
 FROZEN_TIME = time.struct_time((2026, 11, 10, 0, 0, 0, 1, 314, 0))
 WIKI_SOURCE = "https://en.wikipedia.org/wiki/List_of_pallet_companies_in_France"
 
@@ -162,3 +167,129 @@ def test_discover_company_rows_golden(monkeypatch, tmp_config):
     expected = json.loads(GOLDEN.read_text(encoding="utf-8"))
     assert rows == expected
     assert [list(row) for row in rows] == [list(row) for row in expected]
+
+
+V2_SITES = {
+    "ashmill.co.uk": _page(
+        "Ashmill",
+        "Ashmill builds wooden load platforms for industrial shipping and storage.",
+        '<a href="mailto:sales@ashmill.co.uk">Sales</a><a href="tel:+442079460123">Telephone</a>',
+    ),
+    "birch.co.uk": _page(
+        "Birch",
+        "Birch offers pallets as props for theatre and television productions.",
+        '<a href="mailto:sales@birch.co.uk">Sales</a>',
+    ),
+    "cedar.co.uk": _page(
+        "Cedar",
+        "Cedar supplies wooden pallets to warehouses and industrial customers.",
+    ),
+    "drift.co.uk": _page(
+        "Drift",
+        "Drift provides logistics services for regional businesses.",
+    ),
+    "fjord.de": _page(
+        "Fjord",
+        "Fjord manufactures wooden pallets for industrial transport and storage.",
+    ),
+    "unrelated.co.uk": _page(
+        "Unrelated",
+        "Unrelated supplies wooden pallets to industrial customers.",
+    ),
+}
+V2_VERDICTS = {
+    "ashmill.co.uk": ("yes", "pallet manufacturing", "wooden load platforms"),
+    "birch.co.uk": ("no", "theatre props", "props for theatre"),
+    "cedar.co.uk": ("unknown", "", ""),
+    "drift.co.uk": ("unknown", "", ""),
+    "fjord.de": ("yes", "pallet manufacturing", "manufactures wooden pallets"),
+}
+
+
+def _offline_judged_rows(monkeypatch, judge_timeout):
+    config.add_provider("fixture", "anthropic", "fixture-provider-key", "fixture-model")
+
+    def complete(api_key, system_prompt, user_prompt, model, max_tokens):
+        if user_prompt.startswith("Target profile:"):
+            return json.dumps({"companies": ["Ashmill", "Misbound"], "local_directories": []})
+        if judge_timeout:
+            raise TimeoutError("fixture judge timeout")
+        results = []
+        for index, domain in re.findall(r'^\[(\d+)\] name="[^"\n]+" site=(\S+)', user_prompt, re.M):
+            match, industry, evidence = V2_VERDICTS.get(domain, ("unknown", "", ""))
+            results.append(
+                {
+                    "i": int(index),
+                    "match": match,
+                    "industry": industry,
+                    "country": "United Kingdom" if match == "yes" else "",
+                    "evidence": evidence,
+                }
+            )
+        return json.dumps({"results": results})
+
+    def search(query, num=10):
+        if "site:" in query:
+            return []
+        if "Ashmill" in query:
+            return [
+                discovery.SearchResult("Ashmill namesake", "https://ashmill.com/"),
+                discovery.SearchResult("Ashmill", "https://sales.ashmill.co.uk/about"),
+            ][:num]
+        if "Misbound" in query:
+            return [discovery.SearchResult("About Misbound", "https://unrelated.co.uk/article")]
+        if "official website" in query or query.startswith('"'):
+            return []
+        return [
+            discovery.SearchResult(domain, f"https://{domain}")
+            for domain in ("birch.co.uk", "cedar.co.uk", "drift.co.uk", "fjord.de")
+        ][:num]
+
+    def fetch(url, timeout=enricher.FETCH_TIMEOUT):
+        parsed = urlparse(url)
+        if not parsed.path.rstrip("/"):
+            return V2_SITES.get(parsed.netloc)
+        return None
+
+    provider_mock = Mock(side_effect=complete)
+    search_mock = Mock(side_effect=search)
+    monkeypatch.setattr(generator, "_generate_anthropic", provider_mock)
+    monkeypatch.setattr(discovery, "web_search", search_mock)
+    monkeypatch.setattr(enricher, "_fetch_html", fetch)
+    clock = Mock(
+        wraps=time,
+        gmtime=Mock(return_value=FROZEN_TIME),
+        monotonic=Mock(side_effect=count(100, 0.25)),
+    )
+    monkeypatch.setattr(discovery, "time", clock)
+
+    events = []
+
+    def capture(processed, total, found, elapsed):
+        events.append([processed, total, found, elapsed])
+
+    rows = discovery.discover_company_rows(
+        "pallets",
+        "United Kingdom",
+        limit=10,
+        workers=3,
+        max_pages=3,
+        use_wiki=False,
+        use_translation=False,
+        use_expansion=False,
+        progress_callback=capture,
+    )
+    _, judge_call = provider_mock.call_args_list
+    assert "Target region: United Kingdom" in judge_call.args[2]
+    assert any("Misbound" in call.args[0] for call in search_mock.call_args_list)
+    return rows, events
+
+
+@pytest.mark.parametrize("judge_timeout", [False, True], ids=["judged", "timeout"])
+def test_discover_provider_golden(monkeypatch, tmp_config, judge_timeout):
+    rows, events = _offline_judged_rows(monkeypatch, judge_timeout)
+    expected = json.loads(GOLDEN_V2.read_text(encoding="utf-8"))
+    expected_rows = expected["timeout_rows" if judge_timeout else "judged_rows"]
+    assert rows == expected_rows
+    assert [list(row) for row in rows] == [list(row) for row in expected_rows]
+    assert events == expected["progress"]

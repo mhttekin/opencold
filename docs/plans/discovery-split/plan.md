@@ -109,9 +109,17 @@ threading, progress callback contents and exception boundaries.
 1. Start by reading progress.md, features.json and `git log -5`, then run
    `./docs/plans/discovery-split/init.sh`. If it fails, stop and report. Read
    AGENTS.md, relevant architecture and decisions too. Never repair unrelated gates.
-2. Do exactly ONE unit: the first one with `passes: false`.
+2. Do exactly ONE unit: the first one with `passes: false`. If it has a
+   `requires` value, a matching `## <requires> — done` heading must exist in
+   progress.md before the session starts that unit. If it is missing, stop and
+   report the unmet prerequisite.
 3. Pure move: no behavior changes, no renames unless required. Keep re-exports
    in discovery.py. Do not fix known bugs, edit labels or extend legacy email code.
+   Moving mutable module-level state, including globals rebound at runtime and
+   caches, is not a pure move. Record each state move and its old and new owner
+   in progress.md. Grep for writes through the facade (`discovery.<name> = ...`)
+   and check for dynamic writes and patch targets. Confirm tests patch the owner
+   module where the state is read or written, and record the audit results.
 4. Verify: check.sh green; the golden test passes unchanged; every eval metric
    value identical to the exact baseline in progress.md. The discover eval scores
    a fixed CSV and does not exercise runtime code; it is only a sanity check.
@@ -144,12 +152,21 @@ Expansion is disabled. Workers are set to one and scores within each confidence
 band are distinct, so completion timing cannot reorder tied rows. Exact row values,
 row order and field order are checked, including internal verification flags.
 
-The golden was initially captured from the current post-`01-data` runtime.
-Regenerating or changing it requires Mehmet's explicit approval; never refresh it
-to make an extraction pass. Retarget only transport mocks as their lookup owners
-move, preserving fixture inputs and assertions. The review skill's rule 8 protects
-this file. The discover fixed-CSV eval and SIC eval do not replace this runtime
-check.
+The original snapshot was captured from the post-`01-data` runtime. The companion
+`tests/fixtures/discover_golden_v2.json` captures complete rows and ordered
+progress callbacks for two provider runs. Both use an isolated fake provider,
+three workers, and a deterministic clock. The judge returns yes, no and unknown
+in one run and times out in the other. LLM-seeded names exercise `.co.uk`
+resolution and rejection of an unrelated domain. Progress events contain only
+cumulative counters and elapsed time. All fixture workers return rows, so their
+completion order cannot affect the counters. Distinct scores within each
+confidence band make the ranked rows independent of completion order too.
+
+Regenerating or changing existing entries in either snapshot requires Mehmet's
+explicit approval. Never refresh them to make an extraction pass. Retarget only
+transport mocks as their lookup owners move, preserving fixture inputs and
+assertions. The review skill's rule 8 protects the original snapshot. The discover
+fixed-CSV eval and SIC eval do not replace these runtime checks.
 
 ### Session entry template
 
