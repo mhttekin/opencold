@@ -148,3 +148,24 @@ def test_uk_company_is_not_given_a_danish_site():
     ):
         out = smearch_enrich.enrich_row(dict(row), ch_key="test-key")
     assert "nordicpallets.dk" not in out["website"]
+
+
+# ── region from phones (palletbiz.com) ───────────────────────────────────────
+
+MULTI_COUNTRY_PHONES = ["+40728137575", "+4936205553130", "+48221234567", "+33142681234"]
+
+
+@known_bug("a site listing phones for many countries passes region on any one of them")
+def test_multi_country_phone_list_is_not_a_region_anchor():
+    # palletbiz.com: a pan-European network page passed region for Germany (+49)
+    # and Poland (+48) alike because ONE listed number had the target code.
+    contacts = CompanyContacts(phones=MULTI_COUNTRY_PHONES)
+    _score, reasons = discovery.region_fit(contacts, "https://palletbiz.com", "Poland")
+    assert "phone:+48" not in reasons
+
+
+def test_calling_code_inside_another_number_is_not_a_region_anchor():
+    """Regression guard: a "48" inside a Romanian number is not a Polish phone."""
+    contacts = CompanyContacts(phones=["+40214812345"])
+    _score, reasons = discovery.region_fit(contacts, "https://palletbiz.com", "Poland")
+    assert "phone:+48" not in reasons
