@@ -27,6 +27,7 @@ from opencold import regions_data as rd
 # Re-exported names: tests and icp_expansion resolve these via opencold.discovery.
 from opencold.icp_phrases import GENERIC_ICP_TERMS
 from opencold.icp_phrases import stem as _stem
+from opencold.textnorm import fold
 
 BLOCKED_DOMAINS = {
     "apple.com",
@@ -1061,7 +1062,7 @@ WEBSITE_DIRECTORY_DOMAINS = {
 
 def _company_tokens(company: str) -> list[str]:
     """Lowercase alphanumeric tokens of a company name, legal suffixes stripped."""
-    cleaned = COMPANY_SUFFIXES_RE.sub("", company or "").strip().lower()
+    cleaned = fold(COMPANY_SUFFIXES_RE.sub("", company or "").strip())
     return [t for t in re.split(r"[^a-z0-9]+", cleaned) if len(t) >= 2]
 
 
@@ -1069,7 +1070,7 @@ def _domain_matches_company(domain: str, tokens: list[str]) -> bool:
     """Heuristic: does a registrable domain plausibly belong to this company?"""
     if not tokens:
         return False
-    stem = domain.split(".")[0].lower()
+    stem = fold(domain.split(".")[0])
     if not stem:
         return False
     compact = "".join(tokens)
@@ -1207,7 +1208,7 @@ def _company_name_matches(candidate: str, target: str) -> bool:
     """Fuzzy-match a company name from a LinkedIn title against the target."""
 
     def _normalize(name: str) -> str:
-        return COMPANY_SUFFIXES_RE.sub("", name).strip().lower()
+        return fold(COMPANY_SUFFIXES_RE.sub("", name).strip())
 
     c = _normalize(candidate)
     t = _normalize(target)
@@ -1960,11 +1961,8 @@ def _merge_pages(
 
 
 def _icp_terms(icp: str) -> set[str]:
-    return {
-        term.lower()
-        for term in re.findall(r"[a-zA-Z0-9][a-zA-Z0-9\-]{2,}", icp or "")
-        if term.lower() not in {"and", "for", "the", "with", "that", "this"} | GENERIC_ICP_TERMS
-    }
+    terms = set(re.findall(r"[a-z0-9][a-z0-9\-]{2,}", fold(icp)))
+    return terms - ({"and", "for", "the", "with", "that", "this"} | GENERIC_ICP_TERMS)
 
 
 def _icp_match(terms: set[str], text: str) -> list[str]:
@@ -1976,9 +1974,9 @@ def _icp_match(terms: set[str], text: str) -> list[str]:
     spellings, sorted, so callers can display them as before."""
     if not terms or not text:
         return []
-    low = text.lower()
+    low = fold(text)
     word_stems = {_stem(tok) for tok in re.findall(r"[a-z0-9]+", low)}
-    matched = [t for t in terms if _stem(t) in word_stems or (len(t) >= 4 and t in low)]
+    matched = [t for t in terms if _stem(fold(t)) in word_stems or (len(t) >= 4 and fold(t) in low)]
     return sorted(matched)
 
 
@@ -2846,12 +2844,14 @@ _SOCIAL_HOSTS = (
 # rest of this module.
 _REGION_CCTLD = {k: v["cctld"] for k, v in rd.COUNTRIES.items() if v.get("cctld")}
 _REGION_PHONE = {k: v["phone"] for k, v in rd.COUNTRIES.items() if v.get("phone")}
-_REGION_CITIES = {k: v["cities"] for k, v in rd.COUNTRIES.items() if v.get("cities")}
+_REGION_CITIES = {
+    k: [fold(c) for c in v["cities"]] for k, v in rd.COUNTRIES.items() if v.get("cities")
+}
 _REGION_LANGS = {k: v["langs"] for k, v in rd.COUNTRIES.items() if v.get("langs")}
 
 # Freeform aliases -> canonical region key. Short aliases (<=3 chars) are matched
 # on word boundaries; longer ones as substrings (longest first). See _resolve_region_key.
-_REGION_ALIASES = {a: k for k, v in rd.COUNTRIES.items() for a in v["aliases"]}
+_REGION_ALIASES = {fold(a): k for k, v in rd.COUNTRIES.items() for a in v["aliases"]}
 
 # Foreign-country detection tables. _COUNTRY_NAMES maps any name/variant to its
 # canonical key; _COUNTRY_DEMONYMS maps adjectives ("british"); _AMBIGUOUS holds keys
@@ -2859,7 +2859,7 @@ _REGION_ALIASES = {a: k for k, v in rd.COUNTRIES.items() for a in v["aliases"]}
 # domain matching). _PHONE_CC maps an E.164 calling code to a country (first listed
 # owner wins for shared codes; +1/+7 pinned to the dominant economy).
 _COUNTRY_NAMES = dict(_REGION_ALIASES)
-_COUNTRY_DEMONYMS = {d: k for k, v in rd.COUNTRIES.items() for d in v.get("demonyms", [])}
+_COUNTRY_DEMONYMS = {fold(d): k for k, v in rd.COUNTRIES.items() for d in v.get("demonyms", [])}
 _AMBIGUOUS = {k for k, v in rd.COUNTRIES.items() if v.get("ambiguous")}
 
 
@@ -2881,7 +2881,7 @@ _COUNTRY_DEMONYMS_BY_LEN = sorted(_COUNTRY_DEMONYMS, key=len, reverse=True)
 
 def _resolve_region_key(region: str) -> str | None:
     """Map a freeform region string to a canonical key (longest alias wins)."""
-    r = (region or "").lower()
+    r = fold(region)
     for alias in sorted(_REGION_ALIASES, key=len, reverse=True):
         if len(alias) <= 3:
             if re.search(r"\b" + re.escape(alias) + r"\b", r):
@@ -2916,7 +2916,7 @@ def _target_region_tokens(region_key: str | None, region: str) -> list[str]:
     """Anchor vocabulary for the TARGET region: canonical key + its longer aliases +
     known cities. Used to decide whether the target is actually named in an address."""
     if not region_key:
-        r = (region or "").strip().lower()
+        r = fold(region).strip()
         return [r] if r else []
     toks = {region_key}
     toks.update(a for a, k in _REGION_ALIASES.items() if k == region_key and len(a) > 3)
@@ -2927,7 +2927,7 @@ def _target_region_tokens(region_key: str | None, region: str) -> list[str]:
 def _resolve_place(place: str) -> str | None:
     """Resolve a free-text place (country name/variant, demonym, or city) to a
     canonical region key, or None."""
-    p = (place or "").lower().strip()
+    p = fold(place).strip()
     if not p:
         return None
     for name in _COUNTRY_NAMES_BY_LEN:
@@ -2949,7 +2949,7 @@ def _detect_address_country(text: str) -> str | None:
     USA" resolves to united states rather than Georgia-the-country."""
     if not text:
         return None
-    low = text.lower()
+    low = fold(text)
     found: list[str] = []
     for name in _COUNTRY_NAMES_BY_LEN:
         if re.search(r"\b" + re.escape(name) + r"\b", low):
@@ -2987,7 +2987,7 @@ def _detect_prose_location(text: str) -> str | None:
     Returns a canonical region key or None."""
     if not text:
         return None
-    low = text.lower()
+    low = fold(text)
     for rx in (_HQ_VERB_RE, _HQ_ADJ_RE):
         for m in rx.finditer(low):
             if _HQ_CUSTOMER_RE.search(low[max(0, m.start() - 45) : m.start()]):
@@ -3002,7 +3002,7 @@ def _detect_domain_country(domain: str) -> str | None:
     """Detect an UNAMBIGUOUS country named in the registrable domain LABEL (never the
     URL path). Matches names >=5 chars as a prefix/suffix/hyphen-segment, so 'oman'
     inside 'romania' or a brand like 'jordan' never fires."""
-    label = (domain.split(".")[0] if domain else "").lower()
+    label = fold(domain.split(".")[0] if domain else "")
     if not label:
         return None
     segments = set(re.split(r"[^a-zà-ÿ]+", label))
@@ -3971,8 +3971,8 @@ def region_fit(
     # A target mention in the company's OWN address (or self-stated HQ) anchors it to
     # the region; the same word in marketing/SEO page text does NOT (exporters' pages
     # say "...supplier turkey" constantly), so it scores nothing.
-    addr_low = (contacts.address or "").lower()
-    pages_low = (pages_text or "").lower()
+    addr_low = fold(contacts.address)
+    pages_low = fold(pages_text)
     tokens = _target_region_tokens(region_key, region)
     addr_anchor = any(t and t in addr_low for t in tokens)
     hq = _detect_prose_location(pages_text)

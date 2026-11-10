@@ -100,14 +100,12 @@ def test_control_plus90_phone_counts_for_region():
 # ── region text (Turkish dotted capital İ) ───────────────────────────────────
 
 
-@known_bug('"İZMİR".lower() is "i̇zmi̇r" (combining dot), so the city never matches')
 def test_izmir_in_address_is_a_turkey_signal():
     contacts = CompanyContacts(address="Ulukent Sanayi Sitesi, Menemen / İZMİR")
     _score, reasons = discovery.region_fit(contacts, "https://firma.com", "Turkey")
     assert "addr_region_match" in reasons
 
 
-@known_bug('"İZMİR" in page text is not even recorded as a region mention')
 def test_izmir_in_page_text_is_a_turkey_mention():
     _score, reasons = discovery.region_fit(
         CompanyContacts(), "https://firma.com", "Turkey", pages_text="Adres: Menemen / İZMİR"

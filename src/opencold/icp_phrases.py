@@ -21,6 +21,8 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 
+from opencold.textnorm import fold
+
 # Too-generic ICP words: they stay inside a chunk for phrase matching ("software
 # companies" is still a phrase) but never become required evidence on their own.
 GENERIC_ICP_TERMS = {
@@ -140,7 +142,7 @@ def parse_icp(icp: str) -> IcpProfile:
     machine. Transparent words are skipped in place, qualifier markers close the
     chunk and flip the state for good, and "of" closes a sub-chunk without
     leaving core (of-attachment)."""
-    raw = [t.lower() for t in re.findall(r"[A-Za-z0-9][A-Za-z0-9\-&]*", icp or "") if len(t) >= 2]
+    raw = [t for t in re.findall(r"[a-z0-9][a-z0-9\-&]*", fold(icp)) if len(t) >= 2]
     chunks: list[Chunk] = []
     state = "core"
     current: list[str] = []
@@ -191,7 +193,7 @@ def text_words(text: str) -> list[str]:
     """Ordered alphanumeric words of `text`, lowercased. Hyphens and URL-slug
     separators split here, so "sustainability-consulting" yields adjacent words
     and phrase matching covers slugs for free."""
-    return re.findall(r"[a-z0-9]+", (text or "").lower())
+    return re.findall(r"[a-z0-9]+", fold(text))
 
 
 def phrase_hit(
@@ -278,7 +280,7 @@ def evidence_core(
     stems = [stem(w) for w in words]
     word_set = set(words)
     stem_set = set(stems)
-    low = (text or "").lower()
+    low = fold(text)
     prov = provenance or {}
 
     phrase_chunks: list[tuple[str, ...]] = []
