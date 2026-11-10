@@ -514,7 +514,7 @@ def _clamp_workers(workers: int) -> int:
     return max(1, min(int(workers or 1), 8))
 
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def load_sources(path: str) -> list[str]:
@@ -1279,7 +1279,7 @@ def parse_linkedin_result_titles(html: str) -> list[tuple[str, str, str, str]]:
 # ---------------------------------------------------------------------------
 
 _REACHER_VERSION = "0.11.7"
-_REACHER_BIN_DIR = Path(__file__).resolve().parent.parent / "vendor" / "bin"
+_REACHER_BIN_DIR = Path(__file__).resolve().parents[2] / "vendor" / "bin"
 _REACHER_BIN_NAME = "check_if_email_exists"
 
 # Cache for reacher binary availability
