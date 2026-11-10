@@ -112,22 +112,57 @@ threading, progress callback contents and exception boundaries.
 2. Do exactly ONE unit: the first one with `passes: false`.
 3. Pure move: no behavior changes, no renames unless required. Keep re-exports
    in discovery.py. Do not fix known bugs, edit labels or extend legacy email code.
-4. Verify: check.sh green; every eval metric value identical to the exact baseline
-   in progress.md; lower discovery.py's ratchet number to its new line count and
+4. Verify: check.sh green; the golden test passes unchanged; every eval metric
+   value identical to the exact baseline in progress.md. The discover eval scores
+   a fixed CSV and does not exercise runtime code; it is only a sanity check.
+   Lower discovery.py's ratchet number to its new line count and
    add the new module (under 400 lines) to the ratchet. Never raise a ratchet.
    Inspect the generated eval JSON, since eval.sh reports deltas without failing
    on regressions. Preserve all existing assertions and strict xfails.
 5. Stage explicit paths and run `.agents/skills/review/SKILL.md` on the staged diff.
    Fix FAIL findings or record why not. Re-review substantive corrections.
-6. Commit the unit, set `passes: true`, then append to progress.md: unit id,
-   agent used, wall-clock duration, tokens/cost (from whatever usage summary your
-   CLI provides; unavailable if absent), number of check.sh runs, reviewer verdict,
-   and any retries or surprises. Then STOP. Persist status/log in a small follow-up
-   commit if written after the implementation commit; one logical extraction only.
-   Never use --no-verify. Push only with check.sh green, when authorized.
+6. Set `passes: true` and append to progress.md: unit id, agent used, starting
+   commit, wall-clock duration, tokens/cost (`unavailable`; the operator fills it
+   in), number of check.sh runs, golden/eval comparison, reviewer verdict, and any
+   retries or surprises. Commit the unit's code AND the progress/status update in
+   ONE commit, push, and confirm CI is green on all Python versions. Then STOP.
+   Never use --no-verify. Use the resulting commit/CI run as the ending reference;
+   do not create a separate log/status commit to record its own hash or CI result.
 7. If a unit turns out bigger than planned, split it in features.json, update this
    dependency map, commit the plan change, and stop. Report judgement calls with
    options/evidence; do not choose behavior changes for Mehmet.
+
+## Runtime characterization golden
+
+`tests/test_discover_golden.py` runs `discover_company_rows()` offline against ten
+fake companies, capturing nine complete returned rows in
+`tests/fixtures/discover_golden.json`. Candidate harvesting, website resolution,
+crawling, contact extraction, translation orchestration, scoring, classification,
+and ranking run normally. Search, HTML fetching, translation responses, Wikipedia
+names and the clock are fixture inputs; provider config is empty and isolated.
+Expansion is disabled. Workers are set to one and scores within each confidence
+band are distinct, so completion timing cannot reorder tied rows. Exact row values,
+row order and field order are checked, including internal verification flags.
+
+The golden was initially captured from the current post-`01-data` runtime.
+Regenerating or changing it requires Mehmet's explicit approval; never refresh it
+to make an extraction pass. Retarget only transport mocks as their lookup owners
+move, preserving fixture inputs and assertions. The review skill's rule 8 protects
+this file. The discover fixed-CSV eval and SIC eval do not replace this runtime
+check.
+
+### Session entry template
+
+- Unit id and agent/CLI:
+- Starting commit; ending reference: this single commit and its CI run.
+- Wall-clock duration:
+- Tokens/cost: `unavailable` (operator fills in).
+- check.sh runs/results; golden unchanged; exact eval comparison:
+- Reviewer verdict:
+- Retries/surprises:
+
+Include this entry and `passes: true` with the code in the same commit. Push and
+verify the CI matrix (Python 3.11, 3.12 and 3.13) before reporting completion.
 
 ## Highest-risk units
 
@@ -183,7 +218,8 @@ Remaining host-specific work and limits:
   every agent. Configure equivalent host permissions where supported; the repo
   does not provide a portable deny-rule format across hosts.
 - The review skill uses a fresh subagent when available and direct review otherwise.
-  Usage summaries vary: record supplied numbers or unavailable; no `/cost` dependency.
+  For an agent's own session tokens/cost, write `unavailable`; the operator fills
+  in that field. No `/cost` dependency.
 - The reviewer runner supports the two named CLIs, not arbitrary CLI syntax.
   Installed CLI authentication, host permissions and live model quality still
   require host-specific validation. Other agents can run the shared gates directly.

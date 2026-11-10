@@ -44,11 +44,13 @@
 
 ## Session entry template
 
-Record unit id, agent/CLI, starting and ending commit, wall-clock duration,
-tokens/cost from CLI usage summary (write unavailable if absent; never estimate),
-check.sh run count, exact eval comparison, reviewer verdict, retries/surprises.
-The implementation commit is followed by a log/status commit if necessary; never
-start another unit in that session.
+Record unit id, agent/CLI, starting commit, wall-clock duration, tokens/cost
+(`unavailable`; the operator fills it in), check.sh run count, unchanged golden,
+exact eval comparison, reviewer verdict, retries/surprises. Include code, this
+entry and queue status in ONE commit, then push and confirm the full Python CI
+matrix is green. The resulting commit/CI run is the ending reference; do not make
+a follow-up commit to record its own hash or CI result. Never start another unit
+in that session. See plan.md for the field template.
 
 ## 01-data — 2026-11-10 — Codex
 
@@ -79,3 +81,45 @@ start another unit in that session.
   corrected the inspection and confirmed exact equality. Git staging required
   sandbox escalation. No implementation behavior changes or failed check runs.
 - Stopped after this unit; next pending unit is `02-models`.
+
+## Harness hardening before 02 — 2026-11-10 — Codex
+
+- Starting commit: `318130f`; no extraction unit started or queue status changed.
+  This single commit contains the harness code, golden and documentation updates;
+  its pushed CI run is the ending reference.
+- Tokens/cost: `unavailable` (operator fills in).
+- Added `tests/test_discover_golden.py` and initially captured
+  `tests/fixtures/discover_golden.json` from the unchanged post-01 runtime.
+  All returned fields, internal flags, field order and row order are compared.
+  The empty `tmp_config` exercises actual no-provider resolution with LLM use
+  enabled. Search, HTML transport, Wikipedia names, translation responses and the
+  clock are mocked; extraction/scoring/classification/ranking remain real.
+  Expansion is disabled; optional people search is outside this characterization.
+- Fixture coverage (10 fake companies, 9 returned rows):
+
+  | Company | Branches/signals |
+  |---|---|
+  | Atlas Pallets | verified; Wikipedia/search dedup; ccTLD, phone and address; JSON-LD, mailto, person email, LinkedIn, partnership page; searched team page merged with crawled pages; enterprise size |
+  | Boreal | verified; phone-only region anchor; role inbox and email partnership channel; SME size |
+  | Cedre | verified; address-only region anchor; no email; mid size |
+  | Durable | verified; native French ICP evidence, ccTLD; micro size |
+  | Iris | verified; French facts translated on a miss, ccTLD |
+  | Guide | review; directory-like content despite ICP and ccTLD evidence |
+  | Eclat | review; ICP evidence with no region anchor |
+  | Hollow | review; unresponsive website, no facts/contacts, ccTLD only |
+  | Fjord | rejected; foreign ccTLD region conflict despite ICP evidence |
+  | Invisible | no website; Wikipedia name resolves only to a directory listing and is omitted |
+
+- Mutation proof: temporarily changed the ICP score base from 35 to 36 in
+  `score_company`. The golden test failed at exact row equality (Atlas's
+  `icp_score` changed from 49 to 50). Restored discovery.py byte-for-byte; the
+  unchanged golden test then passed. Golden SHA256 remained
+  `bf4182095cab3c4bfc7018e6deaacfa5f23f95cd91e2d06c4fa603838050012e`.
+- Validation: `check.sh` PASS (692 passed, 2 strict xfails retained); golden also
+  passed in separate processes with PYTHONHASHSEED 1, 7 and 42. All 21 generated
+  eval metrics exactly match the baseline above; result retained at
+  `evals/results/2026-11-10-318130f.json`. The review skill validator passed.
+- Plan now requires an unchanged runtime golden, one code/status commit, push and
+  a green Python CI matrix; golden regeneration requires Mehmet's explicit
+  approval and is protected by review rule 8. No production code changes remain.
+- Fresh invariant reviewer: `VERDICT: PASS` (no findings).

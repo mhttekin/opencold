@@ -46,7 +46,9 @@ CSV columns, CLI flag sync, headless pipeline imports and module size. Do not re
 7. **Legacy email code extended** (`generator`, `prompts`, `sender`, `run`/`draft`/`send`):
    new features there are a violation; deletions or bug fixes are not.
 8. **Tests weakened.** Assertions removed or loosened, tests deleted, or `xfail`/`skip`
-   added to make the suite pass rather than to pin a real, unfixed bug.
+   added to make the suite pass rather than to pin a real, unfixed bug. Regenerating
+   or changing `tests/fixtures/discover_golden.json` without Mehmet's explicit
+   approval is also a violation; never refresh it to make an extraction pass.
 
 Never report lint, formatting or test failures.
 
