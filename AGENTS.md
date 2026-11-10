@@ -6,6 +6,7 @@ relevant section before changing discovery, smearch, or pipeline code.
 
 ## Commands
 - Install: `pip install -e ".[dev]"` (src layout: `src/opencold`)
+- Use the project venv (.venv), not conda base. Fish: source .venv/bin/activate.fish
 - Check everything: ./scripts/check.sh (format, lint, tests). Run before finishing any task.
 - Testing edits from another checkout/worktree: prefix `PYTHONPATH=<checkout>/src`,
   otherwise the installed copy runs.
@@ -37,6 +38,7 @@ relevant section before changing discovery, smearch, or pipeline code.
 - Logic modules stay under ~400 lines (data modules exempt), enforced by a ratchet in
   tests/test_invariants.py; lower the number when you shrink a file.
 - README stays terse: one short entry per feature, no mechanism explanations.
+- Ratchet numbers only go down. Raising one requires asking first.
 
 ## Git
 - Never use git commit --no-verify.
