@@ -1,0 +1,30 @@
+[[case]]
+icp = "pallet manufacturers"
+expected = ["16240"]
+acceptable = ["22290"]
+must_not_top1 = ["16100", "16230", "16290", "41100", "81229", "33200"]
+
+[[case]]
+icp = "Wood pallet"
+expected = ["16240"]
+must_not_top1 = ["22290", "16290", "16100"]
+
+[[case]]
+icp = "Plastic pallet manufacturer"
+expected = ["22290"]
+must_not_top1 = ["16240"]
+
+[[case]]
+icp = "Wood pellet manufacturer"
+expected = ["16290"]
+must_not_top1 = ["16240"]
+
+[[case]]
+icp = "sawmilling"
+expected = ["16100"]
+must_not_top1 = ["16230", "16240", "16290"]
+
+[[case]]
+icp = "Construction timber / Timber building components"
+expected = ["16230"]
+must_not_top1 = ["16100", "41100"]

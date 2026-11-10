@@ -1,0 +1,18 @@
+website,expected,expected_name,notes
+sahinlerpalet.com.tr,match,Şahinler Palet,
+abatineva.com.tr,match,Abatıneva,
+incirpalet.com.tr,match,İncir Palet,
+turkiyepalet.com,match,Türkiye Palet,
+ozturepalet.com,match,Öztüre Palet,
+ecopal.com.tr,match,Ecopal,
+ozenpalet.com,match,Özen Palet,
+omegapalet.com.tr,match,Omega Palet,
+glopalet.com,match,Glopal Pallet Company,
+balorman.com,match,Balorman,produces pallets
+epalturkiye.com,no_match,EPAL Türkiye,association
+sahrapalet.com,match,Sahra Palet,
+accio.com,exclude,,platform
+bulurum.com,exclude,,directory
+fordaq.com,exclude,,directory
+listofcompaniesin.com,exclude,,directory
+ensun.io,exclude,,directory

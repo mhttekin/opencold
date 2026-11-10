@@ -40,5 +40,10 @@ relevant section before changing discovery, smearch, or pipeline code.
 - README stays terse: one short entry per feature, no mechanism explanations.
 - Ratchet numbers only go down. Raising one requires asking first.
 
+## Evals
+- Quality evals: `./scripts/eval.sh` (offline; `--record` re-records cassettes). Compare against `evals/results/baseline.json`.
+- `evals/labels/` is ground truth owned by Mehmet. Never edit it to improve a score; report disagreements instead.
+- Known bugs live as strict xfail tests in `tests/test_known_bugs.py`. When you fix one, remove its xfail.
+
 ## Git
 - Never use git commit --no-verify.

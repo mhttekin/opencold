@@ -1,0 +1,308 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=building&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"edifice","score":39984380,"tags":["syn","n","results_type:primary_rel","f:1.765429"]},{"word":"construction","score":39984187,"tags":["syn","n","f:64.596881"]},{"word":"rising","score":39944725,"tags":["syn","n","adj","f:26.763653"]},{"word":"increasing","score":39936483,"tags":["syn","adj","n","f:62.499399"]},{"word":"augmentative","score":39935911,"tags":["syn","adj","n","f:0.129518"]},{"word":"heightening","score":39935317,"tags":["syn","n","f:0.481633"]},{"word":"augmenting","score":29984605,"tags":["syn","v","f:0.703718"]},{"word":"constructing","score":29984604,"tags":["n","v","f:6.204517"]},{"word":"constructive","score":29984578,"tags":["adj","f:7.502515"]},{"word":"constructional","score":29984555,"tags":["adj","f:0.552306"]},{"word":"skyscraper","score":29984160,"tags":["n","f:0.524257"]},{"word":"high-rise","score":29984132,"tags":["n","adj","f:0.000000"]},{"word":"architecture","score":29982817,"tags":["n","f:26.137212"]},{"word":"hall","score":29981918,"tags":["n","f:54.685277"]},{"word":"architectural","score":29981276,"tags":["adj","f:10.116429"]},{"word":"monument","score":29980840,"tags":["n","v","f:6.425305"]},{"word":"fort","score":29980657,"tags":["n","v","f:23.284719"]},{"word":"basing","score":29979625,"tags":["n","f:1.307849"]},{"word":"roof","score":29978559,"tags":["n","v","f:19.316276"]},{"word":"floor","score":29977991,"tags":["n","v","f:58.995418"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1410'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:54 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 40c02fa738be015864080761fca661f6.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - 2lWBnCUOH-abBOpqYS3sle38yTCR0MozTmbbjnpAYsZ5hNK3PgMJTQ==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=building&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"tallest","score":1340,"tags":["f:0.901892"]},{"word":"facade","score":1311,"tags":["f:3.546345"]},{"word":"renovated","score":1309,"tags":["f:0.935835"]},{"word":"brick","score":1300,"tags":["f:10.541413"]},{"word":"demolished","score":1298,"tags":["f:2.076136"]},{"word":"housed","score":1290,"tags":["f:4.325433"]},{"word":"courthouse","score":1279,"tags":["f:2.186235"]},{"word":"architect","score":1272,"tags":["f:8.214751"]},{"word":"roof","score":1270,"tags":["f:19.316276"]},{"word":"auditorium","score":1268,"tags":["f:2.147368"]},{"word":"constructed","score":1265,"tags":["f:25.043734"]},{"word":"renovation","score":1264,"tags":["f:1.435029"]},{"word":"basement","score":1255,"tags":["f:6.834536"]},{"word":"architectural","score":1251,"tags":["f:10.116429"]},{"word":"erected","score":1250,"tags":["f:7.487135"]},{"word":"exterior","score":1241,"tags":["f:6.562993"]},{"word":"register","score":1240,"tags":["f:18.556893"]},{"word":"floor","score":1227,"tags":["f:58.995418"]},{"word":"historic","score":1224,"tags":["f:13.374138"]},{"word":"rooms","score":1222,"tags":["f:25.582266"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1108'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:55 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 8872917cdf995a27da26931fe9fd7522.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - -R4DzBAGK8Oy6iz2xfBU6klBRpU0VO0GV4DFgQKSkkSUnEhZlFfzXQ==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=components&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"constituent","score":10048387,"tags":["syn","n","results_type:primary_rel","f:6.977239"]},{"word":"part","score":10046107,"tags":["syn","n","f:382.256420"]},{"word":"fractional","score":10045997,"tags":["syn","n","f:2.380584"]},{"word":"portion","score":10044521,"tags":["syn","n","f:36.555910"]},{"word":"factor","score":10037615,"tags":["syn","n","f:80.626373"]},{"word":"ingredient","score":9899352,"tags":["syn","n","f:3.515402"]},{"word":"element","score":9886971,"tags":["syn","n","f:53.733384"]},{"word":"component
+        part","score":51427,"tags":["syn","n","f:0.318960"]},{"word":"accessories","score":51426,"tags":["N","n","f:2.417904"]},{"word":"actors","score":51426,"tags":["N","f:16.235427"]},{"word":"aerials","score":51426,"tags":["n","f:0.151249"]},{"word":"agents","score":51426,"tags":["N","f:41.805734"]},{"word":"antennas","score":51426,"tags":["n","f:1.536486"]},{"word":"areas","score":51426,"tags":["n","f:137.564115"]},{"word":"arms","score":51426,"tags":["n","f:61.221637"]},{"word":"artifact","score":51426,"tags":["n","f:2.565574"]},{"word":"aspects","score":51426,"tags":["n","f:64.745244"]},{"word":"assemblies","score":51426,"tags":["n","f:4.389863"]},{"word":"axes","score":51426,"tags":["n","f:6.413869"]},{"word":"blinds","score":51426,"tags":["n","f:1.265094"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1301'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:55 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 bfd49bf523c81f536763bdb558e5f014.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - 8dNZWkJFR4zpagsVvglQHUNYo03pmCOcXz5EhFsAIZGNUWjGYGn1Tg==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=components&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"tensor","score":1424,"tags":["f:2.230924"]},{"word":"component","score":1388,"tags":["f:40.845655"]},{"word":"proficiency","score":1386,"tags":["f:2.757794"]},{"word":"vector","score":1326,"tags":["f:16.402631"]},{"word":"automotive","score":1285,"tags":["f:2.543142"]},{"word":"assembled","score":1268,"tags":["f:10.166752"]},{"word":"matrix","score":1264,"tags":["f:27.819323"]},{"word":"electronics","score":1248,"tags":["f:6.750857"]},{"word":"manufactured","score":1244,"tags":["f:9.288992"]},{"word":"velocity","score":1239,"tags":["f:26.654501"]},{"word":"optical","score":1236,"tags":["f:17.201147"]},{"word":"server","score":1231,"tags":["f:22.566818"]},{"word":"assessment","score":1229,"tags":["f:48.193390"]},{"word":"hardware","score":1226,"tags":["f:12.364133"]},{"word":"integrated","score":1222,"tags":["f:23.687148"]},{"word":"interface","score":1219,"tags":["f:22.051317"]},{"word":"applications","score":1209,"tags":["f:46.575266"]},{"word":"mixture","score":1207,"tags":["f:24.353645"]},{"word":"proteins","score":1206,"tags":["f:24.257368"]},{"word":"manufacturing","score":1202,"tags":["f:27.441197"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1134'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:55 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 8403946d5f25046202880ce8e5b8e216.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - rLTor9Yi_ty4WGAtNP_TwwOWYBjmPmfjkvR5JNjAI1q1sSxDywd_vg==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=construction&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"building","score":39983296,"tags":["syn","n","results_type:primary_rel","f:102.693035"]},{"word":"structure","score":39954679,"tags":["syn","n","f:149.511240"]},{"word":"twist","score":39941106,"tags":["syn","n","f:5.164076"]},{"word":"expression","score":39877798,"tags":["syn","n","f:75.026848"]},{"word":"mental
+        synthesis","score":29983714,"tags":["syn","n","f:0.000000"]},{"word":"constructive","score":29983576,"tags":["adj","f:7.502515"]},{"word":"constructing","score":29983503,"tags":["n","v","f:6.204517"]},{"word":"worksite","score":29983344,"tags":["n","f:0.163248"]},{"word":"builder","score":29983285,"tags":["n","f:3.524043"]},{"word":"edifice","score":29982942,"tags":["n","f:1.765429"]},{"word":"contractor","score":29982241,"tags":["n","f:6.136071"]},{"word":"architecture","score":29982079,"tags":["n","f:26.137212"]},{"word":"architectural","score":29981124,"tags":["adj","n","f:10.116429"]},{"word":"architect","score":29981049,"tags":["n","f:8.214751"]},{"word":"workmanship","score":29977364,"tags":["n","f:1.378419"]},{"word":"carpentry","score":29972996,"tags":["n","f:0.795971"]},{"word":"projects","score":29970028,"tags":["n","f:41.631712"]},{"word":"route","score":29969093,"tags":["n","f:28.285068"]},{"word":"housing","score":29966687,"tags":["n","f:35.462412"]},{"word":"pipeline","score":29966399,"tags":["n","f:3.661077"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1366'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:55 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 71cbe01df9e5102d886edc4f5a32c1ea.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - 04PeiGN2Wbe_RpKBDceRIZGP49nrzb0vhV78maHkgwM0VsIONH92uw==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=construction&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"permit","score":1318,"tags":["f:22.870046"]},{"word":"contractor","score":1316,"tags":["f:6.136071"]},{"word":"dam","score":1307,"tags":["f:8.105013"]},{"word":"completed","score":1284,"tags":["f:37.934492"]},{"word":"commenced","score":1282,"tags":["f:5.511323"]},{"word":"completion","score":1263,"tags":["f:13.554720"]},{"word":"tunnel","score":1261,"tags":["f:8.566529"]},{"word":"concrete","score":1246,"tags":["f:32.571004"]},{"word":"delayed","score":1244,"tags":["f:13.274691"]},{"word":"begun","score":1232,"tags":["f:27.410290"]},{"word":"bridges","score":1231,"tags":["f:8.482295"]},{"word":"cost","score":1222,"tags":["f:117.076274"]},{"word":"maintenance","score":1217,"tags":["f:31.764878"]},{"word":"bridge","score":1215,"tags":["f:31.221332"]},{"word":"projects","score":1213,"tags":["f:41.631712"]},{"word":"canal","score":1210,"tags":["f:17.839206"]},{"word":"reservoir","score":1204,"tags":["f:7.502547"]},{"word":"worker","score":1203,"tags":["f:25.592164"]},{"word":"building","score":1199,"tags":["f:102.693035"]},{"word":"buildings","score":1193,"tags":["f:33.223690"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1103'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:55 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 40c02fa738be015864080761fca661f6.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - vYMbVC5cdDVlPSlAUcZ1hgmZQiscpAFYr3or6A0ixeOvKHp-eJC4GQ==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=timber&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"woodland","score":40015639,"tags":["syn","n","results_type:primary_rel","f:2.902554"]},{"word":"forest","score":40015631,"tags":["syn","n","f:41.519861"]},{"word":"timberland","score":40015604,"tags":["syn","n","f:0.133054"]},{"word":"lumber","score":39903103,"tags":["syn","n","f:4.586361"]},{"word":"quality","score":39719758,"tags":["syn","n","f:100.378586"]},{"word":"tone","score":39658896,"tags":["syn","n","f:31.268590"]},{"word":"timbre","score":39654872,"tags":["syn","n","f:0.607893"]},{"word":"woods","score":30015688,"tags":["n","f:16.569474"]},{"word":"woody","score":30015537,"tags":["n","f:2.397292"]},{"word":"log","score":30015515,"tags":["n","f:16.781804"]},{"word":"forestry","score":30015486,"tags":["n","f:4.919492"]},{"word":"forested","score":30015173,"tags":["adj","f:1.262283"]},{"word":"wood","score":30014943,"tags":["n","f:45.003504"]},{"word":"bush","score":30010487,"tags":["n","f:15.222303"]},{"word":"tree","score":30009020,"tags":["n","f:55.037083"]},{"word":"heartwood","score":30002731,"tags":["n","f:0.251299"]},{"word":"harvesting","score":30002141,"tags":["n","f:3.311857"]},{"word":"softwood","score":29996933,"tags":["n","f:0.335886"]},{"word":"hardwood","score":29993927,"tags":["n","f:1.341860"]},{"word":"cup","score":29992356,"tags":["n","f:21.427561"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1308'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:55 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 40c02fa738be015864080761fca661f6.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - YBhYr-2slA96X75qrxvnZlfXk9jGWLTXckG2ZEXz95BPVN8FCRBsrQ==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=timber&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"verandah","score":1596,"tags":["f:0.989599"]},{"word":"joinery","score":1591,"tags":["f:0.186314"]},{"word":"panelled","score":1586,"tags":["f:0.286158"]},{"word":"corrugated","score":1581,"tags":["f:1.136428"]},{"word":"sheeting","score":1559,"tags":["f:0.503264"]},{"word":"balustrade","score":1542,"tags":["f:0.428417"]},{"word":"clad","score":1530,"tags":["f:3.192680"]},{"word":"framing","score":1523,"tags":["f:3.891883"]},{"word":"framed","score":1521,"tags":["f:5.939094"]},{"word":"casement","score":1517,"tags":["f:0.510808"]},{"word":"rafting","score":1493,"tags":["f:0.299330"]},{"word":"stair","score":1484,"tags":["f:1.718317"]},{"word":"sash","score":1466,"tags":["f:1.169610"]},{"word":"firewood","score":1457,"tags":["f:1.722444"]},{"word":"gabled","score":1453,"tags":["f:0.297142"]},{"word":"brackets","score":1448,"tags":["f:3.578290"]},{"word":"sawmill","score":1438,"tags":["f:0.743302"]},{"word":"harvesting","score":1419,"tags":["f:3.311857"]},{"word":"hardwood","score":1406,"tags":["f:1.341860"]},{"word":"boarded","score":1403,"tags":["f:2.360986"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1087'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:56 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 2baf05c1608b7148404c7fdd295985ea.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - KdM0RH9mE9nX63dR_D0HPjrXDhFPKHb80MC0Gp-naBTSG3ZZIW0VxQ==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+version: 1

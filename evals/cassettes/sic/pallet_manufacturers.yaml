@@ -1,0 +1,244 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=manufacturers&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"maker","score":10047681,"tags":["syn","n","results_type:primary_rel","f:7.302854"]},{"word":"producer","score":10045419,"tags":["syn","n","f:10.149933"]},{"word":"manufacturing
+        business","score":51427,"tags":["syn","n","f:0.200517"]},{"word":"assemblers","score":51426,"tags":["n","f:0.283804"]},{"word":"automakers","score":51426,"tags":["n","f:0.182116"]},{"word":"builders","score":51426,"tags":["n","f:3.885557"]},{"word":"businesses","score":51426,"tags":["n","f:13.202959"]},{"word":"businessmen","score":51426,"tags":["n","f:5.159918"]},{"word":"carmakers","score":51426,"tags":["n","f:0.039473"]},{"word":"commercial","score":51426,"tags":["n","f:49.204406"]},{"word":"companies","score":51426,"tags":["n","f:58.733872"]},{"word":"constructors","score":51426,"tags":["n","f:0.638495"]},{"word":"corporations","score":51426,"tags":["N","n","f:14.344444"]},{"word":"dealerships","score":51426,"tags":["n","f:0.165939"]},{"word":"developers","score":51426,"tags":["n","f:4.569661"]},{"word":"enterprises","score":51426,"tags":["n","f:17.145894"]},{"word":"entrepreneurs","score":51426,"tags":["n","f:5.139888"]},{"word":"exhibitors","score":51426,"tags":["n","f:0.378792"]},{"word":"fabrication","score":51426,"tags":["n","f:3.379121"]},{"word":"fabricator","score":51426,"tags":["n","f:0.118229"]}]'
+    headers:
+      Age:
+      - '2622'
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1314'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 14:38:09 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 ff3132de8c6f133c13134013cfce50c2.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - NTnfyX_BzRvAQp9wlfO-eqOFqN3cknmpJPtdX3h6FOHLj2EJw_A-yw==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Hit from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=manufacturers&max=20&md=f
+  response:
+    body:
+      string: '[]'
+    headers:
+      Age:
+      - '2622'
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '2'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 14:38:09 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 f6df19a0012ccc1089c56521d502bfec.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - -q6qmulaJLFT310nij48t3lC2gPZMSdG1er84PArDIhrpNyl2iw2gA==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Hit from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=pallet&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"palette","score":39999701,"tags":["syn","n","results_type:primary_rel","f:2.623079"]},{"word":"skid","score":30041685,"tags":["n","f:0.797299"]},{"word":"plank","score":30037813,"tags":["n","f:2.170668"]},{"word":"ledge","score":30036361,"tags":["n","f:2.213610"]},{"word":"paddle","score":30035007,"tags":["n","f:1.892168"]},{"word":"shelf","score":30034107,"tags":["n","f:8.072786"]},{"word":"bench","score":30032773,"tags":["n","f:8.978357"]},{"word":"blade","score":30024948,"tags":["n","f:9.022059"]},{"word":"range","score":30016414,"tags":["n","f:110.080468"]},{"word":"panoply","score":30011651,"tags":["n","f:0.343580"]},{"word":"sweep","score":30002786,"tags":["n","f:5.765615"]},{"word":"array","score":29999039,"tags":["n","f:16.773741"]},{"word":"tablet","score":29991645,"tags":["n","f:3.153881"]},{"word":"containing","score":29981607,"tags":["n","f:41.313212"]},{"word":"delivery","score":29972902,"tags":["n","f:24.502547"]},{"word":"menu","score":29970869,"tags":["n","f:14.729341"]},{"word":"set","score":29962298,"tags":["n","f:252.662112"]},{"word":"mix","score":29938927,"tags":["n","f:16.375657"]},{"word":"variety","score":29915904,"tags":["n","f:64.146789"]},{"word":"repertoire","score":29914010,"tags":["n","f:3.583277"]}]'
+    headers:
+      Age:
+      - '2621'
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1259'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 14:38:10 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 2c12a2c496330cf2472c45a58f44eb48.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - xkom_1f8ntN6rMEpbUAG2Deu_eHsFLvN-f--R94c5HkAyzJ1k_7X1w==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Hit from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=pallet&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"hairspring","score":1877,"tags":["f:0.011052"]},{"word":"escapement","score":1779,"tags":["f:0.132242"]},{"word":"racking","score":1768,"tags":["f:0.443769"]},{"word":"forklift","score":1716,"tags":["f:0.177494"]},{"word":"jacks","score":1594,"tags":["f:0.892708"]},{"word":"rack","score":1577,"tags":["f:3.600068"]},{"word":"wavy","score":1562,"tags":["f:1.304817"]},{"word":"conveyor","score":1556,"tags":["f:1.502337"]},{"word":"pooling","score":1553,"tags":["f:1.441498"]},{"word":"lever","score":1524,"tags":["f:4.251704"]},{"word":"pendulum","score":1523,"tags":["f:2.142199"]},{"word":"stacked","score":1520,"tags":["f:2.707527"]},{"word":"payload","score":1508,"tags":["f:1.022888"]},{"word":"stringer","score":1507,"tags":["f:0.591605"]},{"word":"impulse","score":1501,"tags":["f:11.561879"]},{"word":"reusable","score":1499,"tags":["f:0.741467"]},{"word":"skid","score":1492,"tags":["f:0.797299"]},{"word":"loads","score":1488,"tags":["f:9.374230"]},{"word":"argent","score":1486,"tags":["f:0.491210"]},{"word":"machining","score":1481,"tags":["f:1.664173"]}]'
+    headers:
+      Age:
+      - '2621'
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1079'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 14:38:10 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 8403946d5f25046202880ce8e5b8e216.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - lNPMIrgjd9VaotapbvvYJJkk7yzVe3JcnY2rZQsCeygkOZ3JtpS4-w==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Hit from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=pallet+manufacturers&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"bed","score":10723,"tags":["results_type:backfill_gloss","n","v","results_type:primary_external","f:66.163014"]},{"word":"lead","score":10671,"tags":["v","n","adj","f:89.425852"]},{"word":"acer","score":10536,"tags":["n","prop","f:0.286515"]},{"word":"acid","score":10536,"tags":["n","adj","f:66.672795"]},{"word":"adonis","score":10536,"tags":["n","prop","f:0.644235"]},{"word":"air
+        cell","score":10536,"tags":["n","f:0.000000"]},{"word":"airbus","score":10536,"tags":["n","prop","f:0.246277"]},{"word":"algae","score":10536,"tags":["n","f:3.797711"]},{"word":"algebraic","score":10536,"tags":["adj","f:2.685067"]},{"word":"algebraical","score":10536,"tags":["adj","f:0.047135"]},{"word":"alizarin","score":10536,"tags":["n","f:0.116818"]},{"word":"alkaloid","score":10536,"tags":["n","adj","f:0.518752"]},{"word":"alyssum","score":10536,"tags":["n","f:0.042565"]},{"word":"apple","score":10536,"tags":["n","v","f:9.854269"]},{"word":"appreciated","score":10536,"tags":["adj","f:8.641967"]},{"word":"appreciating","score":10536,"tags":["n","adj","f:1.093997"]},{"word":"aquiculture","score":10536,"tags":["n","f:0.006291"]},{"word":"arboretum","score":10536,"tags":["n","f:0.254236"]},{"word":"arquebusade","score":10536,"tags":["n","f:0.000555"]},{"word":"astragalus","score":10536,"tags":["n","f:0.157326"]}]'
+    headers:
+      Age:
+      - '2621'
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1321'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 14:38:10 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 015da43fe736d821483283d1edd6578c.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - wLU828Ls5-j50ngBf3PYVNE7l3EAJciiniKutVht3kTVyvNSfkPb_Q==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Hit from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=pallet+manufacturers&max=20&md=f
+  response:
+    body:
+      string: '[]'
+    headers:
+      Age:
+      - '2621'
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '2'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 14:38:10 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 ecb81e1ddb3e9c0e95ccd92ba71aedc4.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - IDuuZyf4OgLBn5-zHcKzot2HFZOCmRmyL4CY6zSziRjmTVjQShghTQ==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Hit from cloudfront
+    status:
+      code: 200
+      message: OK
+version: 1

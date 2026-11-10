@@ -1,0 +1,311 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=manufacturer&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"maker","score":40037021,"tags":["syn","n","results_type:primary_rel","f:7.302854"]},{"word":"producer","score":40034759,"tags":["syn","n","f:10.149933"]},{"word":"manufacturing
+        business","score":30040767,"tags":["syn","n","f:0.200517"]},{"word":"manufacture","score":30040766,"tags":["n","f:12.189779"]},{"word":"factory","score":30040552,"tags":["n","f:20.454190"]},{"word":"manufacturing","score":30040538,"tags":["n","f:27.441197"]},{"word":"label","score":30038629,"tags":["n","f:13.887114"]},{"word":"fabricator","score":30037846,"tags":["n","f:0.118229"]},{"word":"developer","score":30037488,"tags":["n","f:3.459764"]},{"word":"retailer","score":30037143,"tags":["n","f:1.426126"]},{"word":"constructor","score":30036906,"tags":["n","f:1.488273"]},{"word":"production","score":30036822,"tags":["n","f:147.215223"]},{"word":"vendor","score":30035792,"tags":["n","f:3.761869"]},{"word":"provider","score":30034250,"tags":["n","f:5.922929"]},{"word":"oem","score":30034108,"tags":["n","prop","f:0.399904"]},{"word":"product","score":30034057,"tags":["n","f:83.943323"]},{"word":"registrant","score":30033873,"tags":["n","f:0.185656"]},{"word":"fabrication","score":30033633,"tags":["n","f:3.379121"]},{"word":"company","score":30032521,"tags":["n","f:149.228348"]},{"word":"supplier","score":30030583,"tags":["n","f:4.919341"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1342'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:52 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 2c12a2c496330cf2472c45a58f44eb48.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - jce51LGhDG5Bj5RFFo0TlDIKgPaocDr86lq9sjvQAs7krXpr0CG2Pg==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=manufacturer&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"oem","score":1502,"tags":["f:0.399904"]},{"word":"distributor","score":1441,"tags":["f:2.149433"]},{"word":"supplier","score":1410,"tags":["f:4.919341"]},{"word":"retailer","score":1404,"tags":["f:1.426126"]},{"word":"fiat","score":1373,"tags":["f:1.354180"]},{"word":"specializes","score":1365,"tags":["f:1.079434"]},{"word":"gmbh","score":1363,"tags":["f:0.693253"]},{"word":"accessories","score":1359,"tags":["f:2.417904"]},{"word":"manufacture","score":1352,"tags":["f:12.189779"]},{"word":"kits","score":1339,"tags":["f:1.384401"]},{"word":"automotive","score":1327,"tags":["f:2.543142"]},{"word":"manufacturing","score":1310,"tags":["f:27.441197"]},{"word":"products","score":1306,"tags":["f:79.713120"]},{"word":"chassis","score":1302,"tags":["f:1.165539"]},{"word":"automobile","score":1299,"tags":["f:9.152121"]},{"word":"sells","score":1289,"tags":["f:3.897302"]},{"word":"manufactured","score":1286,"tags":["f:9.288992"]},{"word":"toyota","score":1283,"tags":["f:1.104625"]},{"word":"kit","score":1280,"tags":["f:5.499522"]},{"word":"subsidiary","score":1277,"tags":["f:5.262664"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1103'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:52 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 09f75f8c2e26a7fed84a39741428c6c0.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - pd3xuAKNPIKpwzB1W74evK0GR189LkmeTjH8POxb3ZjMP-m510F3KA==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=pallet&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"palette","score":39999701,"tags":["syn","n","results_type:primary_rel","f:2.623079"]},{"word":"skid","score":30041685,"tags":["n","f:0.797299"]},{"word":"plank","score":30037813,"tags":["n","f:2.170668"]},{"word":"ledge","score":30036361,"tags":["n","f:2.213610"]},{"word":"paddle","score":30035007,"tags":["n","f:1.892168"]},{"word":"shelf","score":30034107,"tags":["n","f:8.072786"]},{"word":"bench","score":30032773,"tags":["n","f:8.978357"]},{"word":"blade","score":30024948,"tags":["n","f:9.022059"]},{"word":"range","score":30016414,"tags":["n","f:110.080468"]},{"word":"panoply","score":30011651,"tags":["n","f:0.343580"]},{"word":"sweep","score":30002786,"tags":["n","f:5.765615"]},{"word":"array","score":29999039,"tags":["n","f:16.773741"]},{"word":"tablet","score":29991645,"tags":["n","f:3.153881"]},{"word":"containing","score":29981607,"tags":["n","f:41.313212"]},{"word":"delivery","score":29972902,"tags":["n","f:24.502547"]},{"word":"menu","score":29970869,"tags":["n","f:14.729341"]},{"word":"set","score":29962298,"tags":["n","f:252.662112"]},{"word":"mix","score":29938927,"tags":["n","f:16.375657"]},{"word":"variety","score":29915904,"tags":["n","f:64.146789"]},{"word":"repertoire","score":29914010,"tags":["n","f:3.583277"]}]'
+    headers:
+      Age:
+      - '2622'
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1259'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 14:38:10 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 bfd49bf523c81f536763bdb558e5f014.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - DppRwkusA6X5kc5ybc_AjWj3XDZ21gaZNWFcJ90vv9DIXziveQMSxg==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Hit from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=pallet&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"hairspring","score":1877,"tags":["f:0.011052"]},{"word":"escapement","score":1779,"tags":["f:0.132242"]},{"word":"racking","score":1768,"tags":["f:0.443769"]},{"word":"forklift","score":1716,"tags":["f:0.177494"]},{"word":"jacks","score":1594,"tags":["f:0.892708"]},{"word":"rack","score":1577,"tags":["f:3.600068"]},{"word":"wavy","score":1562,"tags":["f:1.304817"]},{"word":"conveyor","score":1556,"tags":["f:1.502337"]},{"word":"pooling","score":1553,"tags":["f:1.441498"]},{"word":"lever","score":1524,"tags":["f:4.251704"]},{"word":"pendulum","score":1523,"tags":["f:2.142199"]},{"word":"stacked","score":1520,"tags":["f:2.707527"]},{"word":"payload","score":1508,"tags":["f:1.022888"]},{"word":"stringer","score":1507,"tags":["f:0.591605"]},{"word":"impulse","score":1501,"tags":["f:11.561879"]},{"word":"reusable","score":1499,"tags":["f:0.741467"]},{"word":"skid","score":1492,"tags":["f:0.797299"]},{"word":"loads","score":1488,"tags":["f:9.374230"]},{"word":"argent","score":1486,"tags":["f:0.491210"]},{"word":"machining","score":1481,"tags":["f:1.664173"]}]'
+    headers:
+      Age:
+      - '2622'
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1079'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 14:38:10 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 c4d61fb97b2b6dd985813b847272e0d0.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - 3G0smB1FcoSVI_wCPiIGA_rjYl-t4lu8OTSxBZaBkpoFb9dB7E8GPQ==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Hit from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=plastic&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"moldable","score":39897199,"tags":["syn","adj","results_type:primary_rel","f:0.029111"]},{"word":"elastic","score":39885743,"tags":["syn","adj","n","f:10.468310"]},{"word":"fictile","score":39824899,"tags":["syn","adj","f:0.006477"]},{"word":"pliant","score":39748422,"tags":["syn","adj","f:0.350680"]},{"word":"integrative","score":39695273,"tags":["syn","adj","f:2.198943"]},{"word":"impressionable","score":39635060,"tags":["syn","adj","n","f:0.443607"]},{"word":"rubber","score":29973349,"tags":["n","v","adj","f:14.692048"]},{"word":"nylon","score":29973280,"tags":["n","f:2.435885"]},{"word":"pvc","score":29972802,"tags":["n","f:1.320264"]},{"word":"vinyl","score":29971897,"tags":["n","adj","f:2.365897"]},{"word":"semtex","score":29970699,"tags":["n","v","f:0.023590"]},{"word":"stick","score":29930052,"tags":["n","v","adj","f:17.303667"]},{"word":"mulch","score":29918729,"tags":["n","v","f:0.588680"]},{"word":"chirurgie","score":29907121,"tags":["n","prop","f:0.186469"]},{"word":"thermoplastic","score":29902668,"tags":["adj","n","f:0.745022"]},{"word":"surgeon","score":29902597,"tags":["n","f:9.126133"]},{"word":"surgical","score":29902234,"tags":["adj","f:20.106567"]},{"word":"film","score":29899888,"tags":["n","v","f:62.044495"]},{"word":"plasticity","score":29898996,"tags":["n","f:2.229922"]},{"word":"surgery","score":29890339,"tags":["n","f:30.367824"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1389'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:53 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 e9f4c7fe4166f606f6376c2953bbf2b2.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - PG-yk-C1U1T4fNXqjMFka9dkqrs_x0hxjRZ9lm5T6NA1VGkcY4qhDA==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=plastic&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"bags","score":1558,"tags":["f:7.869487"]},{"word":"sheeting","score":1536,"tags":["f:0.503264"]},{"word":"ono","score":1531,"tags":["f:0.542099"]},{"word":"deformation","score":1525,"tags":["f:7.060189"]},{"word":"polyethylene","score":1512,"tags":["f:2.210831"]},{"word":"molding","score":1502,"tags":["f:2.458741"]},{"word":"pvc","score":1500,"tags":["f:1.320264"]},{"word":"plastics","score":1487,"tags":["f:3.752145"]},{"word":"bag","score":1469,"tags":["f:18.544628"]},{"word":"molded","score":1462,"tags":["f:2.072901"]},{"word":"surgery","score":1456,"tags":["f:30.367824"]},{"word":"cardboard","score":1434,"tags":["f:2.790493"]},{"word":"fiberglass","score":1430,"tags":["f:0.723308"]},{"word":"surgeon","score":1422,"tags":["f:9.126133"]},{"word":"wrap","score":1415,"tags":["f:4.098294"]},{"word":"foam","score":1402,"tags":["f:4.397728"]},{"word":"resin","score":1401,"tags":["f:5.730387"]},{"word":"cans","score":1384,"tags":["f:3.496981"]},{"word":"packaging","score":1382,"tags":["f:4.413845"]},{"word":"cosmetic","score":1374,"tags":["f:2.203577"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1075'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:53 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 fa4c901415bf2d15a28f00ab0ba2e776.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - _9e4PxP1mHM6h7L2DNindcbh2KY-0imIq-lyBOLt0tIB8iFLGm6KPA==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=plastic+pallet+manufacturer&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"bed","score":21662,"tags":["results_type:backfill_gloss","n","v","results_type:primary_external","f:66.163014"]},{"word":"lego","score":20704,"tags":["n","prop","f:0.249329"]},{"word":"embed","score":20664,"tags":["v","n","f:0.576336"]},{"word":"stock","score":20623,"tags":["n","v","adj","f:50.329583"]},{"word":"stocked","score":20623,"tags":["adj","f:1.562902"]},{"word":"stocks","score":20623,"tags":["n","f:10.148462"]},{"word":"razor","score":20618,"tags":["n","v","f:2.112224"]},{"word":"mill","score":20578,"tags":["n","v","f:17.106531"]},{"word":"elastic","score":20537,"tags":["adj","n","f:10.468310"]},{"word":"float","score":20537,"tags":["n","v","f:5.507890"]},{"word":"rubber","score":20537,"tags":["n","v","adj","f:14.692048"]},{"word":"shoe","score":20537,"tags":["n","v","f:6.110539"]},{"word":"slide","score":20537,"tags":["n","v","f:10.322912"]},{"word":"windmill","score":20537,"tags":["n","v","f:0.794084"]},{"word":"brand","score":20497,"tags":["n","v","f:12.493822"]},{"word":"aac","score":20491,"tags":["n","prop","f:0.288164"]},{"word":"bold","score":20491,"tags":["adj","v","n","f:9.902685"]},{"word":"crane","score":20491,"tags":["n","v","f:4.442885"]},{"word":"dac","score":20491,"tags":["n","prop","f:0.616324"]},{"word":"det","score":20491,"tags":["n","f:1.565633"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1307'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:53 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 e9f4c7fe4166f606f6376c2953bbf2b2.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - SOfjZ8XaPP_4SsVurc6a7w5KXEApsN6Yk4_5iJadWLEV6WgKS4imsw==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=plastic+pallet+manufacturer&max=20&md=f
+  response:
+    body:
+      string: '[]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '2'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:53 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 8f6304f833570c94da896f597bd3ccde.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - xbygYDP567Rgv-6Xum07zk7SLRLD7A11N2H71JyaOCna_Z50KalG_A==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+version: 1

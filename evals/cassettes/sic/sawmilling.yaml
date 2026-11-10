@@ -1,0 +1,80 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=sawmilling&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"lumbermill","score":30020585,"tags":["syn","n","results_type:primary_rel","f:0.003005"]},{"word":"milling","score":20019917,"tags":["n","f:2.649852"]},{"word":"mill","score":20019818,"tags":["n","v","f:17.106531"]},{"word":"chainsaw","score":20019796,"tags":["n","v","f:0.119216"]},{"word":"sawing","score":20017619,"tags":["n","f:0.681678"]},{"word":"mills","score":20015135,"tags":["n","f:12.244184"]},{"word":"windmill","score":20009062,"tags":["n","v","f:0.794084"]},{"word":"lumber","score":19999724,"tags":["n","v","f:4.586361"]},{"word":"factory","score":19935922,"tags":["n","adj","f:20.454190"]},{"word":"plant","score":19909463,"tags":["n","v","f:65.234508"]},{"word":"sawn","score":10020600,"tags":["adj","v","n","f:0.460683"]},{"word":"sawmaking","score":10020599,"tags":["n","f:0.000000"]},{"word":"slitting
+        mill","score":10020596,"tags":["n","f:0.011872"]},{"word":"millwork","score":10020595,"tags":["n","f:0.069758"]},{"word":"sawsmith","score":10020594,"tags":["n","f:0.000000"]},{"word":"setworks","score":10020593,"tags":["n","f:0.001344"]},{"word":"peckerwood
+        sawmill","score":10020592,"tags":["n","f:0.000000"]},{"word":"endless saw","score":10020591,"tags":["n","f:0.000000"]},{"word":"sawgrinder","score":10020590,"tags":["n","f:0.000000"]},{"word":"walkmill","score":10020589,"tags":["n","f:0.000000"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1337'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:54 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 a96b4e5111339688525bc9e54ad91f88.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - KcJfQAkkvAy_T9w5Wt4AHMlS5NViANVqupHko7aSrdpn_hh7r6G6Yg==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=sawmilling&max=20&md=f
+  response:
+    body:
+      string: '[]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '2'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:54 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 289a9745961f61628764c51baab54288.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - yU8GhpgsMwKgNq5ku7CRDqNXXuNMo2a2ZoM-JDOPGeC3VEvrrO9jnA==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+version: 1

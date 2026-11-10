@@ -1,0 +1,235 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=pallet&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"palette","score":39999701,"tags":["syn","n","results_type:primary_rel","f:2.623079"]},{"word":"skid","score":30041685,"tags":["n","f:0.797299"]},{"word":"plank","score":30037813,"tags":["n","f:2.170668"]},{"word":"ledge","score":30036361,"tags":["n","f:2.213610"]},{"word":"paddle","score":30035007,"tags":["n","f:1.892168"]},{"word":"shelf","score":30034107,"tags":["n","f:8.072786"]},{"word":"bench","score":30032773,"tags":["n","f:8.978357"]},{"word":"blade","score":30024948,"tags":["n","f:9.022059"]},{"word":"range","score":30016414,"tags":["n","f:110.080468"]},{"word":"panoply","score":30011651,"tags":["n","f:0.343580"]},{"word":"sweep","score":30002786,"tags":["n","f:5.765615"]},{"word":"array","score":29999039,"tags":["n","f:16.773741"]},{"word":"tablet","score":29991645,"tags":["n","f:3.153881"]},{"word":"containing","score":29981607,"tags":["n","f:41.313212"]},{"word":"delivery","score":29972902,"tags":["n","f:24.502547"]},{"word":"menu","score":29970869,"tags":["n","f:14.729341"]},{"word":"set","score":29962298,"tags":["n","f:252.662112"]},{"word":"mix","score":29938927,"tags":["n","f:16.375657"]},{"word":"variety","score":29915904,"tags":["n","f:64.146789"]},{"word":"repertoire","score":29914010,"tags":["n","f:3.583277"]}]'
+    headers:
+      Age:
+      - '2621'
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1259'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 14:38:10 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 e9f4c7fe4166f606f6376c2953bbf2b2.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - C6iB8CRoVqIfSlHVetofevC7jmsM5yzzJ7Vb3zpvY1MgB32I-jhUnQ==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Hit from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=pallet&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"hairspring","score":1877,"tags":["f:0.011052"]},{"word":"escapement","score":1779,"tags":["f:0.132242"]},{"word":"racking","score":1768,"tags":["f:0.443769"]},{"word":"forklift","score":1716,"tags":["f:0.177494"]},{"word":"jacks","score":1594,"tags":["f:0.892708"]},{"word":"rack","score":1577,"tags":["f:3.600068"]},{"word":"wavy","score":1562,"tags":["f:1.304817"]},{"word":"conveyor","score":1556,"tags":["f:1.502337"]},{"word":"pooling","score":1553,"tags":["f:1.441498"]},{"word":"lever","score":1524,"tags":["f:4.251704"]},{"word":"pendulum","score":1523,"tags":["f:2.142199"]},{"word":"stacked","score":1520,"tags":["f:2.707527"]},{"word":"payload","score":1508,"tags":["f:1.022888"]},{"word":"stringer","score":1507,"tags":["f:0.591605"]},{"word":"impulse","score":1501,"tags":["f:11.561879"]},{"word":"reusable","score":1499,"tags":["f:0.741467"]},{"word":"skid","score":1492,"tags":["f:0.797299"]},{"word":"loads","score":1488,"tags":["f:9.374230"]},{"word":"argent","score":1486,"tags":["f:0.491210"]},{"word":"machining","score":1481,"tags":["f:1.664173"]}]'
+    headers:
+      Age:
+      - '2621'
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1079'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 14:38:10 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 8f6304f833570c94da896f597bd3ccde.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - jN9ibF-QtOi-6EdqsCDSP_roiygWieX4t2GaD4MwY3XUznVETcl81A==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Hit from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=wood&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"forest","score":40023849,"tags":["syn","n","results_type:primary_rel","f:41.519861"]},{"word":"woody","score":40023014,"tags":["syn","n","f:2.397292"]},{"word":"wooden","score":39994276,"tags":["syn","n","adj","f:17.156454"]},{"word":"woodwind
+        instrument","score":39667829,"tags":["syn","n","f:0.023586"]},{"word":"woodwind","score":39667261,"tags":["syn","n","f:0.200675"]},{"word":"forestry","score":30024550,"tags":["n","f:4.919492"]},{"word":"timber","score":30024411,"tags":["n","f:10.642582"]},{"word":"copse","score":30024255,"tags":["n","f:0.267976"]},{"word":"woodland","score":30024017,"tags":["n","f:2.902554"]},{"word":"log","score":30023934,"tags":["n","f:16.781804"]},{"word":"bush","score":30015919,"tags":["n","f:15.222303"]},{"word":"vegetable","score":30015297,"tags":["n","f:7.458261"]},{"word":"tree","score":30013931,"tags":["n","f:55.037083"]},{"word":"heartwood","score":30007592,"tags":["n","f:0.251299"]},{"word":"cup","score":30006483,"tags":["n","f:21.427561"]},{"word":"softwood","score":30001716,"tags":["n","f:0.335886"]},{"word":"madeira","score":30000950,"tags":["n","prop","f:0.692868"]},{"word":"xylem","score":29999628,"tags":["n","f:0.544137"]},{"word":"hardwood","score":29998442,"tags":["n","f:1.341860"]},{"word":"coca","score":29998214,"tags":["n","f:1.827092"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1313'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:51 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 2a3070b1680e47b1f595c5f66410764a.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - ILzkOqssnGzO4330HV7qDAy_IC_3Clo8E3rQv4LUEmVeCttWtNAT9w==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=wood&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"clapboard","score":1529,"tags":["f:0.231329"]},{"word":"shingles","score":1469,"tags":["f:0.958596"]},{"word":"carving","score":1442,"tags":["f:2.766705"]},{"word":"siding","score":1426,"tags":["f:1.231769"]},{"word":"charcoal","score":1394,"tags":["f:3.874913"]},{"word":"engraving","score":1382,"tags":["f:2.235313"]},{"word":"frame","score":1376,"tags":["f:33.526775"]},{"word":"pulp","score":1374,"tags":["f:5.350644"]},{"word":"gable","score":1369,"tags":["f:1.236561"]},{"word":"woodland","score":1317,"tags":["f:2.902554"]},{"word":"bays","score":1307,"tags":["f:1.971626"]},{"word":"chips","score":1306,"tags":["f:5.259750"]},{"word":"furniture","score":1304,"tags":["f:13.355417"]},{"word":"bark","score":1298,"tags":["f:6.806214"]},{"word":"trim","score":1297,"tags":["f:4.240260"]},{"word":"roof","score":1290,"tags":["f:19.316276"]},{"word":"fabric","score":1284,"tags":["f:10.851427"]},{"word":"lumber","score":1271,"tags":["f:4.586361"]},{"word":"porch","score":1262,"tags":["f:6.965708"]},{"word":"facade","score":1256,"tags":["f:3.546345"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1067'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:52 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 ce8f85a4dd9437febbc40094aa7d575a.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - lpMJnd1VMQKd5UnZdyAQVB5I33LxsfDa0WGlH3dUiwf7ki2e-tSarw==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=wood+pallet&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"skidding","score":18424,"tags":["results_type:backfill_gloss","n","results_type:primary_external","f:0.270842"]},{"word":"bed","score":18184,"tags":["n","v","f:66.163014"]},{"word":"dof","score":18184,"tags":["n","adj","f:0.220341"]},{"word":"dog","score":18184,"tags":["n","v","adj","f:32.513575"]},{"word":"dogs","score":18184,"tags":["n","f:19.499824"]},{"word":"palette","score":18184,"tags":["n","f:2.623079"]},{"word":"skid","score":18184,"tags":["n","v","f:0.797299"]},{"word":"paddling","score":17304,"tags":["n","f:0.648258"]},{"word":"firebrand","score":17124,"tags":["n","f:0.244786"]},{"word":"groove","score":17124,"tags":["n","v","f:3.530390"]},{"word":"lead","score":17064,"tags":["v","n","adj","f:89.425852"]},{"word":"straw","score":17064,"tags":["n","adj","v","f:6.884966"]},{"word":"alcohol","score":15424,"tags":["n","f:27.829074"]},{"word":"ark","score":15424,"tags":["n","f:2.436103"]},{"word":"aspen","score":15424,"tags":["n","adj","f:1.326563"]},{"word":"awl","score":15424,"tags":["n","adj","f:0.294066"]},{"word":"block","score":15424,"tags":["n","v","f:42.234742"]},{"word":"board","score":15424,"tags":["n","v","f:78.295969"]},{"word":"brush","score":15424,"tags":["n","v","f:11.078106"]},{"word":"buckle","score":15424,"tags":["n","v","f:1.335141"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1290'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:52 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 fa4c901415bf2d15a28f00ab0ba2e776.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - hULDwDFdTWvWyKYunI0JnjfeyBqfaL1a3lyWk51hKpdH8UA3LRxnog==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=wood+pallet&max=20&md=f
+  response:
+    body:
+      string: '[]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '2'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:52 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 2baf05c1608b7148404c7fdd295985ea.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - KVru0dYqINSxaleU3KXdA14Y_wTblsR78ELz_JotPftTajRUHKWx5g==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+version: 1

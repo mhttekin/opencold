@@ -1,0 +1,317 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=manufacturer&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"maker","score":40037021,"tags":["syn","n","results_type:primary_rel","f:7.302854"]},{"word":"producer","score":40034759,"tags":["syn","n","f:10.149933"]},{"word":"manufacturing
+        business","score":30040767,"tags":["syn","n","f:0.200517"]},{"word":"manufacture","score":30040766,"tags":["n","f:12.189779"]},{"word":"factory","score":30040552,"tags":["n","f:20.454190"]},{"word":"manufacturing","score":30040538,"tags":["n","f:27.441197"]},{"word":"label","score":30038629,"tags":["n","f:13.887114"]},{"word":"fabricator","score":30037846,"tags":["n","f:0.118229"]},{"word":"developer","score":30037488,"tags":["n","f:3.459764"]},{"word":"retailer","score":30037143,"tags":["n","f:1.426126"]},{"word":"constructor","score":30036906,"tags":["n","f:1.488273"]},{"word":"production","score":30036822,"tags":["n","f:147.215223"]},{"word":"vendor","score":30035792,"tags":["n","f:3.761869"]},{"word":"provider","score":30034250,"tags":["n","f:5.922929"]},{"word":"oem","score":30034108,"tags":["n","prop","f:0.399904"]},{"word":"product","score":30034057,"tags":["n","f:83.943323"]},{"word":"registrant","score":30033873,"tags":["n","f:0.185656"]},{"word":"fabrication","score":30033633,"tags":["n","f:3.379121"]},{"word":"company","score":30032521,"tags":["n","f:149.228348"]},{"word":"supplier","score":30030583,"tags":["n","f:4.919341"]}]'
+    headers:
+      Age:
+      - '1'
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1342'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:52 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 2baf05c1608b7148404c7fdd295985ea.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - U7aL1w-0VOSL9e2DLAafm7QQOOgl7z8KqMgsdU4qUMKLTQ5wH4g9ew==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Hit from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=manufacturer&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"oem","score":1502,"tags":["f:0.399904"]},{"word":"distributor","score":1441,"tags":["f:2.149433"]},{"word":"supplier","score":1410,"tags":["f:4.919341"]},{"word":"retailer","score":1404,"tags":["f:1.426126"]},{"word":"fiat","score":1373,"tags":["f:1.354180"]},{"word":"specializes","score":1365,"tags":["f:1.079434"]},{"word":"gmbh","score":1363,"tags":["f:0.693253"]},{"word":"accessories","score":1359,"tags":["f:2.417904"]},{"word":"manufacture","score":1352,"tags":["f:12.189779"]},{"word":"kits","score":1339,"tags":["f:1.384401"]},{"word":"automotive","score":1327,"tags":["f:2.543142"]},{"word":"manufacturing","score":1310,"tags":["f:27.441197"]},{"word":"products","score":1306,"tags":["f:79.713120"]},{"word":"chassis","score":1302,"tags":["f:1.165539"]},{"word":"automobile","score":1299,"tags":["f:9.152121"]},{"word":"sells","score":1289,"tags":["f:3.897302"]},{"word":"manufactured","score":1286,"tags":["f:9.288992"]},{"word":"toyota","score":1283,"tags":["f:1.104625"]},{"word":"kit","score":1280,"tags":["f:5.499522"]},{"word":"subsidiary","score":1277,"tags":["f:5.262664"]}]'
+    headers:
+      Age:
+      - '1'
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1103'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:52 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 0ed0b3a1a3e8908d48a47272b433d54e.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - JJ-0ToQyxBYaomQb7_Y4kGX_HokSnTWgd19kNPUP38bLWZH8gpYf4w==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Hit from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=pellet&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"shot","score":39928930,"tags":["syn","n","results_type:primary_rel","f:36.410535"]},{"word":"granular","score":30030867,"tags":["adj","f:2.964221"]},{"word":"granule","score":30030747,"tags":["n","f:1.039025"]},{"word":"granulated","score":30030683,"tags":["adj","f:0.502265"]},{"word":"scoop","score":30030275,"tags":["n","f:1.306220"]},{"word":"sediment","score":30018735,"tags":["n","f:7.037884"]},{"word":"ball","score":30016179,"tags":["n","f:29.207049"]},{"word":"cap","score":30007599,"tags":["n","f:14.456609"]},{"word":"bullet","score":30004302,"tags":["n","f:5.716521"]},{"word":"billy","score":30001756,"tags":["n","prop","f:8.690835"]},{"word":"breath","score":29994165,"tags":["n","f:26.363253"]},{"word":"brisket","score":29993334,"tags":["n","f:0.116303"]},{"word":"lump","score":29992490,"tags":["n","ant","f:3.747139"]},{"word":"wad","score":29991762,"tags":["n","f:0.915132"]},{"word":"loaf","score":29991155,"tags":["n","f:1.974092"]},{"word":"crumb","score":29984845,"tags":["n","f:0.520163"]},{"word":"meatball","score":29976548,"tags":["n","f:0.063713"]},{"word":"dumpling","score":29961461,"tags":["n","f:0.130569"]},{"word":"gall","score":29948029,"tags":["n","f:2.193635"]},{"word":"butt","score":29947630,"tags":["n","f:3.891300"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1268'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:53 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 8403946d5f25046202880ce8e5b8e216.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - VVXr3XZgJeJmR0n2hme3y2un9byGxPjlTUo3-yQAv1St0TWIpePgbw==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=pellet&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"supernatant","score":1843,"tags":["f:1.636279"]},{"word":"pellets","score":1792,"tags":["f:1.610402"]},{"word":"ricin","score":1720,"tags":["f:0.149865"]},{"word":"rumen","score":1689,"tags":["f:0.583031"]},{"word":"sintered","score":1678,"tags":["f:0.655698"]},{"word":"stove","score":1667,"tags":["f:5.153259"]},{"word":"buckshot","score":1629,"tags":["f:0.172706"]},{"word":"detonator","score":1577,"tags":["f:0.178410"]},{"word":"tantalum","score":1576,"tags":["f:0.534393"]},{"word":"grill","score":1572,"tags":["f:1.744261"]},{"word":"deuterium","score":1541,"tags":["f:0.785074"]},{"word":"tritium","score":1539,"tags":["f:0.723787"]},{"word":"cladding","score":1531,"tags":["f:0.766558"]},{"word":"biomass","score":1528,"tags":["f:3.363594"]},{"word":"heating","score":1512,"tags":["f:13.802424"]},{"word":"burner","score":1495,"tags":["f:1.836181"]},{"word":"furnace","score":1465,"tags":["f:5.937251"]},{"word":"combustion","score":1455,"tags":["f:6.614120"]},{"word":"projectile","score":1443,"tags":["f:1.399036"]},{"word":"slug","score":1439,"tags":["f:0.920594"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1088'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:54 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 fa4c901415bf2d15a28f00ab0ba2e776.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - s-M92WURU8p6NTSs5BwDLlt7dzGXUsAvivfl4DCA7CPiGUqOo4J_Uw==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=wood&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"forest","score":40023849,"tags":["syn","n","results_type:primary_rel","f:41.519861"]},{"word":"woody","score":40023014,"tags":["syn","n","f:2.397292"]},{"word":"wooden","score":39994276,"tags":["syn","n","adj","f:17.156454"]},{"word":"woodwind
+        instrument","score":39667829,"tags":["syn","n","f:0.023586"]},{"word":"woodwind","score":39667261,"tags":["syn","n","f:0.200675"]},{"word":"forestry","score":30024550,"tags":["n","f:4.919492"]},{"word":"timber","score":30024411,"tags":["n","f:10.642582"]},{"word":"copse","score":30024255,"tags":["n","f:0.267976"]},{"word":"woodland","score":30024017,"tags":["n","f:2.902554"]},{"word":"log","score":30023934,"tags":["n","f:16.781804"]},{"word":"bush","score":30015919,"tags":["n","f:15.222303"]},{"word":"vegetable","score":30015297,"tags":["n","f:7.458261"]},{"word":"tree","score":30013931,"tags":["n","f:55.037083"]},{"word":"heartwood","score":30007592,"tags":["n","f:0.251299"]},{"word":"cup","score":30006483,"tags":["n","f:21.427561"]},{"word":"softwood","score":30001716,"tags":["n","f:0.335886"]},{"word":"madeira","score":30000950,"tags":["n","prop","f:0.692868"]},{"word":"xylem","score":29999628,"tags":["n","f:0.544137"]},{"word":"hardwood","score":29998442,"tags":["n","f:1.341860"]},{"word":"coca","score":29998214,"tags":["n","f:1.827092"]}]'
+    headers:
+      Age:
+      - '3'
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1313'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:51 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 a80cfefba1e25a9103271d8bd22be77e.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - UESKsOKHwWMfpN8fvhRXz8x1FmCHwRDznnguPIvZmJL959z6yZCKOg==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Hit from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=wood&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"clapboard","score":1529,"tags":["f:0.231329"]},{"word":"shingles","score":1469,"tags":["f:0.958596"]},{"word":"carving","score":1442,"tags":["f:2.766705"]},{"word":"siding","score":1426,"tags":["f:1.231769"]},{"word":"charcoal","score":1394,"tags":["f:3.874913"]},{"word":"engraving","score":1382,"tags":["f:2.235313"]},{"word":"frame","score":1376,"tags":["f:33.526775"]},{"word":"pulp","score":1374,"tags":["f:5.350644"]},{"word":"gable","score":1369,"tags":["f:1.236561"]},{"word":"woodland","score":1317,"tags":["f:2.902554"]},{"word":"bays","score":1307,"tags":["f:1.971626"]},{"word":"chips","score":1306,"tags":["f:5.259750"]},{"word":"furniture","score":1304,"tags":["f:13.355417"]},{"word":"bark","score":1298,"tags":["f:6.806214"]},{"word":"trim","score":1297,"tags":["f:4.240260"]},{"word":"roof","score":1290,"tags":["f:19.316276"]},{"word":"fabric","score":1284,"tags":["f:10.851427"]},{"word":"lumber","score":1271,"tags":["f:4.586361"]},{"word":"porch","score":1262,"tags":["f:6.965708"]},{"word":"facade","score":1256,"tags":["f:3.546345"]}]'
+    headers:
+      Age:
+      - '2'
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1067'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:52 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 2c12a2c496330cf2472c45a58f44eb48.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - ojwtlRqa37SbcJBF-NNf-UTleD_SOkgsOxFFuy5ojhaKQKDeIPg0NQ==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Hit from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?ml=wood+pellet+manufacturer&max=20&md=f
+  response:
+    body:
+      string: '[{"word":"pea","score":22648,"tags":["results_type:backfill_gloss","n","results_type:primary_external","f:1.986154"]},{"word":"cast","score":22405,"tags":["v","n","adj","f:31.326063"]},{"word":"ash","score":21758,"tags":["n","v","adv","f:7.453275"]},{"word":"balata","score":21758,"tags":["n","f:0.039311"]},{"word":"briar","score":21758,"tags":["n","f:0.338427"]},{"word":"knot","score":21758,"tags":["n","v","f:4.164302"]},{"word":"shovel","score":21758,"tags":["n","v","f:1.737170"]},{"word":"sticker","score":21758,"tags":["n","v","f:0.550174"]},{"word":"patron","score":21697,"tags":["n","v","f:5.425555"]},{"word":"zinc
+        chloride","score":21697,"tags":["n","f:0.205741"]},{"word":"tab","score":21667,"tags":["n","v","f:6.027228"]},{"word":"stock","score":21648,"tags":["n","v","adj","f:50.329583"]},{"word":"stocked","score":21648,"tags":["adj","f:1.562902"]},{"word":"stocks","score":21648,"tags":["n","f:10.148462"]},{"word":"bagasse","score":21637,"tags":["n","f:0.152561"]},{"word":"berry","score":21637,"tags":["n","v","f:4.137454"]},{"word":"cert","score":21637,"tags":["n","adj","f:0.921747"]},{"word":"film","score":21637,"tags":["n","v","f:62.044495"]},{"word":"gallnut","score":21637,"tags":["n","f:0.001942"]},{"word":"handle","score":21637,"tags":["v","n","f:25.967575"]}]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '1289'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:54 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 ecb81e1ddb3e9c0e95ccd92ba71aedc4.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - IVoYp-uYlBcQyrAr06kXgZ7RZfutydv56jf0DlvxSEJ_kPqbU8yF7Q==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Connection:
+      - close
+      Host:
+      - api.datamuse.com
+      User-Agent:
+      - opencold/0.1 (icp expansion)
+    method: GET
+    uri: https://api.datamuse.com/words?rel_trg=wood+pellet+manufacturer&max=20&md=f
+  response:
+    body:
+      string: '[]'
+    headers:
+      Cache-Control:
+      - no-transform, max-age=86400
+      Connection:
+      - close
+      Content-Length:
+      - '2'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 10 Nov 2026 15:21:54 GMT
+      Vary:
+      - Accept-Encoding
+      Via:
+      - 1.1 289a9745961f61628764c51baab54288.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - Z-TDC43ktzrHt5LEr5UykzVQ_G_tE4gITsnFbdVl0TiyVuJz2jgpCw==
+      X-Amz-Cf-Pop:
+      - LHR50-P2
+      X-Cache:
+      - Miss from cloudfront
+    status:
+      code: 200
+      message: OK
+version: 1
