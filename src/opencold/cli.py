@@ -2188,8 +2188,8 @@ def do_smearch(
         )
         typer.echo(f"      {BOLD}{m.code}{RESET}  {m.description}  {DIM}[{tag}]{RESET}{extra}")
 
-    if (low := sic_rank.low_confidence_message(match)) or dry_run:
-        typer.echo(f"\n  {CYAN}ℹ{RESET} {low or 'Dry run — no Companies House query made.'}")
+    if msg := sic_rank.stop_message(match, dry_run):
+        typer.echo(f"\n  {CYAN}ℹ{RESET} {msg}")
         return
 
     if sandbox:

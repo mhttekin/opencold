@@ -52,6 +52,11 @@ SIC-title term overlap, plus BM25 (`sic_index`) over the ONS alphabetical index
 (`sic_index_data.csv`, ~16k activity phrases → SIC 2007 code). Ranking weights
 (role bonus, `BM25_WEIGHT`) and the low-confidence gate (`SIC_CONFIDENCE_MIN`:
 below it smearch shows the top-5 and asks for `--sic`) live in `sic_rank`.
+Optional hybrid mode (`OPENCOLD_SIC_MATCHING=hybrid` + the `semantic` extra) adds a
+model2vec ranking of the same index rows (`sic_semantic`, default model
+`minishlab/potion-multilingual-128M`) fused with BM25 by Reciprocal Rank Fusion (k=60).
+Row embeddings are cached in `~/.opencold/cache/sic_index_<model>_<index-hash>.npy`.
+Missing extra or model → silently lexical; `smearch --dry-run` prints `matching: <mode>`.
 
 The index data is built by `scripts/build_sic_index.py` from the Office for National
 Statistics workbook "UK SIC 2007 Indexes with addendum December 2022 reformatted

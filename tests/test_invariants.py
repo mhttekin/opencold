@@ -427,7 +427,7 @@ GRANDFATHERED = {
     "icp_synonyms.py": 483,
     "smearch.py": 476,
     "icp_expansion.py": 470,
-    "sic_match.py": 437,
+    "sic_match.py": 436,
 }
 
 

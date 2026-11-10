@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import tempfile
 import tomllib
@@ -21,7 +22,7 @@ from pathlib import Path
 import vcr
 from vcr.errors import CannotOverwriteExistingCassetteException
 
-from opencold import config, icp_expansion, sic_match, smearch
+from opencold import config, icp_expansion, sic_match, sic_semantic, smearch
 
 ROOT = Path(__file__).resolve().parent
 LABELS = ROOT / "labels" / "sic_cases.toml"
@@ -42,7 +43,7 @@ def _slug(icp: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", icp.lower()).strip("_")
 
 
-def ranked_sics(icp: str, *, record: bool = False) -> tuple[list[sic_match.SicMatch], str]:
+def ranked_sics(icp: str, *, record: bool = False) -> tuple[list[sic_match.SicMatch], str, str]:
     """(top-K matches with scores, status) for one ICP, network via cassette."""
     misses: list[str] = []
     real_urlopen = urllib.request.urlopen
@@ -82,10 +83,10 @@ def ranked_sics(icp: str, *, record: bool = False) -> tuple[list[sic_match.SicMa
             config.CONFIG_DIR, icp_expansion._DISK_CACHE = old_dir, old_cache
     if misses:
         raise StaleCassette(f"{cassette.name} has no recording for {misses[0]}; run --record")
-    return result.matches[:TOP_K], result.status
+    return result.matches[:TOP_K], result.status, result.mode
 
 
-def score_case(case: dict, matches: list[sic_match.SicMatch], status: str) -> dict:
+def score_case(case: dict, matches: list[sic_match.SicMatch], status: str, mode: str) -> dict:
     expected = set(case.get("expected", []))
     acceptable = set(case.get("acceptable", []))
     must_not = set(case.get("must_not_top1", []))
@@ -94,6 +95,11 @@ def score_case(case: dict, matches: list[sic_match.SicMatch], status: str) -> di
     return {
         "icp": case["icp"],
         "status": status,
+        "mode": mode,
+        # How many of the top-5 share the top-1 score (>1 = top-1 decided by tie-break).
+        "top1_tied_with": sum(abs(m.score - matches[0].score) < 1e-9 for m in matches)
+        if matches
+        else 0,
         "top5": [
             {"code": m.code, "score": m.score, "role": m.role, "description": m.description}
             for m in matches
@@ -120,12 +126,35 @@ def summarize(rows: list[dict]) -> dict:
     }
 
 
-def run(record: bool = False) -> dict:
+def _prepare_semantic(model: str | None) -> str:
+    """Opt into hybrid matching and load the model ONCE, before cassettes and the
+    CONFIG_DIR redirect. Unlike the product (which silently falls back to BM25), the
+    eval fails loudly: a 'hybrid' score measured in lexical mode would be a lie."""
+    os.environ[sic_semantic.MATCHING_ENV] = "hybrid"
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")  # use the downloaded model, no network
+    sic_semantic.MODEL = model or sic_semantic.MODEL
+    if sic_semantic.load() is None:
+        raise RuntimeError(
+            f"semantic eval: cannot load {sic_semantic.MODEL}. Install the extra "
+            "(pip install -e '.[semantic]') and download the model once with HF_HUB_OFFLINE=0."
+        )
+    return sic_semantic.MODEL
+
+
+def run(record: bool = False, semantic: bool = False, model: str | None = None) -> dict:
+    used_model = _prepare_semantic(model) if semantic else None
     rows = []
     for case in load_cases():
-        matches, status = ranked_sics(case["icp"], record=record)
-        rows.append(score_case(case, matches, status))
-    return {"metrics": summarize(rows), "cases": rows}
+        matches, status, mode = ranked_sics(case["icp"], record=record)
+        if semantic and mode != "hybrid":
+            raise RuntimeError(f"semantic eval fell back to {mode} for {case['icp']!r}")
+        rows.append(score_case(case, matches, status, mode))
+    return {
+        "mode": "hybrid" if semantic else "lexical",
+        "model": used_model,
+        "metrics": summarize(rows),
+        "cases": rows,
+    }
 
 
 def print_report(result: dict) -> None:
@@ -133,7 +162,8 @@ def print_report(result: dict) -> None:
         flag = "ABSTAIN" if r["abstain"] else ("OK" if r["top1_correct"] else "MISS")
         if r["sibling_confusion"]:
             flag += " sibling-confusion"
-        print(f"\n{r['icp']!r}  [{flag}] status={r['status']}")
+        tie = f" TIE x{r['top1_tied_with']}" if r.get("top1_tied_with", 0) > 1 else ""
+        print(f"\n{r['icp']!r}  [{flag}{tie}] status={r['status']} mode={r.get('mode')}")
         for i, m in enumerate(r["top5"], 1):
             print(f"  {i}. {m['code']}  {m['score']:4.2f}  {m['description'][:70]}")
     m = result["metrics"]
@@ -148,8 +178,10 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--record", action="store_true", help="re-record Datamuse cassettes")
     ap.add_argument("--json", action="store_true", help="print JSON instead of a report")
+    ap.add_argument("--semantic", action="store_true", help="hybrid BM25+embedding mode")
+    ap.add_argument("--model", help="embedding model for --semantic (default: sic_semantic.MODEL)")
     args = ap.parse_args()
-    result = run(record=args.record)
+    result = run(record=args.record, semantic=args.semantic, model=args.model)
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:

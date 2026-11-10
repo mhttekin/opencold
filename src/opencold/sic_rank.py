@@ -8,6 +8,8 @@ fit, so "sawmilling" ranked "veneer sheets" (1.0, manufacture) above
 
 from __future__ import annotations
 
+from opencold import sic_index, sic_semantic
+
 # A requested role adds 0.5 -- the weight of one expansion-synonym hit. That settles
 # near-ties between equally relevant SICs, but can never lift a SIC above one that
 # matches one more core ICP token (1.0): subject fit stays the dominant signal.
@@ -56,3 +58,22 @@ def low_confidence_message(match) -> str:
         return ""
     top = match.matches[0].score
     return f"Low SIC confidence (top score {top:.2f} < {SIC_CONFIDENCE_MIN:g}). Re-run with --sic CODES."
+
+
+def index_scores(icp: str, signal: list[str], drop: frozenset[str]) -> tuple[dict, str]:
+    """(code -> 0..1 index score, mode). Lexical: BM25 coverage. Hybrid (opt-in, see
+    sic_semantic): RRF of the BM25 and embedding rankings; silently lexical when the
+    semantic extra or model is unavailable."""
+    bm25 = sic_index.code_scores(signal, drop)
+    state = sic_semantic.load() if sic_semantic.requested() and signal else None
+    if state is None:
+        return bm25, "lexical"
+    return sic_semantic.fuse(bm25, sic_semantic.code_similarity(icp, state)), "hybrid"
+
+
+def stop_message(match, dry_run: bool) -> str:
+    """Why smearch stops before querying Companies House ("" = carry on)."""
+    msg = low_confidence_message(match) or (
+        "Dry run — no Companies House query made." if dry_run else ""
+    )
+    return f"{msg}  matching: {match.mode}" if msg else ""
