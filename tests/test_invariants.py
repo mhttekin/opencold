@@ -12,7 +12,6 @@ import re
 from pathlib import Path
 from unittest.mock import patch
 
-import click
 import pytest
 import typer.main
 
@@ -243,19 +242,28 @@ ALLOWED_DIFFERENCES: dict[tuple[str, str, str], str] = {
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
+INTROSPECTION_MSG = "Typer introspection found no options: Typer/Click API changed?"
+
+
 def _typer_options() -> dict[str, list[tuple[str, bool]]]:
-    """{command: [(flag, is_flag), ...]} for every top-level Typer command."""
+    """{command: [(flag, is_flag), ...]} for every top-level Typer command.
+
+    Duck-typed on purpose: Typer >=0.29 vendors Click (typer._click), so
+    isinstance checks against the public `click` classes silently match nothing.
+    """
     root = typer.main.get_command(cli.app)
     out: dict[str, list[tuple[str, bool]]] = {}
     for name, cmd in root.commands.items():
-        if isinstance(cmd, click.Group):
+        if hasattr(cmd, "commands"):  # a group (config/profile/provider/smtp)
             continue
         out[name] = [
-            (flag, p.is_flag)
+            (flag, bool(getattr(p, "is_flag", False)))
             for p in cmd.params
-            if isinstance(p, click.Option) and p.name != "help"
+            if getattr(p, "param_type_name", None) == "option" and p.name != "help"
             for flag in p.opts + p.secondary_opts
         ]
+    found = {f for opts in out.values() for f, _ in opts}
+    assert found and "--icp" in {f for f, _ in out.get("discover", [])}, INTROSPECTION_MSG
     return out
 
 
