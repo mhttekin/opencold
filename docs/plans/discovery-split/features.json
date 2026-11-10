@@ -1,0 +1,490 @@
+[
+  {
+    "id": "01-data",
+    "description": "Extract data definitions; move associated constants/comments, preserve facade exports. Symbols: BLOCKED_DOMAINS, BLOCKED_HOST_PARTS, INTERNAL_SKIP_PARTS, INTERNAL_DETAIL_HINTS, ROLE_PREFIXES, GUESSED_ROLE_EMAILS, HIGH_VALUE_ROLE_PREFIXES, LOW_VALUE_ROLE_PREFIXES, OUTREACH_USELESS_PREFIXES, RELEVANT_ROLE_RE, EXEC_ROLE_RE, DISCOVERY_PATHS, SEARCH_QUERIES, SEARCH_RESULT_LIMIT, SEARCH_PAGE_LIMIT, SEARCH_FETCH_MULTIPLIER, SEARCH_TIMEOUT, LINKEDIN_SEARCH_QUERIES, LINKEDIN_TITLE_RE, LINKEDIN_TARGET_ROLES_RE, _LINKEDIN_QUERY_DELAY, _LINKEDIN_MAX_QUERIES, _VERIFY_EMPLOYMENT, _COMPANY_NAME_PAT, _MOVED_PATTERNS, _NOT_EMPLOYED_RE, _EMPLOYMENT_DATE_RE, _SEARXNG_INSTANCES, COMPANY_SUFFIXES_RE, SEARCH_PATH_HINTS, EMAIL_RE, SPACE_RE, CTA_TEXT, PERSON_LOCAL_RE, PERSON_HINT_RE, PERSON_REVERSE_HINT_RE, BAD_PERSON_WORDS, NOISY_PRODUCT_RE, B2B_SIGNAL_RE",
+    "functions": [],
+    "target_module": "src/opencold/discovery_data.py",
+    "passes": false
+  },
+  {
+    "id": "02-models",
+    "description": "Extract models definitions; move associated constants/comments, preserve facade exports. Symbols: CandidateCompany, Contact",
+    "functions": [
+      "CandidateCompany",
+      "Contact"
+    ],
+    "target_module": "src/opencold/discovery_models.py",
+    "passes": false
+  },
+  {
+    "id": "03-search_models",
+    "description": "Extract search models definitions; move associated constants/comments, preserve facade exports. Symbols: SearchResult",
+    "functions": [
+      "SearchResult"
+    ],
+    "target_module": "src/opencold/discovery_search_models.py",
+    "passes": false
+  },
+  {
+    "id": "04-reacher",
+    "description": "Extract reacher definitions; move associated constants/comments, preserve facade exports. Symbols: _REACHER_VERSION, _REACHER_BIN_DIR, _REACHER_BIN_NAME, _REACHER_BIN, _reacher_target_triple, _download_reacher, _find_reacher_binary, _reacher_check, _generate_email_patterns, _guess_email_from_name",
+    "functions": [
+      "_reacher_target_triple",
+      "_download_reacher",
+      "_find_reacher_binary",
+      "_reacher_check",
+      "_generate_email_patterns",
+      "_guess_email_from_name"
+    ],
+    "target_module": "src/opencold/discovery_reacher.py",
+    "passes": false
+  },
+  {
+    "id": "05-contact_data",
+    "description": "Extract contact data definitions; move associated constants/comments, preserve facade exports. Symbols: _LINKEDIN_COMPANY_RE, _PHONE_RE, PARTNERSHIP_PATH_HINTS, COMPANY_EMAIL_PRIORITY, _SOCIAL_HOSTS",
+    "functions": [],
+    "target_module": "src/opencold/discovery_contact_data.py",
+    "passes": false
+  },
+  {
+    "id": "06-region_data",
+    "description": "Extract region data definitions; move associated constants/comments, preserve facade exports. Symbols: _REGION_CCTLD, _REGION_PHONE, _REGION_CITIES, _REGION_LANGS, _REGION_ALIASES, _COUNTRY_NAMES, _COUNTRY_DEMONYMS, _AMBIGUOUS, _build_phone_cc, _PHONE_CC, _COUNTRY_NAMES_BY_LEN, _COUNTRY_DEMONYMS_BY_LEN",
+    "functions": [
+      "_build_phone_cc"
+    ],
+    "target_module": "src/opencold/discovery_region_data.py",
+    "passes": false
+  },
+  {
+    "id": "07-size_data",
+    "description": "Extract size data definitions; move associated constants/comments, preserve facade exports. Symbols: _SIZE_BAND_RE, _SME_HINT_RE",
+    "functions": [],
+    "target_module": "src/opencold/discovery_size_data.py",
+    "passes": false
+  },
+  {
+    "id": "08-seed",
+    "description": "Extract seed definitions; move associated constants/comments, preserve facade exports. Symbols: _resolve_llm_provider, _SEED_SYSTEM, _build_seed_prompt, _parse_json_object, seed_companies_via_llm",
+    "functions": [
+      "_resolve_llm_provider",
+      "_build_seed_prompt",
+      "_parse_json_object",
+      "seed_companies_via_llm"
+    ],
+    "target_module": "src/opencold/discovery_seed.py",
+    "passes": false
+  },
+  {
+    "id": "09-contact_model",
+    "description": "Extract contact model definitions; move associated constants/comments, preserve facade exports. Symbols: CompanyContacts, _CONTACT_PATHS",
+    "functions": [
+      "CompanyContacts"
+    ],
+    "target_module": "src/opencold/discovery_contact_model.py",
+    "passes": false
+  },
+  {
+    "id": "10-csv",
+    "description": "Extract csv definitions; move associated constants/comments, preserve facade exports. Symbols: COMPANY_CSV_FIELDS, COMPANY_PEOPLE_FIELDS, WALL_BANNER",
+    "functions": [],
+    "target_module": "src/opencold/discovery_csv.py",
+    "passes": false
+  },
+  {
+    "id": "11-domains",
+    "description": "Extract domains definitions; move associated constants/comments, preserve facade exports. Symbols: _clean_text, _SECOND_LEVEL_TLDS, _registrable_domain, normalize_domain, _is_blocked_domain, _is_blocked_host, _company_from_domain, _AGGREGATOR_DOMAINS, _AGGREGATOR_STEMS, _AGGREGATOR_RE, _is_aggregator, _is_government_domain, _company_from_anchor",
+    "functions": [
+      "_clean_text",
+      "_registrable_domain",
+      "normalize_domain",
+      "_is_blocked_domain",
+      "_is_blocked_host",
+      "_company_from_domain",
+      "_is_aggregator",
+      "_is_government_domain",
+      "_company_from_anchor"
+    ],
+    "target_module": "src/opencold/discovery_domains.py",
+    "passes": false
+  },
+  {
+    "id": "12-pages",
+    "description": "Extract pages definitions; move associated constants/comments, preserve facade exports. Symbols: crawl_company_pages",
+    "functions": [
+      "crawl_company_pages"
+    ],
+    "target_module": "src/opencold/discovery_pages.py",
+    "passes": false
+  },
+  {
+    "id": "13-search_html",
+    "description": "Extract search html definitions; move associated constants/comments, preserve facade exports. Symbols: _duckduckgo_search_urls, _fetch_search_html",
+    "functions": [
+      "_duckduckgo_search_urls",
+      "_fetch_search_html"
+    ],
+    "target_module": "src/opencold/discovery_search_html.py",
+    "passes": false
+  },
+  {
+    "id": "14-search_primary",
+    "description": "Extract search primary definitions; move associated constants/comments, preserve facade exports. Symbols: _get_serper_key, _serper_search, _ddgs_search, _brave_search",
+    "functions": [
+      "_get_serper_key",
+      "_serper_search",
+      "_ddgs_search",
+      "_brave_search"
+    ],
+    "target_module": "src/opencold/discovery_search_primary.py",
+    "passes": false
+  },
+  {
+    "id": "15-person_match",
+    "description": "Extract person match definitions; move associated constants/comments, preserve facade exports. Symbols: _company_name_matches, _is_name_company_coincidence",
+    "functions": [
+      "_company_name_matches",
+      "_is_name_company_coincidence"
+    ],
+    "target_module": "src/opencold/discovery_person_match.py",
+    "passes": false
+  },
+  {
+    "id": "16-icp_score",
+    "description": "Extract icp score definitions; move associated constants/comments, preserve facade exports. Symbols: _icp_terms, _icp_match, score_company, _icp_evidence",
+    "functions": [
+      "_icp_terms",
+      "_icp_match",
+      "score_company",
+      "_icp_evidence"
+    ],
+    "target_module": "src/opencold/discovery_icp_score.py",
+    "passes": false
+  },
+  {
+    "id": "17-region",
+    "description": "Extract region definitions; move associated constants/comments, preserve facade exports. Symbols: _resolve_region_key, MAX_SEARCH_LANGS, _region_languages, _region_language, _target_region_tokens, _resolve_place, _detect_address_country, _HQ_PLACE, _HQ_VERB_RE, _HQ_ADJ_RE, _HQ_CUSTOMER_RE, _detect_prose_location, _detect_domain_country",
+    "functions": [
+      "_resolve_region_key",
+      "_region_languages",
+      "_region_language",
+      "_target_region_tokens",
+      "_resolve_place",
+      "_detect_address_country",
+      "_detect_prose_location",
+      "_detect_domain_country"
+    ],
+    "target_module": "src/opencold/discovery_region.py",
+    "passes": false
+  },
+  {
+    "id": "18-size",
+    "description": "Extract size definitions; move associated constants/comments, preserve facade exports. Symbols: size_tier",
+    "functions": [
+      "size_tier"
+    ],
+    "target_module": "src/opencold/discovery_size.py",
+    "passes": false
+  },
+  {
+    "id": "19-company_csv",
+    "description": "Extract company csv definitions; move associated constants/comments, preserve facade exports. Symbols: write_company_csv",
+    "functions": [
+      "write_company_csv"
+    ],
+    "target_module": "src/opencold/discovery_company_csv.py",
+    "passes": false
+  },
+  {
+    "id": "20-sources",
+    "description": "Extract sources definitions; move associated constants/comments, preserve facade exports. Symbols: _fetch_source, _clamp_workers, _PROJECT_ROOT, load_sources, extract_companies_from_html, _internal_detail_links, discover_from_source, discover_companies, discover_company_pool",
+    "functions": [
+      "_fetch_source",
+      "_clamp_workers",
+      "load_sources",
+      "extract_companies_from_html",
+      "_internal_detail_links",
+      "discover_from_source",
+      "discover_companies",
+      "discover_company_pool"
+    ],
+    "target_module": "src/opencold/discovery_sources.py",
+    "passes": false
+  },
+  {
+    "id": "21-search_parse",
+    "description": "Extract search parse definitions; move associated constants/comments, preserve facade exports. Symbols: _unwrap_duckduckgo_url, parse_search_result_urls",
+    "functions": [
+      "_unwrap_duckduckgo_url",
+      "parse_search_result_urls"
+    ],
+    "target_module": "src/opencold/discovery_search_parse.py",
+    "passes": false
+  },
+  {
+    "id": "22-translation",
+    "description": "Extract translation definitions; move associated constants/comments, preserve facade exports. Symbols: _NATIVE_FUNCTION_WORDS, _translated_term_ok, _translate_one, _translate_terms, _translate_icp_terms, _translate_profile, _translate_expansion_terms, _localize_enrichment",
+    "functions": [
+      "_translated_term_ok",
+      "_translate_one",
+      "_translate_terms",
+      "_translate_icp_terms",
+      "_translate_profile",
+      "_translate_expansion_terms",
+      "_localize_enrichment"
+    ],
+    "target_module": "src/opencold/discovery_translation.py",
+    "passes": false
+  },
+  {
+    "id": "23-lead_score",
+    "description": "Extract lead score definitions; move associated constants/comments, preserve facade exports. Symbols: _bad_company_name, score_lead",
+    "functions": [
+      "_bad_company_name",
+      "score_lead"
+    ],
+    "target_module": "src/opencold/discovery_lead_score.py",
+    "passes": false
+  },
+  {
+    "id": "24-person_score",
+    "description": "Extract person score definitions; move associated constants/comments, preserve facade exports. Symbols: _name_from_email, _valid_person_name, _person_from_text, _has_contact_page, _email_rank, score_contact",
+    "functions": [
+      "_name_from_email",
+      "_valid_person_name",
+      "_person_from_text",
+      "_has_contact_page",
+      "_email_rank",
+      "score_contact"
+    ],
+    "target_module": "src/opencold/discovery_person_score.py",
+    "passes": false
+  },
+  {
+    "id": "25-country",
+    "description": "Extract country definitions; move associated constants/comments, preserve facade exports. Symbols: _detect_phone_country, _detected_country",
+    "functions": [
+      "_detect_phone_country",
+      "_detected_country"
+    ],
+    "target_module": "src/opencold/discovery_country.py",
+    "passes": false
+  },
+  {
+    "id": "26-contacts",
+    "description": "Extract contacts definitions; move associated constants/comments, preserve facade exports. Symbols: _register_social, _extract_jsonld_org, extract_company_contacts",
+    "functions": [
+      "_register_social",
+      "_extract_jsonld_org",
+      "extract_company_contacts"
+    ],
+    "target_module": "src/opencold/discovery_contacts.py",
+    "passes": false
+  },
+  {
+    "id": "27-judge",
+    "description": "Extract judge definitions; move associated constants/comments, preserve facade exports. Symbols: _country_matches, _JUDGE_SYSTEM, _build_judge_prompt, judge_companies",
+    "functions": [
+      "_country_matches",
+      "_build_judge_prompt",
+      "judge_companies"
+    ],
+    "target_module": "src/opencold/discovery_judge.py",
+    "passes": false
+  },
+  {
+    "id": "28-search_fallback",
+    "description": "Extract search fallback definitions; move associated constants/comments, preserve facade exports. Symbols: _mojeek_search, _searxng_search, _ddg_html_search",
+    "functions": [
+      "_mojeek_search",
+      "_searxng_search",
+      "_ddg_html_search"
+    ],
+    "target_module": "src/opencold/discovery_search_fallback.py",
+    "passes": false
+  },
+  {
+    "id": "29-linkedin_parse",
+    "description": "Extract linkedin parse definitions; move associated constants/comments, preserve facade exports. Symbols: parse_linkedin_result_titles",
+    "functions": [
+      "parse_linkedin_result_titles"
+    ],
+    "target_module": "src/opencold/discovery_linkedin_parse.py",
+    "passes": false
+  },
+  {
+    "id": "30-employment_parse",
+    "description": "Extract employment parse definitions; move associated constants/comments, preserve facade exports. Symbols: _parse_linkedin_title, _company_in_title, _COMMON_ROLES_RE, _extract_linkedin_company_from_title, _check_employment_dates, _analyze_engine_results",
+    "functions": [
+      "_parse_linkedin_title",
+      "_company_in_title",
+      "_extract_linkedin_company_from_title",
+      "_check_employment_dates",
+      "_analyze_engine_results"
+    ],
+    "target_module": "src/opencold/discovery_employment_parse.py",
+    "passes": false
+  },
+  {
+    "id": "31-person_contact",
+    "description": "Extract person contact definitions; move associated constants/comments, preserve facade exports. Symbols: find_contact",
+    "functions": [
+      "find_contact"
+    ],
+    "target_module": "src/opencold/discovery_person_contact.py",
+    "passes": false
+  },
+  {
+    "id": "32-region_fit",
+    "description": "Extract region fit definitions; move associated constants/comments, preserve facade exports. Symbols: region_fit",
+    "functions": [
+      "region_fit"
+    ],
+    "target_module": "src/opencold/discovery_region_fit.py",
+    "passes": false
+  },
+  {
+    "id": "33-classify",
+    "description": "Extract classify definitions; move associated constants/comments, preserve facade exports. Symbols: _classify_company",
+    "functions": [
+      "_classify_company"
+    ],
+    "target_module": "src/opencold/discovery_classify.py",
+    "passes": false
+  },
+  {
+    "id": "34-search",
+    "description": "Extract search definitions; move associated constants/comments, preserve facade exports. Symbols: web_search",
+    "functions": [
+      "web_search"
+    ],
+    "target_module": "src/opencold/discovery_search.py",
+    "passes": false
+  },
+  {
+    "id": "35-employment",
+    "description": "Extract employment definitions; move associated constants/comments, preserve facade exports. Symbols: verify_current_employment",
+    "functions": [
+      "verify_current_employment"
+    ],
+    "target_module": "src/opencold/discovery_employment.py",
+    "passes": false
+  },
+  {
+    "id": "36-website",
+    "description": "Extract website definitions; move associated constants/comments, preserve facade exports. Symbols: WEBSITE_DIRECTORY_DOMAINS, _company_tokens, _domain_matches_company, _is_directory_domain, resolve_company_website",
+    "functions": [
+      "_company_tokens",
+      "_domain_matches_company",
+      "_is_directory_domain",
+      "resolve_company_website"
+    ],
+    "target_module": "src/opencold/discovery_website.py",
+    "passes": false
+  },
+  {
+    "id": "37-linkedin",
+    "description": "Extract linkedin definitions; move associated constants/comments, preserve facade exports. Symbols: search_linkedin_contacts",
+    "functions": [
+      "search_linkedin_contacts"
+    ],
+    "target_module": "src/opencold/discovery_linkedin.py",
+    "passes": false
+  },
+  {
+    "id": "38-page_search",
+    "description": "Extract page search definitions; move associated constants/comments, preserve facade exports. Symbols: _search_result_allowed, search_company_page_urls, search_company_pages, _merge_pages",
+    "functions": [
+      "_search_result_allowed",
+      "search_company_page_urls",
+      "search_company_pages",
+      "_merge_pages"
+    ],
+    "target_module": "src/opencold/discovery_page_search.py",
+    "passes": false
+  },
+  {
+    "id": "39-people",
+    "description": "Extract people definitions; move associated constants/comments, preserve facade exports. Symbols: discover_rows, write_csv",
+    "functions": [
+      "discover_rows",
+      "write_csv"
+    ],
+    "target_module": "src/opencold/discovery_people.py",
+    "passes": false
+  },
+  {
+    "id": "40-query",
+    "description": "Extract query definitions; move associated constants/comments, preserve facade exports. Symbols: region_query_templates, _candidate_from_result, _interleave_translations, discover_companies_by_query",
+    "functions": [
+      "region_query_templates",
+      "_candidate_from_result",
+      "_interleave_translations",
+      "discover_companies_by_query"
+    ],
+    "target_module": "src/opencold/discovery_query.py",
+    "passes": false
+  },
+  {
+    "id": "41-wiki_parse",
+    "description": "Extract wiki parse definitions; move associated constants/comments, preserve facade exports. Symbols: WIKIPEDIA_API, _WIKI_UA, _WIKI_SKIP_SECTIONS, _WIKI_NAME_BLOCKLIST_RE, _wiki_api_get, _clean_wiki_name, _wikitable_first_cells, _parse_wikitext_names",
+    "functions": [
+      "_wiki_api_get",
+      "_clean_wiki_name",
+      "_wikitable_first_cells",
+      "_parse_wikitext_names"
+    ],
+    "target_module": "src/opencold/discovery_wiki_parse.py",
+    "passes": false
+  },
+  {
+    "id": "42-company_linkedin",
+    "description": "Extract company linkedin definitions; move associated constants/comments, preserve facade exports. Symbols: _linkedin_slug_matches, find_company_linkedin",
+    "functions": [
+      "_linkedin_slug_matches",
+      "find_company_linkedin"
+    ],
+    "target_module": "src/opencold/discovery_company_linkedin.py",
+    "passes": false
+  },
+  {
+    "id": "43-wiki",
+    "description": "Extract wiki definitions; move associated constants/comments, preserve facade exports. Symbols: wikipedia_list_titles, wikipedia_category_members, wikipedia_company_names",
+    "functions": [
+      "wikipedia_list_titles",
+      "wikipedia_category_members",
+      "wikipedia_company_names"
+    ],
+    "target_module": "src/opencold/discovery_wiki.py",
+    "passes": false
+  },
+  {
+    "id": "44-company_row",
+    "description": "Extract company row definitions; move associated constants/comments, preserve facade exports. Symbols: _now_iso, _score_company_lead, build_company_row",
+    "functions": [
+      "_now_iso",
+      "_score_company_lead",
+      "build_company_row"
+    ],
+    "target_module": "src/opencold/discovery_company_row.py",
+    "passes": false
+  },
+  {
+    "id": "45-candidates",
+    "description": "Extract candidates definitions; move associated constants/comments, preserve facade exports. Symbols: _resolve_names, discover_company_candidates",
+    "functions": [
+      "_resolve_names",
+      "discover_company_candidates"
+    ],
+    "target_module": "src/opencold/discovery_candidates.py",
+    "passes": false
+  },
+  {
+    "id": "46-company_pipeline",
+    "description": "Extract company pipeline definitions; move associated constants/comments, preserve facade exports. Symbols: discover_company_rows",
+    "functions": [
+      "discover_company_rows"
+    ],
+    "target_module": "src/opencold/discovery_company_pipeline.py",
+    "passes": false
+  }
+]

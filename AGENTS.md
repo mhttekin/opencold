@@ -36,6 +36,7 @@ relevant section before changing discovery, smearch, or pipeline code.
 - `vendor/bin/` holds the auto-downloaded Reacher binary. Don't edit or commit it.
 
 ## Conventions
+- Active multi-session plans: docs/plans/*/progress.md. Read the progress file before working in that area.
 - Logic modules stay under ~400 lines (data modules exempt), enforced by a ratchet in
   tests/test_invariants.py; lower the number when you shrink a file.
 - README stays terse: one short entry per feature, no mechanism explanations.
