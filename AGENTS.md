@@ -7,7 +7,7 @@ relevant section before changing discovery, smearch, or pipeline code.
 ## Commands
 - Install: `pip install -e ".[dev]"` (src layout: `src/opencold`)
 - Test: `pytest` (CI runs `pytest -v` on 3.11–3.13). Run after every change.
-- Lint: `ruff check .` (fix with `ruff check . --fix`)
+- Lint: `ruff check . && ruff format --check .` (fix with `ruff check . --fix && ruff format .`)
 - Testing edits from another checkout/worktree: prefix `PYTHONPATH=<checkout>/src`,
   otherwise the installed copy runs.
 
