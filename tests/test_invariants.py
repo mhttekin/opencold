@@ -417,11 +417,11 @@ SIZE_MSG = (
     "If you shrank a grandfathered file, lower its number here."
 )
 # Pure data (constants only, no logic): exempt.
-DATA_MODULES = {"sic_data.py", "regions_data.py"}
+DATA_MODULES = {"sic_data.py", "regions_data.py", "cli_help.py"}
 # Logic modules already over the limit on 2026-11-10. They may not grow.
 GRANDFATHERED = {
     "discovery.py": 4595,
-    "cli.py": 3120,  # +4 on 2026-11-10: REPL draft rejects --send; help for 2 flags
+    "cli.py": 3017,
     "config.py": 519,
     "pipeline.py": 502,
     "icp_synonyms.py": 483,
