@@ -2,8 +2,8 @@
 
 ~16k ONS activity phrases ("Pallets made of plastic (manufacture)" -> 22290) are
 far more specific than the ~730 SIC titles, so they generate candidates the title
-matcher misses. Terms are folded words passed through the Snowball English stemmer,
-on both index and query side (pallets -> pallet, bakeries/bakery -> bakeri); there is
+matcher misses. Terms are folded words with plural-only folding, on both index and
+query side (pallets -> pallet, bakeries -> bakery; see docs/decisions/0002). There is
 NO fuzzy or edit-distance matching, so "pallet" and "pellet" stay different words.
 
 Data: sic_index_data.csv, built by scripts/build_sic_index.py (see that script and
@@ -18,17 +18,23 @@ from collections import Counter, defaultdict
 from functools import lru_cache
 from importlib import resources
 
-import snowballstemmer
-
 from opencold.icp_phrases import text_words
 
 K1, B = 1.2, 0.75  # standard BM25 parameters
-_STEMMER = snowballstemmer.stemmer("english")
+MIN_STEM = 3  # never fold a word below 3 letters
 
 
 @lru_cache(maxsize=65536)
-def stem(word: str) -> str:
-    return _STEMMER.stemWord(word)
+def stem(w: str) -> str:
+    """General English plural folding, no word lists: -ies -> -y; -es after
+    s/x/z/ch/sh; else a final -s (not -ss/-us/-is). Keeps >= MIN_STEM letters."""
+    if w.endswith("ies") and len(w) - 3 >= MIN_STEM:
+        return w[:-3] + "y"
+    if w.endswith("es") and len(w) - 2 >= MIN_STEM and w[:-2].endswith(("s", "x", "z", "ch", "sh")):
+        return w[:-2]
+    if w.endswith("s") and not w.endswith(("ss", "us", "is")) and len(w) - 1 >= MIN_STEM:
+        return w[:-1]
+    return w
 
 
 def _terms(text: str, drop: frozenset[str]) -> list[str]:
