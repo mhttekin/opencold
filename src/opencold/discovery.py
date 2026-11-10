@@ -66,6 +66,7 @@ from opencold.discovery_data import (
     SEARCH_TIMEOUT,
     SPACE_RE,
 )
+from opencold.discovery_models import CandidateCompany, Contact
 from opencold.emails import pick_company_email
 
 # Re-exported names: tests and icp_expansion resolve these via opencold.discovery.
@@ -74,25 +75,6 @@ from opencold.icp_phrases import stem as _stem
 from opencold.phones import calling_code, region_hint
 from opencold.phones import normalize_phone as _clean_phone
 from opencold.textnorm import fold
-
-
-@dataclass
-class CandidateCompany:
-    company: str
-    website: str
-    discovery_source_url: str
-    discovery_reason: str
-    discovery_channel: str = ""
-
-
-@dataclass
-class Contact:
-    name: str = ""
-    role: str = ""
-    email: str = ""
-    contact_type: str = ""
-    confidence: int = 0
-    source_url: str = ""
 
 
 def _clean_text(text: str) -> str:

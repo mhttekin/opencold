@@ -123,3 +123,21 @@ in that session. See plan.md for the field template.
   a green Python CI matrix; golden regeneration requires Mehmet's explicit
   approval and is protected by review rule 8. No production code changes remain.
 - Fresh invariant reviewer: `VERDICT: PASS` (no findings).
+
+## 02-models — 2026-11-10 — Codex
+
+- Agent/CLI: Codex (GPT-6), with fresh review by `review_unit_02`.
+- Starting commit: `4bc1be4`. Ending reference: this commit and its CI run.
+- Wall-clock duration through verification and review: about 1m 18s.
+- Tokens/cost: `unavailable` (operator fills in).
+- Moved `CandidateCompany` and `Contact` with identical class definitions by AST
+  comparison. The facade exports are the same objects as the owner exports.
+  Neither class had patch targets to retarget.
+- `discovery.py` ratchet: 4,243 → 4,225 lines. The 24-line `discovery_models.py`
+  is covered by the ratchet's source glob and 400-line default.
+- `check.sh`: two explicit runs, including the initializer. Both passed with
+  692 passed and 2 xfailed. The unchanged runtime golden also passed separately.
+  All 20 metrics in the exact baseline JSON above matched the generated eval JSON.
+- Reviewer verdict: `VERDICT: PASS`.
+- Retries/surprises: no implementation retries. The baseline JSON contains 20
+  metric keys. The earlier log counted 21.

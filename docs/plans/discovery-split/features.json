@@ -14,7 +14,7 @@
       "Contact"
     ],
     "target_module": "src/opencold/discovery_models.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "03-search_models",
