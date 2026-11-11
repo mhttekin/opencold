@@ -86,3 +86,11 @@ entry and queue status with its code. See plan.md for the session rules.
 - 42-company_linkedin mode=tool, 943→910 lines
 
 - 43-wiki mode=tool, 910→788 lines
+
+- 44-company_row mode=agent, 788→601 lines. No state moved (functions only;
+  B2B_SIGNAL_RE stays in discovery_data). The tool refused over the golden's
+  `discovery.time` clock patch: `_now_iso` now reads `time` in
+  discovery_company_row while `discover_company_rows` still uses discovery's
+  `time.monotonic`, so the golden patches both modules with the same clock.
+  The known-bug patches of `discovery.extract_company_contacts`/`crawl_company_pages`
+  stay, because smearch_enrich reads them through the facade.

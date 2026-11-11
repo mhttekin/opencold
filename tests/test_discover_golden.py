@@ -19,6 +19,7 @@ import pytest
 from opencold import (
     config,
     discovery,
+    discovery_company_row,
     discovery_page_search,
     discovery_query,
     discovery_website,
@@ -277,6 +278,7 @@ def _offline_judged_rows(monkeypatch, judge_timeout):
         monotonic=Mock(side_effect=count(100, 0.25)),
     )
     monkeypatch.setattr(discovery, "time", clock)
+    monkeypatch.setattr(discovery_company_row, "time", clock)
 
     events = []
 

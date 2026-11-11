@@ -20,6 +20,7 @@ from opencold import regions_data as rd  # noqa: F401
 from opencold.discovery_classify import _classify_company
 from opencold.discovery_company_csv import write_company_csv  # noqa: F401
 from opencold.discovery_company_linkedin import _linkedin_slug_matches, find_company_linkedin  # noqa: F401
+from opencold.discovery_company_row import _now_iso, _score_company_lead, build_company_row  # noqa: F401
 from opencold.discovery_contact_data import (
     _LINKEDIN_COMPANY_RE,  # noqa: F401
     _PHONE_RE,  # noqa: F401
@@ -33,7 +34,7 @@ from opencold.discovery_contact_model import _CONTACT_PATHS, CompanyContacts  # 
 from opencold.discovery_contacts import (
     _extract_jsonld_org,  # noqa: F401
     _register_social,  # noqa: F401
-    extract_company_contacts,
+    extract_company_contacts,  # noqa: F401
 )
 from opencold.discovery_country import _detect_phone_country, _detected_country  # noqa: F401
 from opencold.discovery_csv import COMPANY_CSV_FIELDS, COMPANY_PEOPLE_FIELDS, WALL_BANNER  # noqa: F401
@@ -48,7 +49,7 @@ from opencold.discovery_data import (
     _NOT_EMPLOYED_RE,  # noqa: F401
     _SEARXNG_INSTANCES,  # noqa: F401
     _VERIFY_EMPLOYMENT,  # noqa: F401
-    B2B_SIGNAL_RE,
+    B2B_SIGNAL_RE,  # noqa: F401
     BAD_PERSON_WORDS,  # noqa: F401
     COMPANY_SUFFIXES_RE,  # noqa: F401
     CTA_TEXT,  # noqa: F401
@@ -136,16 +137,16 @@ from opencold.discovery_judge import (
     judge_companies,
 )
 from opencold.discovery_lead_score import _bad_company_name, score_lead  # noqa: F401
-from opencold.discovery_linkedin import search_linkedin_contacts
+from opencold.discovery_linkedin import search_linkedin_contacts  # noqa: F401
 from opencold.discovery_linkedin_parse import parse_linkedin_result_titles  # noqa: F401
 from opencold.discovery_models import CandidateCompany, Contact  # noqa: F401
 from opencold.discovery_page_search import (
-    _merge_pages,
+    _merge_pages,  # noqa: F401
     _search_result_allowed,  # noqa: F401
     search_company_page_urls,  # noqa: F401
-    search_company_pages,
+    search_company_pages,  # noqa: F401
 )
-from opencold.discovery_pages import crawl_company_pages
+from opencold.discovery_pages import crawl_company_pages  # noqa: F401
 from opencold.discovery_people import discover_rows, write_csv  # noqa: F401
 from opencold.discovery_person_contact import find_contact  # noqa: F401
 from opencold.discovery_person_match import (
@@ -156,7 +157,7 @@ from opencold.discovery_person_score import (
     _email_rank,  # noqa: F401
     _has_contact_page,  # noqa: F401
     _name_from_email,  # noqa: F401
-    _person_from_text,
+    _person_from_text,  # noqa: F401
     _valid_person_name,  # noqa: F401
     score_contact,  # noqa: F401
 )
@@ -217,7 +218,7 @@ from opencold.discovery_region_data import (
 from opencold.discovery_region_data import (
     _build_phone_cc as _build_phone_cc,
 )
-from opencold.discovery_region_fit import region_fit
+from opencold.discovery_region_fit import region_fit  # noqa: F401
 from opencold.discovery_search import web_search  # noqa: F401
 from opencold.discovery_search_fallback import _ddg_html_search, _mojeek_search, _searxng_search  # noqa: F401
 from opencold.discovery_search_html import _duckduckgo_search_urls, _fetch_search_html  # noqa: F401
@@ -236,7 +237,7 @@ from opencold.discovery_seed import (
     _resolve_llm_provider,
     seed_companies_via_llm,
 )
-from opencold.discovery_size import size_tier
+from opencold.discovery_size import size_tier  # noqa: F401
 from opencold.discovery_size_data import _SIZE_BAND_RE, _SME_HINT_RE  # noqa: F401
 from opencold.discovery_sources import (
     _PROJECT_ROOT,  # noqa: F401
@@ -251,7 +252,7 @@ from opencold.discovery_sources import (
 )
 from opencold.discovery_translation import (
     _NATIVE_FUNCTION_WORDS,  # noqa: F401
-    _localize_enrichment,
+    _localize_enrichment,  # noqa: F401
     _translate_expansion_terms,
     _translate_icp_terms,  # noqa: F401
     _translate_one,  # noqa: F401
@@ -283,7 +284,7 @@ from opencold.discovery_wiki_parse import (
     _wiki_api_get,  # noqa: F401
     _wikitable_first_cells,  # noqa: F401
 )
-from opencold.emails import pick_company_email
+from opencold.emails import pick_company_email  # noqa: F401
 
 # Re-exported names: tests and icp_expansion resolve these via opencold.discovery.
 from opencold.icp_phrases import GENERIC_ICP_TERMS  # noqa: F401
@@ -430,194 +431,6 @@ def discover_company_candidates(
 # ---------------------------------------------------------------------------
 # Orchestrator + CSV writer
 # ---------------------------------------------------------------------------
-
-
-def _now_iso() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-
-def _score_company_lead(
-    row: dict,
-    region_fit_score: int,
-    email_type: str,
-    region_targeted: bool = False,
-    region_conflict: bool = False,
-) -> tuple[int, str]:
-    score = 30
-    reasons: list[str] = []
-    if row.get("website_status") == "ok":
-        score += 10
-        reasons.append("site_ok")
-    else:
-        score -= 15
-        reasons.append("site_failed")
-    score += min(int(row.get("icp_score") or 0) // 4, 20)
-    if row.get("matched_terms"):
-        reasons.append("icp_match")
-    score += min(int(row.get("personalization_score") or 0) // 6, 15)
-    if email_type == "person_email":
-        score += 18
-        reasons.append("person_email")
-    elif email_type == "role_inbox":
-        score += 12
-        reasons.append("role_inbox")
-    elif email_type == "company_email":
-        score += 8
-        reasons.append("company_email")
-    if row.get("phone"):
-        score += 5
-        reasons.append("phone")
-    if row.get("linkedin_company_url"):
-        score += 6
-        reasons.append("linkedin_company")
-    if row.get("partnership_channel"):
-        score += 8
-        reasons.append("partnership_channel")
-    score += min(region_fit_score // 5, 18)
-    if region_fit_score >= 40:
-        reasons.append("region_fit")
-    # For a region-targeted search, sink wrong-country namesakes and softly
-    # de-rank companies we couldn't confirm are in-region.
-    if region_conflict:
-        score -= 30
-        reasons.append("region_conflict")
-    elif region_targeted and region_fit_score == 0:
-        score -= 15
-        reasons.append("region_unconfirmed")
-    if B2B_SIGNAL_RE.search(
-        " ".join([row.get("company_summary", ""), row.get("personalization_facts", "")])
-    ):
-        score += 6
-        reasons.append("b2b_signal")
-    return max(0, min(score, 100)), enricher.FACT_SEPARATOR.join(reasons)
-
-
-def build_company_row(
-    company: CandidateCompany,
-    icp: str,
-    region: str,
-    max_pages: int = 4,
-    find_people: bool = False,
-    target_langs: list[str] | None = None,
-    extra_terms: set[str] | None = None,
-    weak_terms: set[str] | None = None,
-    provenance: dict[str, set[str]] | None = None,
-) -> dict | None:
-    domain = normalize_domain(company.website)
-    # Union of native (full-weight) + expansion (half-weight) terms for the boolean
-    # evidence/localize checks, where weighting does not matter.
-    all_extra = (extra_terms or set()) | (weak_terms or set())
-    pages = crawl_company_pages(company.website, max_pages=max_pages)
-    pages = _merge_pages(pages, search_company_pages(company))
-    facts = enricher.extract_facts(pages)
-    enrichment = {
-        "website_status": "ok" if pages else "fetch_failed",
-        "company_summary": enricher.summarize_facts(facts),
-        "personalization_facts": enricher.facts_to_text(facts),
-        "source_urls": enricher.source_urls(facts),
-        "personalization_score": str(enricher.personalization_score(facts)),
-        "quality_warnings": enricher.FACT_SEPARATOR.join(enricher.quality_warnings(facts, pages)),
-    }
-    # Translate a home-language site's facts into English when the English/native
-    # ICP terms find no evidence, so matching, the judge, and the CSV read English.
-    if target_langs:
-        enrichment = _localize_enrichment(enrichment, icp, all_extra, provenance)
-    pages_text = " ".join(f"{p.title} {p.description} {p.text}" for p in pages)
-
-    cc = _REGION_CCTLD.get(_resolve_region_key(region) or "", "")
-    contacts = extract_company_contacts(company.website, max_pages, cc)
-    name = company.company
-    if (
-        contacts.company_name
-        and not _bad_company_name(contacts.company_name)
-        and (not name or name == _company_from_domain(domain) or _bad_company_name(name))
-    ):
-        name = contacts.company_name
-    if _bad_company_name(name):
-        # Anchor/title scrape produced junk (SEO keyword stuffing, 100-char titles)
-        # and the site offered nothing structured — the domain stem beats garbage.
-        name = _company_from_domain(domain)
-
-    page_person = _person_from_text(pages_text)[0]  # a named person on the site, if any
-    email, email_type, _email_src = pick_company_email(contacts.emails, domain, [page_person])
-    linkedin = find_company_linkedin(name, contacts, domain)
-    rfit, rfit_reasons = region_fit(contacts, company.website, region, pages_text)
-    region_conflict = "region_conflict" in rfit_reasons
-    region_anchor = any(
-        a in rfit_reasons for a in ("cctld:", "phone:", "addr_region_match", "hq_region_match")
-    )
-    detected = _detected_country(contacts, company.website, enrichment.get("company_summary", ""))
-    tier = size_tier(pages_text, contacts)
-
-    if contacts.partnership_url:
-        partnership = f"page:{contacts.partnership_url}"
-    elif email and email.split("@", 1)[0].lower() in ("partnerships", "partner", "bd"):
-        partnership = f"email:{email}"
-    else:
-        partnership = ""
-
-    icp_score, matched_terms = score_company(
-        company, enrichment, icp, extra_terms, weak_terms, provenance
-    )
-    if rfit_reasons:
-        matched_terms = (
-            matched_terms + (enricher.FACT_SEPARATOR if matched_terms else "") + rfit_reasons
-        )
-
-    row = {
-        "email": email,
-        "name": "",
-        "company": name,
-        "website": company.website,
-        "country": detected.title() if detected else region,
-        "region_fit": str(rfit),
-        "company_email": email,
-        "email_type": email_type,
-        "phone": contacts.phones[0] if contacts.phones else "",
-        "address": contacts.address,
-        "linkedin_company_url": linkedin,
-        "partnership_channel": partnership,
-        "size_tier": tier,
-        "icp_score": str(icp_score),
-        "matched_terms": matched_terms,
-        "discovery_channel": getattr(company, "discovery_channel", "") or "",
-        "discovery_source_url": company.discovery_source_url,
-        "discovered_at": _now_iso(),
-        **enrichment,
-    }
-    lead_score, lead_reasons = _score_company_lead(
-        row,
-        rfit,
-        email_type,
-        region_targeted=bool(region),
-        region_conflict=region_conflict,
-    )
-    row["lead_score"] = str(lead_score)
-    row["lead_score_reasons"] = lead_reasons
-    # Carried for verification/classification; underscore keys are not written to
-    # CSV (DictWriter uses fixed fieldnames + extrasaction="ignore").
-    row["_icp_evidence"] = _icp_evidence(icp, enrichment, extra_terms, weak_terms, provenance)
-    row["_region_conflict"] = region_conflict
-    row["_region_anchor"] = region_anchor
-    row["_is_aggregator"] = _is_aggregator(
-        domain,
-        " ".join(
-            [
-                enrichment.get("company_summary", ""),
-                enrichment.get("personalization_facts", ""),
-            ]
-        ),
-    )
-    row["_is_government"] = _is_government_domain(domain)
-
-    if find_people:
-        people = search_linkedin_contacts(name, domain)
-        best = people[0] if people else None
-        row["contact_name"] = best.name if best else ""
-        row["contact_role"] = best.role if best else ""
-        row["contact_linkedin"] = best.source_url if best else ""
-        row["contact_stale_warning"] = "person_company_mapping_may_be_stale" if best else ""
-    return row
 
 
 def discover_company_rows(
