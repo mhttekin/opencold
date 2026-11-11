@@ -352,6 +352,7 @@ class TestEndToEnd:
         company = CandidateCompany("Acme", "https://acme.test", "src", "search", "search")
         with (
             patch("opencold.discovery.web_search", return_value=[]),
+            patch("opencold.discovery_linkedin.web_search", return_value=[]),
             patch("opencold.enricher._fetch_html", _fetch_for({"acme.test": PLAIN_HTML})),
         ):
             row = discovery.build_company_row(company, "saas", "USA", find_people=True)

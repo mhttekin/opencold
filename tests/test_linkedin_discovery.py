@@ -657,10 +657,13 @@ class TestWebSearch:
 # ---------------------------------------------------------------------------
 
 
-@patch("opencold.discovery.verify_current_employment", return_value=(True, "company_confirmed"))
+@patch(
+    "opencold.discovery_linkedin.verify_current_employment",
+    return_value=(True, "company_confirmed"),
+)
 class TestSearchLinkedInContacts:
-    @patch("opencold.discovery.web_search")
-    @patch("opencold.discovery.time.sleep")
+    @patch("opencold.discovery_linkedin.web_search")
+    @patch("opencold.discovery_linkedin.time.sleep")
     def test_finds_contacts(self, _mock_sleep, mock_search, _mock_verify):
         mock_search.return_value = [
             SearchResult(
@@ -677,8 +680,8 @@ class TestSearchLinkedInContacts:
         assert results[0].name == "Jane Smith"
         assert results[0].contact_type == "linkedin_profile"
 
-    @patch("opencold.discovery.web_search")
-    @patch("opencold.discovery.time.sleep")
+    @patch("opencold.discovery_linkedin.web_search")
+    @patch("opencold.discovery_linkedin.time.sleep")
     def test_filters_wrong_company(self, _mock_sleep, mock_search, _mock_verify):
         mock_search.return_value = [
             SearchResult(
@@ -689,8 +692,8 @@ class TestSearchLinkedInContacts:
         results = search_linkedin_contacts("Acme Corp", "acme.com", max_queries=1)
         assert len(results) == 0
 
-    @patch("opencold.discovery.web_search")
-    @patch("opencold.discovery.time.sleep")
+    @patch("opencold.discovery_linkedin.web_search")
+    @patch("opencold.discovery_linkedin.time.sleep")
     def test_short_circuits_on_first_success(self, mock_sleep, mock_search, _mock_verify):
         mock_search.return_value = [
             SearchResult(
@@ -702,15 +705,15 @@ class TestSearchLinkedInContacts:
         # Should only call web_search once since first query succeeded
         assert mock_search.call_count == 1
 
-    @patch("opencold.discovery.web_search")
-    @patch("opencold.discovery.time.sleep")
+    @patch("opencold.discovery_linkedin.web_search")
+    @patch("opencold.discovery_linkedin.time.sleep")
     def test_empty_results(self, _mock_sleep, mock_search, _mock_verify):
         mock_search.return_value = []
         results = search_linkedin_contacts("Acme", "acme.com", max_queries=1)
         assert results == []
 
-    @patch("opencold.discovery.web_search")
-    @patch("opencold.discovery.time.sleep")
+    @patch("opencold.discovery_linkedin.web_search")
+    @patch("opencold.discovery_linkedin.time.sleep")
     def test_skips_non_linkedin_urls(self, _mock_sleep, mock_search, _mock_verify):
         mock_search.return_value = [
             SearchResult(
@@ -721,8 +724,8 @@ class TestSearchLinkedInContacts:
         results = search_linkedin_contacts("Acme", "acme.com", max_queries=1)
         assert results == []
 
-    @patch("opencold.discovery.web_search")
-    @patch("opencold.discovery.time.sleep")
+    @patch("opencold.discovery_linkedin.web_search")
+    @patch("opencold.discovery_linkedin.time.sleep")
     def test_sorts_by_role_relevance(self, _mock_sleep, mock_search, _mock_verify):
         mock_search.return_value = [
             SearchResult(
@@ -962,9 +965,9 @@ class TestVerifyCurrentEmployment:
 
 
 class TestVerificationIntegration:
-    @patch("opencold.discovery.verify_current_employment")
-    @patch("opencold.discovery.web_search")
-    @patch("opencold.discovery.time.sleep")
+    @patch("opencold.discovery_linkedin.verify_current_employment")
+    @patch("opencold.discovery_linkedin.web_search")
+    @patch("opencold.discovery_linkedin.time.sleep")
     def test_verified_contacts_kept(self, _mock_sleep, mock_search, mock_verify):
         mock_search.return_value = [
             SearchResult(
@@ -978,9 +981,9 @@ class TestVerificationIntegration:
         assert results[0].name == "Jane Smith"
         mock_verify.assert_called_once_with("Jane Smith", "Acme")
 
-    @patch("opencold.discovery.verify_current_employment")
-    @patch("opencold.discovery.web_search")
-    @patch("opencold.discovery.time.sleep")
+    @patch("opencold.discovery_linkedin.verify_current_employment")
+    @patch("opencold.discovery_linkedin.web_search")
+    @patch("opencold.discovery_linkedin.time.sleep")
     def test_unverified_high_confidence_returned_reduced(
         self, _mock_sleep, mock_search, mock_verify
     ):
@@ -996,9 +999,9 @@ class TestVerificationIntegration:
         assert len(results) == 1
         assert results[0].confidence < 70
 
-    @patch("opencold.discovery.verify_current_employment")
-    @patch("opencold.discovery.web_search")
-    @patch("opencold.discovery.time.sleep")
+    @patch("opencold.discovery_linkedin.verify_current_employment")
+    @patch("opencold.discovery_linkedin.web_search")
+    @patch("opencold.discovery_linkedin.time.sleep")
     def test_unverified_low_confidence_dropped(self, _mock_sleep, mock_search, mock_verify):
         mock_search.return_value = [
             SearchResult(

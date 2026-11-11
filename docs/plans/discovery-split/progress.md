@@ -63,3 +63,6 @@ entry and queue status with its code. See plan.md for the session rules.
 - 36-website mode=agent, 1652→1518 lines. State move: WEBSITE_DIRECTORY_DOMAINS
   discovery → discovery_website (re-exported, same object). Audit: no writes, no
   facade/dynamic writes, no patch targets; read only by _is_directory_domain.
+
+- 37-linkedin mode=agent, 1518→1429 lines. No state moved (function only; its
+  constants stay in discovery_data).

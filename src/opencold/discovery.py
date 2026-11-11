@@ -41,12 +41,12 @@ from opencold.discovery_data import (
 )
 from opencold.discovery_data import (
     _EMPLOYMENT_DATE_RE,  # noqa: F401
-    _LINKEDIN_MAX_QUERIES,
-    _LINKEDIN_QUERY_DELAY,
+    _LINKEDIN_MAX_QUERIES,  # noqa: F401
+    _LINKEDIN_QUERY_DELAY,  # noqa: F401
     _MOVED_PATTERNS,  # noqa: F401
     _NOT_EMPLOYED_RE,  # noqa: F401
     _SEARXNG_INSTANCES,  # noqa: F401
-    _VERIFY_EMPLOYMENT,
+    _VERIFY_EMPLOYMENT,  # noqa: F401
     B2B_SIGNAL_RE,
     BAD_PERSON_WORDS,  # noqa: F401
     COMPANY_SUFFIXES_RE,  # noqa: F401
@@ -58,8 +58,8 @@ from opencold.discovery_data import (
     HIGH_VALUE_ROLE_PREFIXES,  # noqa: F401
     INTERNAL_DETAIL_HINTS,  # noqa: F401
     INTERNAL_SKIP_PARTS,  # noqa: F401
-    LINKEDIN_SEARCH_QUERIES,
-    LINKEDIN_TARGET_ROLES_RE,
+    LINKEDIN_SEARCH_QUERIES,  # noqa: F401
+    LINKEDIN_TARGET_ROLES_RE,  # noqa: F401
     LINKEDIN_TITLE_RE,  # noqa: F401
     LOW_VALUE_ROLE_PREFIXES,  # noqa: F401
     NOISY_PRODUCT_RE,  # noqa: F401
@@ -118,14 +118,14 @@ from opencold.discovery_domains import (
 from opencold.discovery_domains import (
     normalize_domain as normalize_domain,
 )
-from opencold.discovery_employment import verify_current_employment
+from opencold.discovery_employment import verify_current_employment  # noqa: F401
 from opencold.discovery_employment_parse import (
     _COMMON_ROLES_RE,  # noqa: F401
     _analyze_engine_results,  # noqa: F401
     _check_employment_dates,  # noqa: F401
     _company_in_title,  # noqa: F401
     _extract_linkedin_company_from_title,  # noqa: F401
-    _parse_linkedin_title,
+    _parse_linkedin_title,  # noqa: F401
 )
 from opencold.discovery_icp_score import _icp_evidence, _icp_match, _icp_terms, score_company
 from opencold.discovery_judge import (
@@ -135,11 +135,15 @@ from opencold.discovery_judge import (
     judge_companies,
 )
 from opencold.discovery_lead_score import _bad_company_name, score_lead
+from opencold.discovery_linkedin import search_linkedin_contacts
 from opencold.discovery_linkedin_parse import parse_linkedin_result_titles  # noqa: F401
 from opencold.discovery_models import CandidateCompany, Contact
 from opencold.discovery_pages import crawl_company_pages
 from opencold.discovery_person_contact import find_contact
-from opencold.discovery_person_match import _company_name_matches, _is_name_company_coincidence
+from opencold.discovery_person_match import (
+    _company_name_matches,  # noqa: F401
+    _is_name_company_coincidence,  # noqa: F401
+)
 from opencold.discovery_person_score import (
     _email_rank,  # noqa: F401
     _has_contact_page,  # noqa: F401
@@ -276,99 +280,6 @@ def __getattr__(name: str) -> str | None | bool:
     if name == "_REACHER_BIN":
         return discovery_reacher._REACHER_BIN
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-def search_linkedin_contacts(
-    company_name: str,
-    domain: str,
-    max_queries: int = _LINKEDIN_MAX_QUERIES,
-) -> list["Contact"]:
-    """Search for LinkedIn profiles matching the company via web search."""
-    contacts: list[Contact] = []
-    seen_names: set[str] = set()
-    queries_made = 0
-
-    for template in LINKEDIN_SEARCH_QUERIES:
-        if queries_made >= max_queries:
-            break
-        query = template.format(company=company_name)
-        if queries_made > 0:
-            time.sleep(_LINKEDIN_QUERY_DELAY)
-        queries_made += 1
-
-        results = web_search(query, num=10)
-        found_any = False
-        for result in results:
-            if "linkedin.com/in" not in result.url:
-                continue
-            parsed = _parse_linkedin_title(result.title)
-            if not parsed:
-                continue
-            name, role, company_in_title = parsed
-            if name.lower() in seen_names:
-                continue
-            if not _company_name_matches(company_in_title, company_name):
-                continue
-            # Skip name-company coincidences (e.g. "Matt Crisp" for company "Crisp")
-            if _is_name_company_coincidence(name, company_name, result.url):
-                continue
-            seen_names.add(name.lower())
-            confidence = 70 if LINKEDIN_TARGET_ROLES_RE.search(role) else 50
-            contacts.append(
-                Contact(
-                    name=name,
-                    role=role.strip().rstrip(",").strip(),
-                    contact_type="linkedin_profile",
-                    confidence=confidence,
-                    source_url=result.url,
-                )
-            )
-            found_any = True
-        if found_any:
-            break  # short-circuit: first successful query is enough
-
-    # Sort by role relevance: targeted roles first
-    contacts.sort(key=lambda c: 0 if LINKEDIN_TARGET_ROLES_RE.search(c.role or "") else 1)
-
-    # Verify employment for the top candidates
-    if _VERIFY_EMPLOYMENT and contacts:
-        verified: list[Contact] = []
-        any_hard_reject = False
-        for contact in contacts[:3]:  # Only verify top 3
-            is_current, reason = verify_current_employment(contact.name, company_name)
-            if is_current:
-                confidence = contact.confidence
-                if "disagreement" in reason:
-                    confidence = max(confidence - 15, 30)
-                verified.append(
-                    Contact(
-                        name=contact.name,
-                        role=contact.role,
-                        contact_type=contact.contact_type,
-                        confidence=confidence,
-                        source_url=contact.source_url,
-                    )
-                )
-            elif "contradict" in reason or "moved_to" in reason or "not_currently" in reason:
-                any_hard_reject = True
-            time.sleep(0.3)
-        if verified:
-            return verified
-        # Only use fallback for soft rejections (no results, search failed, etc.)
-        # If verification explicitly contradicted, don't return the contact
-        if not any_hard_reject and contacts[0].confidence >= 70:
-            return [
-                Contact(
-                    name=contacts[0].name,
-                    role=contacts[0].role,
-                    contact_type=contacts[0].contact_type,
-                    confidence=max(contacts[0].confidence - 20, 30),
-                    source_url=contacts[0].source_url,
-                )
-            ]
-        return []
-
-    return contacts
 
 
 def _search_result_allowed(url: str, domain: str) -> bool:
