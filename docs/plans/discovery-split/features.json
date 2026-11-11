@@ -140,7 +140,7 @@
       "_brave_search"
     ],
     "target_module": "src/opencold/discovery_search_primary.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "15-person_match",

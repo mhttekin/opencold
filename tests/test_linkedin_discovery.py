@@ -571,7 +571,7 @@ class TestWebSearch:
         assert len(results) == 1
         assert results[0].title == "DDG HTML Result"
 
-    @patch("opencold.discovery._get_serper_key", return_value="test-key")
+    @patch("opencold.discovery_search_primary._get_serper_key", return_value="test-key")
     @patch("opencold.discovery.urllib.request.urlopen")
     def test_serper_search_parses_response(self, mock_urlopen, _mock_key):
         import json
@@ -601,7 +601,7 @@ class TestWebSearch:
         assert results[0].title == "Jane Smith - Marketing - Acme | LinkedIn"
         assert results[0].url == "https://linkedin.com/in/js"
 
-    @patch("opencold.discovery._get_serper_key", return_value=None)
+    @patch("opencold.discovery_search_primary._get_serper_key", return_value=None)
     def test_serper_no_key_returns_empty(self, _mock_key):
         assert _serper_search("test") == []
 

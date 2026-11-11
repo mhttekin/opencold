@@ -48,17 +48,6 @@ Use one short block per unit with its starting commit, extraction result and
 verification verdict. Put detailed evidence in the commit body. Include the unit
 entry and queue status with its code. See plan.md for the session rules.
 
-## 10-csv — 2026-11-11 — Codex
-
-Starting commit `1176153`; mode=agent. Moved three CSV definitions with AST
-equality and facade identity into a 41-line owner. Ratchet 3,859 → 3,820.
-Checks passed (748 passed, 2 xfailed), both goldens unchanged, all 20 eval
-metrics matched, and fresh review passed. State audit: `COMPANY_CSV_FIELDS` and
-`COMPANY_PEOPLE_FIELDS` moved from discovery to discovery_csv; direct re-exports
-share the original list objects. No runtime mutations/rebinding, facade writes,
-dynamic writes or patches of the moved names were found; no patch retargeting
-was required. Left unstaged and uncommitted for the runner.
-
 ## 11-domains — 2026-11-11 — Codex
 
 Starting commit `3f4aa91`; mode=agent. Moved 13 domain definitions with AST
@@ -87,3 +76,5 @@ prerequisite checks across both files. Both 33-unit dry-run sweeps: 9 eligible,
 extension was needed: existing owner imports resolve after predecessors move;
 mutable state remains refused. Full checks passed (755 passed, 2 strict xfails);
 fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
+
+- 14-search_primary mode=tool, 3705→3577 lines
