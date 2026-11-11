@@ -275,7 +275,7 @@ def _llm_terms(icp: str, provider: dict) -> set[str]:
     Fail-silent. `provider` may be a paid key OR a local/hosted SLM via the proxy type."""
     try:
         from opencold import generator as _gen
-        from opencold.discovery import _parse_json_object
+        from opencold.discovery_seed import _parse_json_object
     except Exception:
         return set()
     user = (

@@ -278,7 +278,7 @@ class TestLlmSeeding:
         assert seed["local_directories"] == ["IDRA licensed insurers"]
 
     def test_seed_without_provider_returns_empty(self):
-        with patch("opencold.discovery._resolve_llm_provider", return_value=None):
+        with patch("opencold.discovery_seed._resolve_llm_provider", return_value=None):
             seed = discovery.seed_companies_via_llm("x", "y")
         assert seed == {"companies": [], "local_directories": []}
 

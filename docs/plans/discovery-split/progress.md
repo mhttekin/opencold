@@ -178,3 +178,14 @@ matched, and review passed. The regex objects are immutable; no mutable state
 moved. No writes, dynamic writes or patches targeting either constant were found;
 `size_tier` continues to read the facade imports. Loop session: left unstaged and
 uncommitted for the runner.
+
+## 08-seed — 2026-11-11 — Codex
+
+Starting commit `8644ff0`. Moved five seed definitions with AST equality and
+preserved facade identity into a 127-line owner. Ratchet 4,003 → 3,886. Checks
+passed (732 passed, 2 xfailed), both goldens unchanged, all 20 eval metrics
+matched, and review passed. No mutable state moved; no facade or dynamic writes
+were found for the moved names. The seeding resolver patch now targets its owner;
+the candidate-harvest patch stays at its consuming facade. Retargeted the lazy
+JSON-parser import in icp_expansion to the owner. Loop session: left unstaged and
+uncommitted for the runner.
