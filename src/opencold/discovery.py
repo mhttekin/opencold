@@ -149,6 +149,7 @@ from opencold.discovery_region_data import (
 from opencold.discovery_region_data import (
     _build_phone_cc as _build_phone_cc,
 )
+from opencold.discovery_search_html import _duckduckgo_search_urls, _fetch_search_html
 from opencold.discovery_search_models import SearchResult
 from opencold.discovery_seed import (
     _SEED_SYSTEM,  # noqa: F401
@@ -339,18 +340,6 @@ def discover_company_pool(
     # dropped leads (bad contacts, useless inboxes, stale employees, etc.)
     pool_size = max(limit * 5, limit + 20)
     return list(candidates.values())[:pool_size]
-
-
-def _duckduckgo_search_urls(query: str) -> list[str]:
-    encoded = quote_plus(query)
-    return [
-        f"https://html.duckduckgo.com/html/?q={encoded}",
-        f"https://lite.duckduckgo.com/lite/?q={encoded}",
-    ]
-
-
-def _fetch_search_html(url: str) -> str | None:
-    return enricher._fetch_html(url, timeout=SEARCH_TIMEOUT)
 
 
 # ---------------------------------------------------------------------------

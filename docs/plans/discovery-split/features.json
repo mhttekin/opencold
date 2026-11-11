@@ -128,7 +128,7 @@
       "_fetch_search_html"
     ],
     "target_module": "src/opencold/discovery_search_html.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "14-search_primary",

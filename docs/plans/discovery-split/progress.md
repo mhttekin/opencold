@@ -218,3 +218,5 @@ email helper's lazy normalize_domain import to its owner. Left unstaged and
 uncommitted for the runner.
 
 - 12-pages mode=tool, 3731→3716 lines
+
+- 13-search_html mode=tool, 3716→3705 lines
