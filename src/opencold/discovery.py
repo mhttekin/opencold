@@ -44,7 +44,7 @@ from opencold.discovery_data import (
     BAD_PERSON_WORDS,
     COMPANY_SUFFIXES_RE,
     CTA_TEXT,
-    DISCOVERY_PATHS,
+    DISCOVERY_PATHS,  # noqa: F401
     EMAIL_RE,
     EXEC_ROLE_RE,
     GUESSED_ROLE_EMAILS,
@@ -112,6 +112,7 @@ from opencold.discovery_domains import (
     normalize_domain as normalize_domain,
 )
 from opencold.discovery_models import CandidateCompany, Contact
+from opencold.discovery_pages import crawl_company_pages
 from opencold.discovery_region_data import (
     _AMBIGUOUS as _AMBIGUOUS,
 )
@@ -338,22 +339,6 @@ def discover_company_pool(
     # dropped leads (bad contacts, useless inboxes, stale employees, etc.)
     pool_size = max(limit * 5, limit + 20)
     return list(candidates.values())[:pool_size]
-
-
-def crawl_company_pages(website: str, max_pages: int = 5) -> list[enricher.PageContent]:
-    """Crawl pages useful for both company facts and public contacts."""
-    base = enricher.normalize_url(website)
-    if not base:
-        return []
-    parsed = urlparse(base)
-    origin = f"{parsed.scheme}://{parsed.netloc}"
-    pages = []
-    for path in DISCOVERY_PATHS[:max_pages]:
-        url = origin if not path else urljoin(origin, path)
-        page = enricher.fetch_page(url)
-        if page.status == "ok":
-            pages.append(page)
-    return pages
 
 
 def _duckduckgo_search_urls(query: str) -> list[str]:
