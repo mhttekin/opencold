@@ -190,3 +190,89 @@ def test_dependency_refusal_clears_only_after_predecessor_moves(tmp_path):
     assert "from opencold.discovery_helper import helper" in owner
     assert "from opencold.discovery import" not in owner
     assert ast.dump(ast.parse(owner).body[-1]) == ast.dump(ast.parse(original).body[-1])
+
+
+PATCH_SOURCE = """\
+import time
+
+
+def key() -> str:
+    return "real"
+
+
+def fetch() -> str:
+    return key() + str(time.time())
+
+
+def remain() -> float:
+    return time.time()
+"""
+
+
+def write_test(root, text):
+    path = root / "tests/test_fixture_patches.py"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_retargets_patches_of_names_only_moved_code_uses(tmp_path):
+    source, target = fixture(tmp_path, PATCH_SOURCE, ["key", "fetch"])
+    tests = write_test(
+        tmp_path,
+        "from unittest.mock import patch\n\n"
+        "from opencold import discovery\n\n\n"
+        '@patch("opencold.discovery.key", return_value="fake")\n'
+        '@patch("opencold.discovery.time.time", return_value=1)\n'
+        "def test_string(_time, _key):\n"
+        "    pass\n\n\n"
+        "def test_objects(monkeypatch):\n"
+        '    monkeypatch.setattr(discovery, "key", lambda: "fake")\n'
+        '    with patch.object(discovery, "key", return_value="fake"):\n'
+        "        pass\n",
+    )
+    result = move(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.count("Retargeted patch: tests/test_fixture_patches.py:") == 3
+    assert "opencold.discovery.key -> opencold.discovery_fixture.key" in result.stdout
+    rewritten = tests.read_text()
+    assert rewritten.count('"opencold.discovery_fixture.key"') == 3
+    assert 'monkeypatch.setattr("opencold.discovery_fixture.key", lambda: "fake")' in rewritten
+    assert 'with patch("opencold.discovery_fixture.key", return_value="fake"):' in rewritten
+    # A deeper path patches the shared time module, so it keeps working unchanged.
+    assert '"opencold.discovery.time.time"' in rewritten
+    assert "from opencold import discovery\n" not in rewritten
+    assert "def fetch" in target.read_text()
+
+
+def test_shared_patch_target_refuses_without_writes(tmp_path):
+    source, target = fixture(tmp_path, PATCH_SOURCE, ["key", "fetch"])
+    text = (
+        "from unittest.mock import patch\n\n\n"
+        '@patch("opencold.discovery.time")\n'
+        "def test_clock(_time):\n"
+        "    pass\n"
+    )
+    tests = write_test(tmp_path, text)
+    result = move(tmp_path)
+    assert result.returncode == 1
+    reason = json.loads(result.stderr)
+    assert reason["category"] == "shared_patch_target"
+    assert "tests/test_fixture_patches.py:4 opencold.discovery.time" in reason["detail"]
+    assert tests.read_text() == text and source.read_text() == PATCH_SOURCE
+    assert not target.exists()
+
+
+def test_patch_of_name_moved_code_does_not_use_is_left_alone(tmp_path):
+    source, target = fixture(tmp_path, PATCH_SOURCE, ["key", "fetch"])
+    text = (
+        "from unittest.mock import patch\n\n\n"
+        '@patch("opencold.discovery.remain")\n'
+        "def test_remain(_remain):\n"
+        "    pass\n"
+    )
+    tests = write_test(tmp_path, text)
+    result = move(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "Retargeted" not in result.stdout
+    assert tests.read_text() == text

@@ -396,7 +396,8 @@ def test_real_mover_through_runner_in_temporary_repo(checkout, monkeypatch):
     import ruff
 
     repo, calls, _ = checkout
-    shutil.copy2(ROOT / "scripts/move_defs.py", repo / "scripts/move_defs.py")
+    for name in ("move_defs.py", "patch_targets.py"):
+        shutil.copy2(ROOT / "scripts" / name, repo / "scripts" / name)
     # Keep retained code above the ratchet boundary while moving a small function.
     code = (
         "def retained():\n    return (\n"
@@ -411,7 +412,7 @@ def test_real_mover_through_runner_in_temporary_repo(checkout, monkeypatch):
     units = json.loads(features.read_text())
     units[0]["functions"] = ["moved"]
     features.write_text(json.dumps(units))
-    git(repo, "add", "--", "src", "tests", "scripts/move_defs.py", str(PLAN))
+    git(repo, "add", "--", "src", "tests", "scripts", str(PLAN))
     git(repo, "commit", "-m", "Set real mover fixture")
     git(repo, "push", "origin", "main")
     monkeypatch.setenv("PYTHONPATH", str(Path(ruff.__file__).resolve().parent.parent))
@@ -423,6 +424,70 @@ def test_real_mover_through_runner_in_temporary_repo(checkout, monkeypatch):
     assert "def moved():" not in source.read_text()
     log = next((repo / ".agent-logs").glob("01-first-*"))
     assert "AST equality: PASS" in (log / "checks.log").read_text()
+
+
+def test_real_mover_retargets_test_patches_through_runner(checkout, monkeypatch):
+    import ruff
+
+    repo, calls, _ = checkout
+    for name in ("move_defs.py", "patch_targets.py"):
+        shutil.copy2(ROOT / "scripts" / name, repo / "scripts" / name)
+    code = (
+        "def retained():\n    return (\n"
+        + "".join(f"        {number},\n" for number in range(405))
+        + "    )\n\n\ndef key():\n    return 1\n\n\ndef moved():\n    return key()\n"
+    )
+    source = repo / "src/opencold/discovery.py"
+    source.write_text(code)
+    ratchet = repo / "tests/test_invariants.py"
+    ratchet.write_text(ratchet.read_text().replace("405", str(len(code.splitlines()))))
+    patched = repo / "tests/test_patched.py"
+    patched.write_text(
+        "from unittest.mock import patch\n\n\n"
+        '@patch("opencold.discovery.key", return_value=2)\n'
+        "def test_moved(_key):\n    pass\n"
+    )
+    features = repo / PLAN / "features.json"
+    units = json.loads(features.read_text())
+    units[0]["functions"] = ["key", "moved"]
+    features.write_text(json.dumps(units))
+    git(repo, "add", "--", "src", "tests", "scripts", str(PLAN))
+    git(repo, "commit", "-m", "Set real mover fixture")
+    git(repo, "push", "origin", "main")
+    monkeypatch.setenv("PYTHONPATH", str(Path(ruff.__file__).resolve().parent.parent))
+    result = run(repo, "codex", "--max-units", "1")
+    assert result.returncode == 0, result.stderr
+    assert git(repo, "log", "-1", "--format=%s") == "Split discovery: 01-first (tool)"
+    body = git(repo, "log", "-1", "--format=%b")
+    assert "Retargeted patch: tests/test_patched.py:4 opencold.discovery.key" in body
+    assert '"opencold.discovery_first.key"' in patched.read_text()
+    assert "tests/test_patched.py" in git(repo, "show", "--name-only", "--format=", "HEAD")
+
+
+def test_retarget_gate_rejects_other_test_edits(checkout, monkeypatch):
+    from scripts import unit_checks
+
+    repo, _, _ = checkout
+    monkeypatch.chdir(repo)
+    tests = unit_checks.retargeted_tests(
+        ["Retargeted patch: tests/test_x.py:4 opencold.discovery.key -> opencold.discovery_a.key"]
+    )
+    assert tests == {"tests/test_x.py": {"opencold.discovery_a.key"}}
+    with pytest.raises(unit_checks.CheckFailed, match="invalid retarget"):
+        unit_checks.retargeted_tests(["Retargeted patch: ../x.py:1 a -> opencold.discovery_a.k"])
+    diff = (
+        '-@patch("opencold.discovery.key")\n+@patch("opencold.discovery_a.key")\n'
+        "-    assert value == 2\n"
+    )
+    monkeypatch.setattr(unit_checks, "output", lambda *args: diff)
+    with pytest.raises(unit_checks.CheckFailed, match="unexpected test removal"):
+        unit_checks.require_retarget_only("HEAD", "tests/test_x.py", tests["tests/test_x.py"])
+    monkeypatch.setattr(unit_checks, "output", lambda *args: diff.rsplit("-", 1)[0])
+    unit_checks.require_retarget_only("HEAD", "tests/test_x.py", tests["tests/test_x.py"])
+    other = diff.rsplit("-", 1)[0] + "-    discovery.cache_clear()\n"
+    monkeypatch.setattr(unit_checks, "output", lambda *args: other)
+    with pytest.raises(unit_checks.CheckFailed, match="unexpected test removal"):
+        unit_checks.require_retarget_only("HEAD", "tests/test_x.py", tests["tests/test_x.py"])
 
 
 @pytest.mark.parametrize("agent", ["codex", "claude"])

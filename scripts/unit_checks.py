@@ -159,6 +159,9 @@ def commit_unit(
 ) -> str:
     suffix = " (tool)" if mode == "tool" else ""
     message = ["-m", f"Split discovery: {unit}{suffix}"]
+    retargets = log / "retargets.txt"
+    if mode == "tool" and retargets.is_file():
+        message.extend(("-m", retargets.read_text(encoding="utf-8").strip()))
     if mode == "agent":
         notes = log / "commit-body.txt"
         require(not notes.is_symlink(), "commit body must be a regular file")
@@ -255,13 +258,69 @@ def lower_ratchet(before: int, after: int) -> bool:
     return True
 
 
-def verify_tool_unit(before: Snapshot, units: list[dict], unit: dict, log: Path) -> list[str]:
+RETARGET = "Retargeted patch: "
+
+
+def retargeted_tests(retargets: list[str]) -> dict[str, set[str]]:
+    """Map each test file move_defs.py retargeted to the new patch targets it reported."""
+    tests: dict[str, set[str]] = {}
+    for line in retargets:
+        location, _, change = line.removeprefix(RETARGET).partition(" ")
+        path = location.rsplit(":", 1)[0]
+        new = change.partition(" -> ")[2]
+        require(
+            line.startswith(RETARGET)
+            and re.fullmatch(r"tests/[\w/]+\.py", path) is not None
+            and re.fullmatch(r"opencold\.discovery_\w+\.\w+", new) is not None,
+            f"invalid retarget report: {line}",
+        )
+        tests.setdefault(path, set()).add(new)
+    return tests
+
+
+def require_retarget_only(head: str, path: str, targets: set[str]) -> None:
+    """The test diff may only swap patch targets, drop the facade import, or reflow."""
+    removed, added = [], []
+    for line in output("git", "diff", "-U0", "--no-color", head, "--", path).splitlines():
+        if not line.startswith(("---", "+++")) and line[:1] in "+-":
+            (added if line[0] == "+" else removed).append(line[1:].strip())
+
+    def trivial(line: str) -> bool:
+        return not line.strip("()[]{},@ ")
+
+    require(
+        any(target in line for line in added for target in targets),
+        f"{path}: retargeted patch missing",
+    )
+    for line in added:
+        ok = trivial(line) or line in removed or any(target in line for target in targets)
+        require(ok, f"{path}: unexpected test change: {line}")
+    names = {target.rsplit(".", 1)[1] for target in targets}
+
+    def old_patch(line: str) -> bool:
+        # opencold.discovery.<name> strings, patch.object/setattr(discovery, "<name>"), or the
+        # facade import a retarget can leave unused.
+        return line in ("from opencold import discovery", "import opencold.discovery") or any(
+            f"opencold.discovery.{name}" in line or f'discovery, "{name}"' in line for name in names
+        )
+
+    for line in removed:
+        ok = trivial(line) or line in added or old_patch(line)
+        require(ok, f"{path}: unexpected test removal: {line}")
+
+
+def verify_tool_unit(
+    before: Snapshot, units: list[dict], unit: dict, log: Path, retargets: list[str] = ()
+) -> list[str]:
     target = Path(unit["target_module"])
-    expected = {str(SOURCE), str(target)}
+    tests = retargeted_tests(list(retargets))
+    expected = {str(SOURCE), str(target), *tests}
     require(
         set(unit_changes(before.head)) == expected, "unexpected changed paths from move_defs.py"
     )
     require(target.is_file() and not target.is_symlink(), "expected a new regular target module")
+    for path, targets in tests.items():
+        require_retarget_only(before.head, path, targets)
     after_lines = len(SOURCE.read_bytes().splitlines())
     require(after_lines < before.discovery_lines, "discovery.py line count did not decrease")
     if lower_ratchet(before.discovery_lines, after_lines):

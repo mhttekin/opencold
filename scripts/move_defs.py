@@ -14,6 +14,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from patch_targets import plan_retargets
+
 SOURCE = Path("src/opencold/discovery.py")
 FEATURES = Path("docs/plans/discovery-split/features.json")
 DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
@@ -227,7 +229,9 @@ def preserve_facade_imports(text: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def prepare(original: str, target: Path, names: set[str]) -> tuple[str, str]:
+def prepare(
+    original: str, target: Path, names: set[str]
+) -> tuple[str, str, dict[Path, str], list[str]]:
     tree = parse(original)
     selected = select(tree, names)
     anchor = max((node.end_lineno for node in tree.body if isinstance(node, IMPORTS)), default=0)
@@ -281,10 +285,31 @@ def prepare(original: str, target: Path, names: set[str]) -> tuple[str, str]:
         raise Refusal("facade did not shrink")
     compile(owner, str(target), "exec")
     compile(facade, str(SOURCE), "exec")
-    return facade, owner
+    tests, report = retarget_tests(tree, selected, owner, target)
+    return facade, owner, tests, report
 
 
-def save(facade: str, target: Path, owner: str) -> None:
+def retarget_tests(
+    tree: ast.Module, selected: list[ast.stmt], owner: str, target: Path
+) -> tuple[dict[Path, str], list[str]]:
+    rewritten, report, shared = plan_retargets(tree, selected, parse(owner), target.stem)
+    if shared:
+        raise Refusal(
+            "test patch targets a name used by moved and remaining code: " + "; ".join(shared),
+            "shared_patch_target",
+        )
+    tests = {}
+    for path, text in rewritten.items():
+        # A retargeted patch.object(discovery, ...) can leave the facade import unused.
+        text = ruff(text, path, "check", "--fix", "--select", "F401")
+        text = ruff(text, path, "format")
+        ruff(text, path, "check")
+        compile(text, str(path), "exec")
+        tests[path] = text
+    return tests, report
+
+
+def save(facade: str, target: Path, owner: str, tests: dict[Path, str]) -> None:
     with tempfile.NamedTemporaryFile(
         mode="w", encoding="utf-8", dir=SOURCE.parent, delete=False
     ) as stream:
@@ -303,6 +328,13 @@ def save(facade: str, target: Path, owner: str) -> None:
                     raise
         finally:
             pending.unlink(missing_ok=True)
+    for path, text in tests.items():
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent, delete=False
+        ) as stream:
+            stream.write(text)
+        Path(stream.name).chmod(stat.S_IMODE(path.stat().st_mode))
+        Path(stream.name).replace(path)
 
 
 def main() -> int:
@@ -313,9 +345,9 @@ def main() -> int:
     try:
         target, names = load_unit(args.unit_id)
         original = SOURCE.read_text(encoding="utf-8")
-        facade, owner = prepare(original, target, names)
+        facade, owner, tests, report = prepare(original, target, names)
         if not args.dry_run:
-            save(facade, target, owner)
+            save(facade, target, owner, tests)
     except (OSError, SyntaxError, ValueError, KeyError, TypeError) as exc:
         print(
             json.dumps({"category": getattr(exc, "category", "invalid_input"), "detail": str(exc)}),
@@ -326,6 +358,8 @@ def main() -> int:
     print(f"{action} {len(names)} definitions to {target}: {', '.join(sorted(names))}")
     print(f"discovery.py: {len(original.splitlines())} -> {len(facade.splitlines())} lines")
     print("AST equality: PASS (moved and remaining definitions)")
+    for line in report:
+        print(line if not args.dry_run else line.replace("Retargeted", "Would retarget", 1))
     return 0
 
 

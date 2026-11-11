@@ -208,7 +208,13 @@ stderr go to `.agent-logs/preflight-<agent>-<timestamp>/`.
 `move_defs.py <unit-id> --dry-run` validates the move without writing source or
 queue files. A refusal exits 1 with a JSON object on stderr (`category`, `detail`).
 Categories distinguish unresolved dependencies, mutable state, facade dependencies,
-dynamic lookup, unsupported structure, validation failures and invalid input.
+dynamic lookup, shared patch targets, unsupported structure, validation failures and invalid input.
+Test patches of `opencold.discovery.<name>` (string targets, `patch.object`,
+`monkeypatch.setattr`) where moved code looks up `<name>` would miss after the move.
+If only moved code uses `<name>`, the tool retargets them to the new module and
+prints one `Retargeted patch:` line each; the runner accepts those test files when
+their diff only swaps targets, and puts the lines in the commit body. If remaining
+code also uses `<name>`, it refuses with `shared_patch_target`.
 Unresolved helpers in pending predecessor units stay refused until those units
 move; never add imports from future, nonexistent modules or back to the facade.
 Mutable state remains an agent audit. Dry-run eligibility is against the current

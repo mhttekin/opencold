@@ -26,6 +26,7 @@ from scripts.unit_agent import (
 )
 from scripts.unit_checks import (
     PLAN,
+    RETARGET,
     CheckFailed,
     Snapshot,
     clean_tree,
@@ -106,7 +107,7 @@ def timestamp() -> str:
 def try_tool(before: Snapshot, units: list[dict], unit: dict, log: Path) -> list[str] | None:
     try:
         result = subprocess.run(
-            [sys.executable, "scripts/move_defs.py", unit["id"]],
+            [sys.executable, "-B", "scripts/move_defs.py", unit["id"]],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -131,7 +132,10 @@ def try_tool(before: Snapshot, units: list[dict], unit: dict, log: Path) -> list
                 }
             (log / "refusal.json").write_text(json.dumps(reason) + "\n", encoding="utf-8")
             raise CheckFailed(reason["detail"])
-        return verify_tool_unit(before, units, unit, log)
+        retargets = [line for line in result.stdout.splitlines() if line.startswith(RETARGET)]
+        if retargets:
+            (log / "retargets.txt").write_text("\n".join(retargets) + "\n", encoding="utf-8")
+        return verify_tool_unit(before, units, unit, log, retargets)
     except RUN_ERRORS as exc:
         refusal_path = log / "refusal.json"
         reason = (
