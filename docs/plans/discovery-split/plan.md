@@ -129,19 +129,24 @@ threading, progress callback contents and exception boundaries.
    on regressions. Move the generated, untracked report into `.agent-logs/` after
    comparing it so it does not leave the tree dirty. Preserve all existing
    assertions and strict xfails.
-5. Stage explicit paths and run `.agents/skills/review/SKILL.md` on the staged diff.
+5. Run `.agents/skills/review/SKILL.md`. In manual sessions, stage explicit paths
+   and review the staged diff. Under the loop, review an unstaged patch covering
+   both tracked changes and new files. Include new files with
+   `git diff --no-index /dev/null <path>` (exit 1 means there are differences).
    Fix FAIL findings or record why not. Re-review substantive corrections.
 6. Set `passes: true` and append to progress.md: unit id, agent used, starting
    commit, wall-clock duration, tokens/cost (`unavailable`; the operator fills it
    in), number of check.sh runs, golden/eval comparison, reviewer verdict, and any
-   retries or surprises. Commit the unit's code AND the progress/status update in
-   ONE commit, push to `origin/main`, and confirm CI is green on all Python
-   versions. Use the commands below when running under `run_units.sh`. Then STOP.
+   retries or surprises. Under the loop, leave changes uncommitted and unstaged.
+   The runner verifies, stages, commits, pushes and checks CI. In manual sessions,
+   commit the unit's code and progress/status update in one commit, push to
+   `origin/main` and confirm CI is green on all Python versions. Then STOP.
    Never use --no-verify. Use the resulting commit/CI run as the ending reference;
    do not create a separate log/status commit to record its own hash or CI result.
 7. If a unit turns out bigger than planned, split it in features.json, update this
-   dependency map, commit the plan change, and stop. Report judgement calls with
-   options/evidence; do not choose behavior changes for Mehmet.
+   dependency map, and stop. Manual sessions commit the plan change. Loop sessions
+   leave it uncommitted for inspection. Report judgement calls with options/evidence;
+   do not choose behavior changes for Mehmet.
 
 ## Running multiple sessions
 
@@ -156,25 +161,12 @@ remote `main` and prints the starting state without launching a session or writi
 logs. A live run starts one fresh session per unit and defaults to 20 minutes per
 session. Only one runner can operate on the checkout at a time.
 
-- Codex uses `exec --json`, workspace-write with shell networking disabled, and
-  approval policy `never`. Trust this project's `.codex` layer using Codex's
-  normal trust flow so `.codex/rules/discovery-split.rules` is active. Stage
-  explicit paths with `git add -- <paths>`. Run the fixed commit and push aliases
-  below, and use `gh run list`, `view`, and `watch` directly. The commit alias
-  takes one message and runs normal hooks. The push alias takes no arguments and
-  pushes `origin main`. Existing user and managed Codex rules still apply.
-  [Codex CLI](https://learn.chatgpt.com/docs/developer-commands#codex-exec) ·
-  [Codex command rules](https://learn.chatgpt.com/docs/agent-configuration/rules)
-
-  ```sh
-  git -c 'alias.discovery-commit=!f() { test "$#" -eq 1 && git commit -m "$1"; }; f' discovery-commit 'Extract discovery module'
-  git -c 'alias.discovery-push=!f() { test "$#" -eq 0 && git push origin main; }; f' discovery-push
-  ```
-
+- Codex uses `exec --json --ignore-rules`, workspace-write with shell networking
+  disabled, and approval policy `never`.
+  [Codex CLI](https://learn.chatgpt.com/docs/developer-commands#codex-exec)
 - Claude uses `-p --output-format json`, `dontAsk`, and the Bash sandbox with
-  unsandboxed retries disabled. The only runner-provided sandbox exceptions are
-  `git push origin main` and the same read-only `gh run` commands. Run them as
-  standalone commands. The invocation loads project settings and managed policy.
+  unsandboxed retries disabled, an empty network allowlist, and write denials for
+  Git metadata.
   [Claude CLI](https://code.claude.com/docs/en/cli-reference) ·
   [Claude sandbox](https://code.claude.com/docs/en/sandboxing)
 
@@ -185,10 +177,12 @@ in `before.json`. It also holds agent stdout (`stdout.jsonl` for Codex or
 The ignored `.agent-logs/usage.csv` records elapsed seconds and any token counts
 reported by the CLI. Input and cache counts retain each CLI's accounting convention.
 
-The runner stops at the first failed check and prints the log location. Inspect
-the agent's stdout, stderr and available check output before deciding how to
-proceed. A stopped session may already have committed or pushed. The runner
-leaves that state available for inspection and never retries a unit automatically.
+The runner validates the worktree before staging explicit paths under
+`src/opencold/`, `tests/` and `docs/plans/discovery-split/`. It commits with
+`Split discovery: <unit-id>`, pushes, and checks CI for that commit. On failure it
+leaves the tree for inspection and prints the log location and `git stash -u`.
+Stashing saves uncommitted changes. If the failure came after commit or push,
+inspect that commit and its CI before resuming.
 
 ## Runtime characterization golden
 

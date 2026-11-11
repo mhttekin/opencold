@@ -31,8 +31,10 @@ LOGS = Path(".agent-logs")
 PROMPT = (
     'Continue the discovery.py split. Follow "Rules for coding sessions" in '
     "docs/plans/discovery-split/plan.md. One unit only, then stop and report."
+    " This is a loop session. Review the unstaged changes, mark the unit done,"
+    " and leave all changes unstaged and uncommitted. The runner handles Git writes and CI."
 )
-CLAUDE_EXCEPTIONS = ("git push origin main", "gh run list *", "gh run view *", "gh run watch *")
+UNIT_PATHS = ("src/opencold/", "tests/", "docs/plans/discovery-split/")
 
 
 class CheckFailed(Exception):
@@ -53,12 +55,14 @@ def require(condition: bool, message: str) -> None:
 
 
 def output(*args: str) -> str:
-    result = subprocess.run(args, stdin=subprocess.DEVNULL, capture_output=True, text=True)
+    result = subprocess.run(
+        args, stdin=subprocess.DEVNULL, capture_output=True, text=True, errors="surrogateescape"
+    )
     require(
         result.returncode == 0,
         f"{shlex.join(args)} failed ({result.returncode}): {result.stderr.strip()}",
     )
-    return result.stdout.strip()
+    return result.stdout.rstrip("\n")
 
 
 def clean_tree() -> None:
@@ -125,6 +129,7 @@ def agent_command(agent: str) -> list[str]:
             "-a",
             "never",
             "exec",
+            "--ignore-rules",
             "--sandbox",
             "workspace-write",
             "-c",
@@ -134,20 +139,22 @@ def agent_command(agent: str) -> list[str]:
             "--json",
             PROMPT,
         ]
+    git_dirs = output(
+        "git", "rev-parse", "--path-format=absolute", "--git-common-dir", "--absolute-git-dir"
+    )
     settings = {
         "permissions": {
-            "allow": [
-                "Edit(./**)",
-                "Write(./**)",
-                *(f"Bash({command})" for command in CLAUDE_EXCEPTIONS),
-            ],
+            "allow": ["Edit(./**)", "Write(./**)"],
+            "deny": ["Edit(./.git)", "Edit(./.git/**)"],
         },
         "sandbox": {
             "enabled": True,
             "failIfUnavailable": True,
             "autoAllowBashIfSandboxed": True,
             "allowUnsandboxedCommands": False,
-            "excludedCommands": CLAUDE_EXCEPTIONS,
+            "excludedCommands": [],
+            "network": {"allowedDomains": []},
+            "filesystem": {"denyWrite": sorted({str(Path.cwd() / ".git"), *git_dirs.splitlines()})},
         },
     }
     return [
@@ -243,48 +250,79 @@ def checked(command: list[str], log: Path, label: str) -> None:
     require(status == 0, f"{label} failed (exit {status})")
 
 
-def verify_session(before: Snapshot, units: list[dict], unit: str, log: Path) -> str:
+def unit_changes(head: str) -> list[str]:
     on_main()
-    head = output("git", "rev-parse", "HEAD")
-    parents = output("git", "show", "-s", "--format=%P", head)
-    require(
-        parents == before.head, "expected exactly one new commit directly on top of starting HEAD"
-    )
-    synced(head)
+    require(output("git", "rev-parse", "HEAD") == head, "agent must leave HEAD unchanged")
+    status = output("git", "status", "--porcelain", "-z", "--no-renames", "--untracked-files=all")
+    changes = status.split("\0")[:-1]
+    require(all(entry[0] in " ?" for entry in changes), "agent must leave all changes unstaged")
+    paths = [entry[3:] for entry in changes]
+    outside = [path for path in paths if not path.startswith(UNIT_PATHS)]
+    require(not outside, f"unexpected changed paths: {outside!r}")
+    return paths
+
+
+def verify_session(before: Snapshot, units: list[dict], unit: str, log: Path) -> str:
+    unit_changes(before.head)
+    checked(["./scripts/check.sh"], log, "check.sh")
+    paths = unit_changes(before.head)
     after_units = queue()
-    after = snapshot(head, after_units)
+    after = snapshot(before.head, after_units)
     require(after.passes == before.passes + 1, "passes count did not increase by exactly one")
     expected = {entry["id"]: entry["passes"] or entry["id"] == unit for entry in units}
     require(
         {entry["id"]: entry["passes"] for entry in after_units} == expected,
         "passes changed outside the selected unit",
     )
-    clean_tree()
-    checked(["./scripts/check.sh"], log, "check.sh")
     require(after.golden_hashes == before.golden_hashes, "golden hash changed")
     require(
         after.discovery_lines < before.discovery_lines, "discovery.py line count did not decrease"
     )
-    runs = json.loads(
-        output(
-            "gh",
-            "run",
-            "list",
-            "--workflow",
-            "ci.yml",
-            "--branch",
-            "main",
-            "--event",
-            "push",
-            "--commit",
-            head,
-            "--limit",
-            "1",
-            "--json",
-            "databaseId,headSha",
-        )
+    synced(before.head)
+    checked(["git", "--literal-pathspecs", "add", "--", *paths], log, "git add")
+    checked(["git", "commit", "-m", f"Split discovery: {unit}"], log, "git commit")
+    head = output("git", "rev-parse", "HEAD")
+    require(
+        output("git", "show", "-s", "--format=%P", head) == before.head, "expected one new commit"
     )
-    require(bool(runs) and runs[0]["headSha"] == head, f"CI run for {head} was not found")
+    clean_tree()
+    checked(["git", "push", "origin", "main"], log, "git push")
+    synced(head)
+    verify_ci(head, log)
+    clean_tree()
+    on_main()
+    require(output("git", "rev-parse", "HEAD") == head, "HEAD changed during verification")
+    synced(head)
+    return head
+
+
+def verify_ci(head: str, log: Path) -> None:
+    deadline = time.monotonic() + 45
+    while True:
+        runs = json.loads(
+            output(
+                "gh",
+                "run",
+                "list",
+                "--workflow",
+                "ci.yml",
+                "--branch",
+                "main",
+                "--event",
+                "push",
+                "--commit",
+                head,
+                "--limit",
+                "1",
+                "--json",
+                "databaseId,headSha",
+            )
+        )
+        if runs:
+            break
+        require(time.monotonic() < deadline, f"CI run for {head} was not found")
+        time.sleep(3)
+    require(runs[0]["headSha"] == head, f"CI run for {head} was not found")
     run_id = str(runs[0]["databaseId"])
     checked(["gh", "run", "watch", run_id, "--exit-status"], log, "CI")
     result = json.loads(output("gh", "run", "view", run_id, "--json", "headSha,conclusion"))
@@ -292,11 +330,6 @@ def verify_session(before: Snapshot, units: list[dict], unit: str, log: Path) ->
         result["headSha"] == head and result["conclusion"] == "success",
         "CI did not conclude successfully for HEAD",
     )
-    clean_tree()
-    on_main()
-    require(output("git", "rev-parse", "HEAD") == head, "HEAD changed during verification")
-    synced(head)
-    return head
 
 
 def positive_int(value: str) -> int:
@@ -351,6 +384,7 @@ def run_units(args: argparse.Namespace) -> int:
                     f"Log: {log}. Inspect with ls {shlex.quote(str(log))} and cat the relevant log file.",
                     file=sys.stderr,
                 )
+            print("Reset uncommitted changes with git stash -u after inspection.", file=sys.stderr)
             return 1
     return 0
 
@@ -376,7 +410,8 @@ def main() -> int:
             f"Stopped before selecting a unit: could not lock {lock_path}: {exc}", file=sys.stderr
         )
         print(
-            "Log: none (session not started). Inspect any existing runner and its logs.",
+            "Log: none (session not started). Inspect any existing runner and its logs. "
+            "Reset uncommitted changes with git stash -u after inspection.",
             file=sys.stderr,
         )
         return 1

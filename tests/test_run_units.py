@@ -18,6 +18,8 @@ PLAN = Path("docs/plans/discovery-split")
 PROMPT = (
     'Continue the discovery.py split. Follow "Rules for coding sessions" in '
     "docs/plans/discovery-split/plan.md. One unit only, then stop and report."
+    " This is a loop session. Review the unstaged changes, mark the unit done,"
+    " and leave all changes unstaged and uncommitted. The runner handles Git writes and CI."
 )
 
 
@@ -91,7 +93,7 @@ if agent == 'gh':
     if sys.argv[1:3] == ['run', 'list']:
         head = sys.argv[sys.argv.index('--commit') + 1]
         assert head == git('rev-parse', 'HEAD')
-        print(json.dumps([] if os.environ.get('CI_MISSING') else [{'databaseId': 123, 'headSha': head}]))
+        print(json.dumps([{'databaseId': 123, 'headSha': 'wrong' if os.environ.get('CI_WRONG') else head}]))
     elif sys.argv[1:3] == ['run', 'watch']:
         assert sys.argv[3] == '123' and '--exit-status' in sys.argv
         sys.exit(int(os.environ.get('CI_EXIT', '0')))
@@ -120,13 +122,10 @@ if mode == 'golden':
     golden = Path('tests/fixtures/discover_golden_v2.json')
     golden.write_text('changed\\n')
     paths.append(str(golden))
-if mode != 'no-commit':
+if mode in ('staged', 'agent-commit'):
     git('add', '--', *paths)
+if mode == 'agent-commit':
     git('commit', '-m', 'Fixture unit')
-if mode == 'two-commits':
-    git('commit', '--allow-empty', '-m', 'Unexpected second commit')
-if mode not in ('no-push', 'no-commit'):
-    git('push', 'origin', 'main')
 if mode == 'dirty':
     Path('untracked.txt').touch()
 usage = {} if mode == 'no-usage' else {'input_tokens': 50, 'output_tokens': 25}
@@ -178,19 +177,20 @@ def test_success_runs_one_session_per_unit_and_logs_usage(checkout, agent):
     assert all(PROMPT in call for call in sessions)
     if agent == "codex":
         assert all(
-            "--json" in call and "workspace-write" in call and "never" in call for call in sessions
+            "--json" in call
+            and "workspace-write" in call
+            and "never" in call
+            and "--ignore-rules" in call
+            for call in sessions
         )
     else:
         assert all("-p" in call and "json" in call and "dontAsk" in call for call in sessions)
         settings = json.loads(sessions[0][sessions[0].index("--settings") + 1])
         assert settings["sandbox"]["failIfUnavailable"]
         assert not settings["sandbox"]["allowUnsandboxedCommands"]
-        assert settings["sandbox"]["excludedCommands"] == [
-            "git push origin main",
-            "gh run list *",
-            "gh run view *",
-            "gh run watch *",
-        ]
+        assert settings["sandbox"]["excludedCommands"] == []
+        assert settings["sandbox"]["network"]["allowedDomains"] == []
+        assert settings["sandbox"]["filesystem"]["denyWrite"] == [str(repo / ".git")]
     with (repo / ".agent-logs/usage.csv").open() as stream:
         usage = list(csv.DictReader(stream))
     assert [
@@ -204,6 +204,10 @@ def test_success_runs_one_session_per_unit_and_logs_usage(checkout, agent):
     assert json.loads(stdout.read_text())["usage"]["input_tokens"] == 50
     assert "diagnostic on stderr" in (log / "stderr.log").read_text()
     assert git(repo, "status", "--porcelain") == ""
+    assert git(repo, "log", "-2", "--format=%s").splitlines() == [
+        "Split discovery: 02-next",
+        "Split discovery: 01-first",
+    ]
 
 
 def test_dry_run_does_not_launch_or_write_logs(checkout):
@@ -265,18 +269,17 @@ def test_precondition_failure_does_not_launch(checkout, tmp_path, case, diagnost
     "mode,diagnostic",
     [
         ("exit", "agent exit 7"),
-        ("no-commit", "one new commit"),
-        ("two-commits", "one new commit"),
-        ("no-push", "origin/main"),
+        ("agent-commit", "leave HEAD unchanged"),
+        ("staged", "leave all changes unstaged"),
         ("no-pass", "passes count"),
         ("wrong-unit", "selected unit"),
-        ("dirty", "clean tree"),
+        ("dirty", "unexpected changed paths"),
         ("golden", "golden hash"),
         ("same-size", "line count"),
         ("check", "check.sh"),
         ("ci", "CI"),
         ("ci-skipped", "CI did not conclude successfully"),
-        ("ci-missing", "CI run for"),
+        ("ci-wrong", "CI run for"),
     ],
 )
 def test_postcondition_failure_stops_without_retry(checkout, monkeypatch, mode, diagnostic):
@@ -288,15 +291,19 @@ def test_postcondition_failure_stops_without_retry(checkout, monkeypatch, mode, 
         monkeypatch.setenv("CI_EXIT", "1")
     if mode == "ci-skipped":
         monkeypatch.setenv("CI_CONCLUSION", "skipped")
-    if mode == "ci-missing":
-        monkeypatch.setenv("CI_MISSING", "1")
+    if mode == "ci-wrong":
+        monkeypatch.setenv("CI_WRONG", "1")
+    head = git(repo, "rev-parse", "HEAD")
     result = run(repo)
     assert result.returncode != 0
     assert diagnostic in result.stderr and "01-first" in result.stderr
     assert "Inspect" in result.stderr
+    assert "git stash -u" in result.stderr
     log = next((repo / ".agent-logs").glob("01-first-*"))
     assert log.name in result.stderr
     assert [call[0] for call in calls_from(calls)].count("codex") == 1
+    if not mode.startswith("ci"):
+        assert git(repo, "rev-parse", "origin/main") == head
 
 
 def test_missing_usage_does_not_create_csv(checkout, monkeypatch):
