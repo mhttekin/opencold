@@ -48,8 +48,6 @@ Use one short block per unit with its starting commit, extraction result and
 verification verdict. Put detailed evidence in the commit body. Include the unit
 entry and queue status with its code. See plan.md for the session rules.
 
-- 31-person_contact mode=tool, 2013→1918 lines
-
 - 32-region_fit mode=tool, 1918→1831 lines
 
 - 33-classify mode=tool, 1831→1794 lines
@@ -86,3 +84,5 @@ entry and queue status with its code. See plan.md for the session rules.
   `_wiki_api_get` patches still hit its callers in discovery.py.
 
 - 42-company_linkedin mode=tool, 943→910 lines
+
+- 43-wiki mode=tool, 910→788 lines

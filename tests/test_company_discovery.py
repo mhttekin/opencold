@@ -1009,7 +1009,7 @@ class TestWikipediaChannel:
         def fake_api(params):
             return search if params.get("list") == "search" else parse
 
-        with patch("opencold.discovery._wiki_api_get", side_effect=fake_api):
+        with patch("opencold.discovery_wiki._wiki_api_get", side_effect=fake_api):
             out = discovery.wikipedia_company_names("insurance companies", "Bangladesh")
         names = [n for n, _ in out]
         assert "Green Delta Insurance Company Ltd" in names
@@ -1024,7 +1024,7 @@ class TestWikipediaChannel:
                 ]
             }
         }
-        with patch("opencold.discovery._wiki_api_get", return_value=search):
+        with patch("opencold.discovery_wiki._wiki_api_get", return_value=search):
             titles = discovery.wikipedia_list_titles("insurance companies", "Bangladesh")
         assert titles == ["List of insurance companies in Bangladesh"]
 

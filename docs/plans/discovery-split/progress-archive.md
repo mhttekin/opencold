@@ -234,3 +234,5 @@ fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
 - 29-linkedin_parse mode=tool, 2197→2168 lines
 
 - 30-employment_parse mode=tool, 2168→2013 lines
+
+- 31-person_contact mode=tool, 2013→1918 lines
