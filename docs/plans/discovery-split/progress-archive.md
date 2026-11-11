@@ -185,3 +185,5 @@ mutable state remains refused. Full checks passed (755 passed, 2 strict xfails);
 fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
 
 - 14-search_primary mode=tool, 3705→3577 lines
+
+- 15-person_match mode=tool, 3577→3472 lines

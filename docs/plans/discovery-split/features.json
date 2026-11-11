@@ -251,7 +251,7 @@
       "score_lead"
     ],
     "target_module": "src/opencold/discovery_lead_score.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "24-person_score",
