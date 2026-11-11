@@ -20,6 +20,7 @@ from scripts.unit_agent import (
     PREFLIGHT_PROMPT,
     agent_command,
     agent_environment,
+    claude_git_dirs,
     verify_preflight,
     wait_for_agent,
 )
@@ -53,11 +54,7 @@ PROMPT = (
 
 
 def launch_agent(agent: str, prompt: str, log: Path, timeout_min: int, env: dict[str, str]) -> int:
-    git_dirs = []
-    if agent == "claude":
-        git_dirs = output(
-            "git", "rev-parse", "--path-format=absolute", "--git-common-dir", "--absolute-git-dir"
-        ).splitlines()
+    git_dirs = claude_git_dirs() if agent == "claude" else []
     return wait_for_agent(
         agent_command(agent, prompt, git_dirs),
         log / "stdout.jsonl",

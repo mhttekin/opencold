@@ -78,6 +78,8 @@ def checkout(tmp_path, monkeypatch):
         path.write_text(content)
     (repo / "scripts").mkdir()
     for name in (
+        "agent.sh",
+        "agent_session.py",
         "run_units.sh",
         "run_units.py",
         "unit_agent.py",
@@ -157,13 +159,19 @@ if agent == 'gh':
     sys.exit()
 
 home = Path.home()
-assert home.name.startswith('opencold-agent-')
-config = Path(os.environ['CODEX_HOME' if agent == 'codex' else 'CLAUDE_CONFIG_DIR'])
-assert config.parent == home and not (home / '.agents').exists()
-assert not (config / 'skills').exists()
-auth = config / ('auth.json' if agent == 'codex' else '.credentials.json')
-assert auth.read_text() == 'fixture credentials'
-assert auth.stat().st_mode & 0o777 == 0o600
+if agent == 'codex':
+    assert home.name.startswith('opencold-agent-')
+    config = Path(os.environ['CODEX_HOME'])
+    assert config.parent == home and not (home / '.agents').exists()
+    assert not (config / 'skills').exists()
+    auth = config / 'auth.json'
+    assert auth.read_text() == 'fixture credentials'
+    assert auth.stat().st_mode & 0o777 == 0o600
+else:
+    # Claude keeps the operator's login; launch flags do the isolation.
+    assert home.name == 'operator-home'
+    assert Path(os.environ['CLAUDE_CONFIG_DIR']) == home / 'claude-config'
+    assert sys.argv[sys.argv.index('--setting-sources') + 1] == 'project'
 if any(arg.startswith('Runner preflight.') for arg in sys.argv):
     mode = os.environ.get('PREFLIGHT_RESULT', 'success')
     cwd = str(Path.cwd())
@@ -192,6 +200,10 @@ if any(arg.startswith('Runner preflight.') for arg in sys.argv):
     else:
         events = [
             {'type': 'system', 'subtype': 'init', 'skills': skills},
+            *([{'type': 'assistant', 'error': 'authentication_failed', 'message': {
+                'model': '<synthetic>',
+                'content': [{'type': 'text', 'text': 'Not logged in'}]}}]
+              if mode == 'logged-out' else []),
             {'type': 'assistant', 'message': {'content': [
                 {'type': 'tool_use', 'name': 'Bash', 'input': {'command': 'pwd'}, 'id': 'pwd'}]}},
             {'type': 'user', 'message': {'content': [
@@ -434,6 +446,44 @@ def test_failed_agent_preflight_stops_before_first_unit(
     assert git(repo, "status", "--porcelain") == ""
 
 
+def test_logged_out_claude_preflight_names_the_login_error(checkout, monkeypatch):
+    repo, calls, _ = checkout
+    monkeypatch.setenv("PREFLIGHT_RESULT", "logged-out")
+    result = run(repo, "claude", "--preflight-only")
+    assert result.returncode == 1
+    assert "Claude authentication failed: Not logged in" in result.stderr
+
+
+@pytest.mark.parametrize("agent", ["codex", "claude"])
+def test_agent_sh_starts_interactive_session_with_runner_isolation(checkout, agent):
+    repo, calls, _ = checkout
+    # The preflight stub path prints events and exits, so a preflight-shaped argument is enough.
+    session = subprocess.run(
+        ["./scripts/agent.sh", agent, "Runner preflight. interactive"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert session.returncode == 0, session.stderr
+    assert run(repo, agent, "--preflight-only").returncode == 0
+    interactive, preflight = calls_from(calls)
+    assert interactive[-1] == "Runner preflight. interactive"
+    assert all(arg in preflight for arg in interactive[1:-1])
+    assert "exec" not in interactive and "-p" not in interactive
+    expected = "--settings" if agent == "claude" else "skills.bundled.enabled=false"
+    assert expected in interactive
+
+
+def test_agent_sh_rejects_unknown_agent(checkout):
+    repo, calls, _ = checkout
+    result = subprocess.run(
+        ["./scripts/agent.sh", "gemini"], cwd=repo, capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 2 and "usage" in result.stderr
+    assert not calls.exists()
+
+
 def test_preflight_only_runs_without_starting_units(checkout):
     repo, calls, _ = checkout
     head = git(repo, "rev-parse", "HEAD")
@@ -489,6 +539,9 @@ def test_success_runs_one_session_per_unit_and_logs_usage(checkout, agent):
         )
         settings = json.loads(sessions[0][sessions[0].index("--settings") + 1])
         assert settings["disableBundledSkills"]
+        assert not settings["autoMemoryEnabled"]
+        assert set(settings["skillOverrides"].values()) == {"off"}
+        assert not any(settings["enabledPlugins"].values())
         assert settings["sandbox"]["failIfUnavailable"]
         assert not settings["sandbox"]["allowUnsandboxedCommands"]
         assert settings["sandbox"]["excludedCommands"] == []

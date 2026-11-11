@@ -184,21 +184,19 @@ pre-unit checkout and starts a fresh agent-mode session. The session defaults to
   [Codex CLI](https://learn.chatgpt.com/docs/developer-commands#codex-exec)
 - Claude uses `-p --output-format stream-json --verbose`, `dontAsk`, and the Bash sandbox with
   unsandboxed retries disabled, an empty network allowlist, and write denials for
-  Git metadata. `--setting-sources project` selects project settings, and
-  `disableBundledSkills` turns off bundled skills.
+  Git metadata. `--setting-sources project` keeps user settings, user skills and user
+  CLAUDE.md out; `disableBundledSkills`, `skillOverrides` (CLI built-in skills),
+  `enabledPlugins` (CLI built-in plugins) and `autoMemoryEnabled: false` remove the rest.
   [Claude CLI](https://code.claude.com/docs/en/cli-reference) ·
   [Claude sandbox](https://code.claude.com/docs/en/sandboxing)
 
-The runner gives the agent a temporary `HOME` and sets its config directory
-there. It copies any file-based login into that directory and removes the
-directory when the runner exits. Each CLI applies its own shell sandbox.
+Codex gets a temporary `HOME` and config directory. The runner copies any file-based
+login into it and removes it when the runner exits. Claude keeps its normal `HOME`
+and config directory, because its macOS Keychain login is tied to them; a temporary
+home logs it out. Each CLI applies its own shell sandbox. `scripts/agent.sh
+codex|claude` starts an interactive session with the same launch flags.
 [Codex config](https://developers.openai.com/codex/config-advanced) ·
 [Claude settings](https://code.claude.com/docs/en/settings)
-
-Claude's macOS Keychain login is tied to its config directory. For a Keychain-only
-login, supply `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` or a valid
-`ANTHROPIC_API_KEY` in the runner environment.
-[Claude authentication](https://code.claude.com/docs/en/authentication#credential-management)
 
 Before the first agent fallback, the runner starts one preflight session
 with the same launch settings as agent-mode units. The recorded shell result must

@@ -1,4 +1,4 @@
-"""Set up scoped CLI homes and check evidence from the agent preflight."""
+"""Isolate agent CLI launches and check evidence from the agent preflight."""
 
 import json
 import os
@@ -17,37 +17,53 @@ PREFLIGHT_PROMPT = (
 )
 
 
+# Built-in plugins and skills that ship with the Claude CLI. The preflight fails and names
+# any new one, so add it here when a CLI update introduces more.
+CLAUDE_BUILTIN_PLUGINS = (
+    "cc-plugin-agents-md",
+    "cc-plugin-plugin-authoring",
+    "cc-plugin-privacy",
+    "cc-plugin-telemetry",
+)
+CLAUDE_BUILTIN_SKILLS = ("design", "doctor")
+
+
 @contextmanager
 def agent_environment(agent: str):
     env = os.environ.copy()
+    if agent == "claude":
+        # Claude keeps its normal HOME and config directory so its Keychain or file login
+        # works. Its launch flags limit settings, skills, plugins and MCP to the repository.
+        yield env
+        return
     home = Path.home()
     with TemporaryDirectory(prefix="opencold-agent-") as directory:
         scoped_home = Path(directory)
         env["HOME"] = directory
-        if agent == "codex":
-            key, default, auth = "CODEX_HOME", ".codex", "auth.json"
-        else:
-            key, default, auth = "CLAUDE_CONFIG_DIR", ".claude", ".credentials.json"
-        source = Path(env.get(key) or home / default) / auth
-        config = scoped_home / default
+        source = Path(env.get("CODEX_HOME") or home / ".codex") / "auth.json"
+        config = scoped_home / ".codex"
         config.mkdir(mode=0o700)
-        env[key] = str(config)
+        env["CODEX_HOME"] = str(config)
         # The CLI can update its own copy if it refreshes a file-based login.
         if source.is_file():
-            shutil.copyfile(source, config / auth)
-            (config / auth).chmod(0o600)
+            shutil.copyfile(source, config / "auth.json")
+            (config / "auth.json").chmod(0o600)
         yield env
 
 
-def agent_command(agent: str, prompt: str, git_dirs: list[str]) -> list[str]:
+def claude_git_dirs() -> list[str]:
+    return subprocess.run(
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir", "--absolute-git-dir"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+
+
+def isolation_args(agent: str, git_dirs: list[str]) -> list[str]:
+    """Launch flags shared by runner sessions and interactive scripts/agent.sh sessions."""
     if agent == "codex":
         return [
-            "codex",
-            "-a",
-            "never",
-            "exec",
-            "--ignore-rules",
-            "--ignore-user-config",
             "--disable",
             "plugins",
             "--disable",
@@ -60,13 +76,14 @@ def agent_command(agent: str, prompt: str, git_dirs: list[str]) -> list[str]:
             "sandbox_workspace_write.network_access=false",
             "-c",
             "sandbox_workspace_write.writable_roots=[]",
-            "--json",
-            prompt,
         ]
     settings = {
         "disableBundledSkills": True,
+        "autoMemoryEnabled": False,
+        "skillOverrides": dict.fromkeys(CLAUDE_BUILTIN_SKILLS, "off"),
+        "enabledPlugins": {f"{name}@builtin": False for name in CLAUDE_BUILTIN_PLUGINS},
         "permissions": {
-            "allow": ["Edit(./**)", "Write(./**)"],
+            "allow": ["Edit(./**)"],
             "deny": ["Edit(./.git)", "Edit(./.git/**)"],
         },
         "sandbox": {
@@ -80,14 +97,6 @@ def agent_command(agent: str, prompt: str, git_dirs: list[str]) -> list[str]:
         },
     }
     return [
-        "claude",
-        "-p",
-        prompt,
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--permission-mode",
-        "dontAsk",
         "--setting-sources",
         "project",
         "--settings",
@@ -97,6 +106,38 @@ def agent_command(agent: str, prompt: str, git_dirs: list[str]) -> list[str]:
         "--mcp-config",
         '{"mcpServers":{}}',
     ]
+
+
+def agent_command(agent: str, prompt: str, git_dirs: list[str]) -> list[str]:
+    if agent == "codex":
+        # exec-only flags; the temporary CODEX_HOME already hides user config and rules.
+        exec_only = ["--ignore-rules", "--ignore-user-config"]
+        return [
+            "codex",
+            "-a",
+            "never",
+            "exec",
+            *exec_only,
+            *isolation_args(agent, []),
+            "--json",
+            prompt,
+        ]
+    return [
+        "claude",
+        "-p",
+        prompt,
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--permission-mode",
+        "dontAsk",
+        *isolation_args(agent, git_dirs),
+    ]
+
+
+def interactive_command(agent: str, args: list[str]) -> list[str]:
+    git_dirs = claude_git_dirs() if agent == "claude" else []
+    return [agent, *isolation_args(agent, git_dirs), *args]
 
 
 def wait_for_agent(
@@ -187,6 +228,15 @@ def claude_pwd(events: list[dict], cwd: str) -> bool:
     return False
 
 
+def claude_auth_error(events: list[dict]) -> str:
+    """Text of the CLI's synthetic login error message, such as "Not logged in"."""
+    for event in events:
+        if event.get("type") == "assistant" and event.get("error") == "authentication_failed":
+            content = event.get("message", {}).get("content", [])
+            return " ".join(b.get("text", "") for b in content).strip() or "no detail"
+    return ""
+
+
 def verify_preflight(agent: str, stdout: Path, env: dict[str, str]) -> None:
     events = list(json_events(stdout))
     cwd = str(Path.cwd().resolve())
@@ -203,8 +253,14 @@ def verify_preflight(agent: str, stdout: Path, env: dict[str, str]) -> None:
     else:
         pwd_ok = claude_pwd(events, cwd)
         init = next((e for e in events if e["type"] == "system" and e["subtype"] == "init"), {})
-        review_only = init.get("skills") == ["review"]
+        if auth_error := claude_auth_error(events):
+            raise ValueError(f"Claude authentication failed: {auth_error}")
+        skills = init.get("skills")
+        review_only = skills == ["review"]
     if not pwd_ok:
         raise ValueError("no successful pwd tool result for the repository")
     if not review_only:
-        raise ValueError("expected the repository review skill as the only advertised skill")
+        detail = f" (advertised: {', '.join(skills)})" if agent == "claude" and skills else ""
+        raise ValueError(
+            f"expected the repository review skill as the only advertised skill{detail}"
+        )
