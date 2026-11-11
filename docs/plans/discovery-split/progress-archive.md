@@ -196,3 +196,5 @@ fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
   writes, setattr/globals writes or patch targets in src/tests/evals/scripts, so no
   state changed owner. Facade re-exports keep cli.py, evals and tests unchanged.
   Checks green, golden unchanged, eval metrics identical to baseline. Review: PASS.
+
+- 18-size mode=tool, 3220→3198 lines

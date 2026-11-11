@@ -48,8 +48,6 @@ Use one short block per unit with its starting commit, extraction result and
 verification verdict. Put detailed evidence in the commit body. Include the unit
 entry and queue status with its code. See plan.md for the session rules.
 
-- 18-size mode=tool, 3220→3198 lines
-
 - 19-company_csv mode=tool, 3198→3172 lines
 
 - 20-sources mode=agent, start `b54b051`, 3172→3027 lines; new discovery_sources.py 175.
@@ -73,3 +71,5 @@ entry and queue status with its code. See plan.md for the session rules.
 - 23-lead_score mode=tool, 2799→2734 lines
 
 - 24-person_score mode=tool, 2734→2610 lines
+
+- 25-country mode=tool, 2610→2579 lines
