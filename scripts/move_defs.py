@@ -23,6 +23,10 @@ IMPORTS = (ast.Import, ast.ImportFrom)
 class Refusal(ValueError):
     """The requested move needs manual review."""
 
+    def __init__(self, detail: str, category: str = "unsupported_structure"):
+        super().__init__(detail)
+        self.category = category
+
 
 def parse(source: str) -> ast.Module:
     return ast.parse(source, type_comments=True)
@@ -142,7 +146,7 @@ def select(tree: ast.Module, names: set[str]) -> list[ast.stmt]:
             if isinstance(child, ast.Import) and any(
                 alias.name == "opencold.discovery" for alias in child.names
             ):
-                raise Refusal(f"{name} imports the discovery facade")
+                raise Refusal(f"{name} imports the discovery facade", "facade_dependency")
             if isinstance(child, ast.ImportFrom) and (
                 child.module in {"opencold.discovery", "discovery"}
                 or (
@@ -150,16 +154,17 @@ def select(tree: ast.Module, names: set[str]) -> list[ast.stmt]:
                     and any(alias.name == "discovery" for alias in child.names)
                 )
             ):
-                raise Refusal(f"{name} imports the discovery facade")
+                raise Refusal(f"{name} imports the discovery facade", "facade_dependency")
             if (
                 isinstance(child, ast.Call)
                 and isinstance(child.func, ast.Name)
                 and child.func.id in {"globals", "eval", "exec"}
             ):
-                raise Refusal(f"{name} uses dynamic name lookup")
+                raise Refusal(f"{name} uses dynamic name lookup", "dynamic_lookup")
     if unsafe or globals_in_unit:
         raise Refusal(
-            f"mutable or rebound module-level state: {', '.join(sorted(unsafe | globals_in_unit))}"
+            f"mutable or rebound module-level state: {', '.join(sorted(unsafe | globals_in_unit))}",
+            "mutable_state",
         )
     return selected
 
@@ -192,7 +197,10 @@ def ruff(text: str, path: Path, *args: str, findings: bool = False) -> str:
     )
     if result.returncode not in ((0, 1) if findings else (0,)):
         raise Refusal(
-            f"Ruff could not prepare {path}: {result.stdout.strip() if not result.stderr else result.stderr.strip()}"
+            f"Ruff could not prepare {path}: {result.stdout.strip() if not result.stderr else result.stderr.strip()}",
+            "unresolved_dependency"
+            if "--select" in args and "F821,F822,F823" in args
+            else "validation_failed",
         )
     return result.stdout
 
@@ -300,16 +308,22 @@ def save(facade: str, target: Path, owner: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("unit_id")
+    parser.add_argument("--dry-run", action="store_true", help="Validate without writing files")
     args = parser.parse_args()
     try:
         target, names = load_unit(args.unit_id)
         original = SOURCE.read_text(encoding="utf-8")
         facade, owner = prepare(original, target, names)
-        save(facade, target, owner)
+        if not args.dry_run:
+            save(facade, target, owner)
     except (OSError, SyntaxError, ValueError, KeyError, TypeError) as exc:
-        print(f"Move refused: {exc}", file=sys.stderr)
+        print(
+            json.dumps({"category": getattr(exc, "category", "invalid_input"), "detail": str(exc)}),
+            file=sys.stderr,
+        )
         return 1
-    print(f"Moved {len(names)} definitions to {target}: {', '.join(sorted(names))}")
+    action = "Would move" if args.dry_run else "Moved"
+    print(f"{action} {len(names)} definitions to {target}: {', '.join(sorted(names))}")
     print(f"discovery.py: {len(original.splitlines())} -> {len(facade.splitlines())} lines")
     print("AST equality: PASS (moved and remaining definitions)")
     return 0

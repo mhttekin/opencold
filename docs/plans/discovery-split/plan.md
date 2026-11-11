@@ -106,13 +106,16 @@ threading, progress callback contents and exception boundaries.
 
 ## Rules for coding sessions
 
-1. Start by reading progress.md, features.json and `git log -5`, then run
-   `./docs/plans/discovery-split/init.sh`. If it fails, stop and report. Read
-   AGENTS.md, relevant architecture and decisions too. Never repair unrelated gates.
+1. In manual sessions, read progress.md, features.json and `git log -5`, then
+   run `./docs/plans/discovery-split/init.sh`. In agent-mode loop sessions, start
+   from the runner's brief.md instead: its queue entry, live definition locations,
+   refusal, copied rules and last two progress entries are the working context.
+   Do not load the full plan/progress by default. Read AGENTS.md and only relevant
+   architecture/decisions. Run init.sh; stop on failure. Never repair unrelated gates.
 2. Do exactly ONE unit: the first one with `passes: false`. If it has a
    `requires` value, a matching `## <requires> — done` heading must exist in
-   progress.md before the session starts that unit. If it is missing, stop and
-   report the unmet prerequisite.
+   progress.md or progress-archive.md before the session starts that unit. The
+   runner checks this before writing a brief. If missing, stop and report it.
 3. Pure move: no behavior changes, no renames unless required. Keep re-exports
    in discovery.py. Do not fix known bugs, edit labels or extend legacy email code.
    In a manual session, first run `.venv/bin/python scripts/move_defs.py <unit-id>`.
@@ -203,6 +206,28 @@ show a successful `pwd` in the checkout, and the CLI must advertise only the
 repository `review` skill. Any failure stops the run before the agent session starts.
 `--preflight-only` runs this check without starting a unit. Its stdout and
 stderr go to `.agent-logs/preflight-<agent>-<timestamp>/`.
+
+`move_defs.py <unit-id> --dry-run` validates the move without writing source or
+queue files. A refusal exits 1 with a JSON object on stderr (`category`, `detail`).
+Categories distinguish unresolved dependencies, mutable state, facade dependencies,
+dynamic lookup, unsupported structure, validation failures and invalid input.
+Unresolved helpers in pending predecessor units stay refused until those units
+move; never add imports from future, nonexistent modules or back to the facade.
+Mutable state remains an agent audit. Dry-run eligibility is against the current
+checkout and does not imply runtime goldens or postchecks have run.
+
+The runner records every tool fallback in `.agent-logs/refusals.csv` with UTC
+timestamp, unit, category, detail and log directory. Validation failures after a
+successful move use `postcheck_failed`; missing/invalid mover JSON uses
+`tool_process_failed`. The fallback's `brief.md` contains its queue entry,
+refusal, current function locations, compatibility/session rules copied from this
+plan, and the last two progress entries. The agent prompt points to that brief.
+Rules are maintained here, not independently in the brief generator.
+
+Progress retains the baseline/template and the last five session entries;
+older entries move verbatim to `progress-archive.md`. Historical tool bullets
+count as entries. The runner compacts before committing each completed unit;
+prerequisite checks read both files.
 
 Each `.agent-logs/<unit>-<timestamp>/` directory contains the starting commit,
 passes count, discovery line count, and SHA-256 hashes of both golden snapshots

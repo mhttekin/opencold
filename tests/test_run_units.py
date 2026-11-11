@@ -15,13 +15,10 @@ from scripts.run_units import wait_for_agent
 
 ROOT = Path(__file__).resolve().parents[1]
 PLAN = Path("docs/plans/discovery-split")
-PROMPT = (
-    'Continue the discovery.py split. Follow "Rules for coding sessions" in '
-    "docs/plans/discovery-split/plan.md. One unit only, then stop and report."
-    " The runner attempted move_defs.py and restored the checkout. This is an agent-mode loop session."
-    " Run the review skill on the unstaged changes, mark the unit done,"
-    " and leave all changes unstaged and uncommitted. The runner handles Git writes and CI."
-)
+
+
+def unit_prompt(call):
+    return next(arg for arg in call if arg.startswith("Continue the discovery.py split."))
 
 
 def git(repo, *args):
@@ -64,6 +61,11 @@ def checkout(tmp_path, monkeypatch):
                 },
             ]
         ),
+        PLAN / "plan.md": (
+            "## Compatibility and seams\n\nKeep facade identity.\n\n"
+            "## Rules for coding sessions\n\nPreserve assertions.\n\n"
+            "## Running multiple sessions\n\nOther documentation.\n"
+        ),
         PLAN / "progress.md": "## golden-v2 — done\n",
         "src/opencold/discovery.py": "one\ntwo\nthree\n" + "# filler\n" * 402,
         "tests/test_invariants.py": 'GRANDFATHERED = {\n    "discovery.py": 405,\n}\n',
@@ -81,6 +83,7 @@ def checkout(tmp_path, monkeypatch):
         "unit_agent.py",
         "unit_checks.py",
         "unit_usage.py",
+        "unit_context.py",
     ):
         shutil.copy2(ROOT / "scripts" / name, repo / "scripts" / name)
     (repo / ".venv/bin").mkdir(parents=True)
@@ -452,7 +455,7 @@ def test_success_runs_one_session_per_unit_and_logs_usage(checkout, agent):
     assert len(sessions) == 2
     assert any(arg.startswith("Runner preflight.") for arg in preflight)
     assert all(
-        [arg for arg in call if arg != PROMPT]
+        [arg for arg in call if arg != unit_prompt(call)]
         == [arg for arg in preflight if not arg.startswith("Runner preflight.")]
         for call in sessions
     )
@@ -464,7 +467,13 @@ def test_success_runs_one_session_per_unit_and_logs_usage(checkout, agent):
         ["run", "watch"],
         ["run", "view"],
     ]
-    assert all(PROMPT in call for call in sessions)
+    for call in sessions:
+        prompt = unit_prompt(call)
+        assert "plan.md" not in prompt and "progress.md" not in prompt
+        brief_path = prompt.split("Read ", 1)[1].split(" first.", 1)[0]
+        brief = (repo / brief_path).read_text()
+        assert '"category": "tool_process_failed"' in brief
+        assert "Keep facade identity." in brief and "Preserve assertions." in brief
     if agent == "codex":
         assert all(
             "--json" in call
@@ -630,3 +639,23 @@ def test_agent_timeout_preserves_output_and_stops_child_processes(tmp_path):
     assert stdout.read_text() == "started\n"
     time.sleep(1)
     assert not marker.exists()
+
+
+def test_runner_records_structured_refusal_and_brief(checkout):
+    repo, _, _ = checkout
+    mover = repo / "scripts/move_defs.py"
+    mover.write_text(
+        "import json, sys\nprint(json.dumps({'category': 'mutable_state', 'detail': 'CACHE needs audit'}), file=sys.stderr)\nsys.exit(1)\n"
+    )
+    git(repo, "add", "scripts/move_defs.py")
+    git(repo, "commit", "-m", "Structured refusal fixture")
+    git(repo, "push", "origin", "main")
+    result = run(repo, "codex", "--max-units", "1")
+    assert result.returncode == 0, result.stderr
+    with (repo / ".agent-logs/refusals.csv").open() as stream:
+        rows = list(csv.DictReader(stream))
+    assert len(rows) == 1
+    assert rows[0]["unit"] == "01-first"
+    assert rows[0]["category"] == "mutable_state"
+    assert rows[0]["detail"] == "CACHE needs audit"
+    assert "CACHE needs audit" in (repo / rows[0]["log"] / "brief.md").read_text()

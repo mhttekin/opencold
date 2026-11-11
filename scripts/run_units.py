@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import fcntl
 import json
 import os
@@ -26,7 +27,6 @@ from scripts.unit_checks import (
     PLAN,
     CheckFailed,
     Snapshot,
-    checked,
     clean_tree,
     commit_unit,
     on_main,
@@ -41,15 +41,14 @@ from scripts.unit_checks import (
     verify_tool_unit,
     verify_unit,
 )
+from scripts.unit_context import compact_progress, write_brief
 from scripts.unit_usage import record_agent_usage, record_tool_usage
 
 LOGS = Path(".agent-logs")
 PROMPT = (
-    'Continue the discovery.py split. Follow "Rules for coding sessions" in '
-    "docs/plans/discovery-split/plan.md. One unit only, then stop and report."
-    " The runner attempted move_defs.py and restored the checkout. This is an agent-mode loop session."
-    " Run the review skill on the unstaged changes, mark the unit done,"
-    " and leave all changes unstaged and uncommitted. The runner handles Git writes and CI."
+    "Continue the discovery.py split. Read {brief} first. "
+    "It contains the selected unit, tool refusal, locations, relevant plan rules and recent progress. "
+    "One unit only. Leave changes unstaged and uncommitted; the runner handles Git writes and CI."
 )
 
 
@@ -83,7 +82,7 @@ def agent_preflight(agent: str, timeout_min: int, env: dict[str, str], log: Path
 def run_agent(agent: str, unit: str, log: Path, timeout_min: int, env: dict[str, str]) -> None:
     start = time.monotonic()
     try:
-        status = launch_agent(agent, PROMPT, log, timeout_min, env)
+        status = launch_agent(agent, PROMPT.format(brief=log / "brief.md"), log, timeout_min, env)
     except subprocess.TimeoutExpired as exc:
         raise CheckFailed(f"agent timed out after {timeout_min} minute(s)") from exc
     finally:
@@ -109,10 +108,58 @@ def timestamp() -> str:
 
 def try_tool(before: Snapshot, units: list[dict], unit: dict, log: Path) -> list[str] | None:
     try:
-        checked([sys.executable, "scripts/move_defs.py", unit["id"]], log, "move_defs.py")
+        result = subprocess.run(
+            [sys.executable, "scripts/move_defs.py", unit["id"]],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+        )
+        with (log / "checks.log").open("a", encoding="utf-8") as stream:
+            stream.write(f"$ move_defs.py {unit['id']}\n{result.stdout}{result.stderr}")
+        if result.returncode:
+            try:
+                reason = json.loads(result.stderr)
+                require(
+                    isinstance(reason, dict)
+                    and all(
+                        isinstance(reason.get(key), str) and reason[key]
+                        for key in ("category", "detail")
+                    ),
+                    "invalid mover refusal record",
+                )
+            except (ValueError, CheckFailed):
+                reason = {
+                    "category": "tool_process_failed",
+                    "detail": f"move_defs.py exit {result.returncode}: {result.stderr.strip()}",
+                }
+            (log / "refusal.json").write_text(json.dumps(reason) + "\n", encoding="utf-8")
+            raise CheckFailed(reason["detail"])
         return verify_tool_unit(before, units, unit, log)
     except RUN_ERRORS as exc:
+        refusal_path = log / "refusal.json"
+        reason = (
+            json.loads(refusal_path.read_text())
+            if refusal_path.exists()
+            else {"category": "postcheck_failed", "detail": str(exc)}
+        )
+        refusal_path.write_text(json.dumps(reason) + "\n", encoding="utf-8")
+        with (LOGS / "refusals.csv").open("a", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(
+                stream, fieldnames=("timestamp", "unit", "category", "detail", "log")
+            )
+            if stream.tell() == 0:
+                writer.writeheader()
+            writer.writerow(
+                dict(
+                    timestamp=timestamp(),
+                    unit=unit["id"],
+                    category=reason["category"],
+                    detail=reason["detail"],
+                    log=str(log),
+                )
+            )
         restore_unit(before.head, log)
+        write_brief(unit, reason, log)
         print(f"{unit['id']} tool attempt restored ({exc}). Falling back to agent.", flush=True)
         return None
     except KeyboardInterrupt:
@@ -174,6 +221,7 @@ def run_units(args: argparse.Namespace, stack: ExitStack) -> int:
                 run_agent(args.agent, unit_id, log, args.timeout_min, env)
                 paths = verify_unit(before, units, unit_id, log)
             duration = time.monotonic() - start
+            paths = sorted(set(paths) | set(compact_progress()))
             head = commit_unit(before, unit_id, mode, paths, log, green)
             pending += 1
             if mode == "tool":

@@ -102,7 +102,11 @@ def prerequisite(unit: dict) -> None:
     if "requires" in unit:
         name = unit["requires"]
         require(isinstance(name, str) and bool(name), "invalid requires value in features.json")
-        headings = PROGRESS.read_text(encoding="utf-8").splitlines()
+        archive = PLAN / "progress-archive.md"
+        text = PROGRESS.read_text(encoding="utf-8")
+        if archive.exists():
+            text += "\n" + archive.read_text(encoding="utf-8")
+        headings = text.splitlines()
         require(
             f"## {name} — done" in headings,
             f"prerequisite {name} is not marked done in {PLAN / 'progress.md'}",
