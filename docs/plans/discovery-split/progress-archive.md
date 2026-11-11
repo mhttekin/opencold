@@ -220,3 +220,5 @@ fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
   Checks green, golden unchanged, eval metrics identical to baseline. Review: PASS.
 
 - 23-lead_score mode=tool, 2799→2734 lines
+
+- 24-person_score mode=tool, 2734→2610 lines

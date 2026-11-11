@@ -319,7 +319,7 @@
       "parse_linkedin_result_titles"
     ],
     "target_module": "src/opencold/discovery_linkedin_parse.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "30-employment_parse",

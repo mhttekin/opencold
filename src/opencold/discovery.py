@@ -13,7 +13,7 @@ from dataclasses import dataclass, field  # noqa: F401
 from itertools import zip_longest
 from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse  # noqa: F401
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup  # noqa: F401
 
 from opencold import discovery_reacher, enricher, icp_phrases, translator
 from opencold import regions_data as rd
@@ -125,6 +125,7 @@ from opencold.discovery_judge import (
     judge_companies,
 )
 from opencold.discovery_lead_score import _bad_company_name, score_lead
+from opencold.discovery_linkedin_parse import parse_linkedin_result_titles  # noqa: F401
 from opencold.discovery_models import CandidateCompany, Contact
 from opencold.discovery_pages import crawl_company_pages
 from opencold.discovery_person_match import _company_name_matches, _is_name_company_coincidence
@@ -414,36 +415,6 @@ def resolve_company_website(
     if name_match:
         return name_match
     return None if require_match else fallback
-
-
-def parse_linkedin_result_titles(html: str) -> list[tuple[str, str, str, str]]:
-    """Extract (name, role, company, linkedin_url) from DDG results linking to LinkedIn profiles."""
-    soup = BeautifulSoup(html or "", "html.parser")
-    results: list[tuple[str, str, str, str]] = []
-    seen_names: set[str] = set()
-
-    for tag in soup.find_all("a", href=True):
-        href = tag.get("href", "")
-        absolute = urljoin("https://duckduckgo.com", href)
-        url = _unwrap_duckduckgo_url(absolute)
-        if "linkedin.com/in" not in url:
-            continue
-        text = _clean_text(tag.get_text(" ", strip=True))
-        if not text:
-            continue
-        match = LINKEDIN_TITLE_RE.match(text)
-        if not match:
-            continue
-        name = match.group("name").strip()
-        role = match.group("role").strip()
-        company = match.group("company").strip()
-        if name.lower() in seen_names:
-            continue
-        if not _valid_person_name(name):
-            continue
-        seen_names.add(name.lower())
-        results.append((name, role, company, url))
-    return results
 
 
 def _parse_linkedin_title(title: str) -> tuple[str, str, str] | None:
