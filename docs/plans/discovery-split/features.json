@@ -342,7 +342,7 @@
       "find_contact"
     ],
     "target_module": "src/opencold/discovery_person_contact.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "32-region_fit",
