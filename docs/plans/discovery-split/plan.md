@@ -115,10 +115,11 @@ threading, progress callback contents and exception boundaries.
    report the unmet prerequisite.
 3. Pure move: no behavior changes, no renames unless required. Keep re-exports
    in discovery.py. Do not fix known bugs, edit labels or extend legacy email code.
-   First run `.venv/bin/python scripts/move_defs.py <unit-id>`. Read only the
-   relevant definitions and direct dependencies in discovery.py. Hand-edit the
-   extraction only if the tool refuses. Update the ratchet and any consumer
-   imports or test patches separately as needed.
+   In a manual session, first run `.venv/bin/python scripts/move_defs.py <unit-id>`.
+   In an agent-mode loop session, read the runner's tool attempt log and proceed
+   with the extraction after the runner restores the checkout. Read only the
+   relevant definitions and direct dependencies in discovery.py. Update the
+   ratchet and any consumer imports or test patches separately as needed.
    Moving mutable module-level state, including globals rebound at runtime and
    caches, is not a pure move. Record each state move and its old and new owner
    in progress.md. Grep for writes through the facade (`discovery.<name> = ...`)
@@ -127,19 +128,20 @@ threading, progress callback contents and exception boundaries.
 4. Verify: check.sh green; the golden test passes unchanged; every eval metric
    value identical to the exact baseline in progress.md. The discover eval scores
    a fixed CSV and does not exercise runtime code; it is only a sanity check.
-   Lower discovery.py's ratchet number to its new line count and
-   add the new module (under 400 lines) to the ratchet. Never raise a ratchet.
+   Lower discovery.py's ratchet number to its new line count, or remove its
+   exception once it reaches 400 lines. New modules must fit the 400-line limit.
    Inspect the generated eval JSON, since eval.sh reports deltas without failing
    on regressions. Move the generated, untracked report into `.agent-logs/` after
    comparing it so it does not leave the tree dirty. Preserve all existing
    assertions and strict xfails.
 5. Run `.agents/skills/review/SKILL.md`. In manual sessions, stage explicit paths
-   and review the staged diff. Under the loop, review an unstaged patch covering
+   and review the staged diff. In agent-mode loop sessions, review an unstaged patch covering
    both tracked changes and new files. Include new files with
    `git diff --no-index /dev/null <path>` (exit 1 means there are differences).
    Fix FAIL findings or record why not. Re-review substantive corrections.
 6. Set `passes: true` and append one short block to progress.md using the template
-   below. Put timing, test runs, verification evidence and surprises in the
+   below. Include `mode=agent` in the progress entry for loop sessions.
+   Put timing, test runs, verification evidence and surprises in the
    commit body. Under the loop, write that body to the file named by
    `OPENCOLD_UNIT_NOTES` and leave changes uncommitted and unstaged.
    The runner verifies, stages, commits, pushes and checks CI. In manual sessions,
@@ -157,14 +159,21 @@ threading, progress callback contents and exception boundaries.
 ```sh
 scripts/run_units.sh --agent codex --max-units 3 --dry-run
 scripts/run_units.sh --agent codex --max-units 1 --preflight-only
-scripts/run_units.sh --agent claude --max-units 3 --timeout-min 20
+scripts/run_units.sh --agent claude --max-units 3 --timeout-min 20 --push-every 2
 ```
 
-Use the project `.venv` and authenticate the selected agent CLI, Git, and `gh`
-before running. Dry-run checks the next pending unit against the local and live
-remote `main` and prints the starting state without launching a session or writing
-logs. A live run starts one fresh session per unit and defaults to 20 minutes per
-session. Only one runner can operate on the checkout at a time.
+Use the project `.venv` and authenticate Git and `gh`. Agent fallback needs an
+authenticated agent CLI. Dry-run checks the next pending unit against the local
+and live remote `main` and prints the starting state. Only one runner can operate
+on the checkout at a time.
+
+After checking the unit's prerequisite, the runner calls `move_defs.py` directly.
+In tool mode, it updates the ratchet, marks the unit done, and appends one
+`mode=tool` progress line with the before and after line counts. The move tool's
+AST equality, unchanged goldens, `check.sh`, and the expected changed paths
+gate the commit. If the tool refuses or a postcheck fails, the runner restores the
+pre-unit checkout and starts a fresh agent-mode session. The session defaults to
+20 minutes and follows the coding-session rules above, including review.
 
 - Codex uses `exec --json --ignore-rules`, workspace-write with shell networking
   disabled, and approval policy `never`. `--ignore-user-config` skips user
@@ -188,30 +197,27 @@ login, supply `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` or a valid
 `ANTHROPIC_API_KEY` in the runner environment.
 [Claude authentication](https://code.claude.com/docs/en/authentication#credential-management)
 
-Before the first unit of a live run, the runner starts one preflight session
-with the same launch settings as the units. The recorded shell result must
+Before the first agent fallback, the runner starts one preflight session
+with the same launch settings as agent-mode units. The recorded shell result must
 show a successful `pwd` in the checkout, and the CLI must advertise only the
-repository `review` skill. Any failure stops the run before a unit starts.
+repository `review` skill. Any failure stops the run before the agent session starts.
 `--preflight-only` runs this check without starting a unit. Its stdout and
 stderr go to `.agent-logs/preflight-<agent>-<timestamp>/`.
 
 Each `.agent-logs/<unit>-<timestamp>/` directory contains the starting commit,
 passes count, discovery line count, and SHA-256 hashes of both golden snapshots
-in `before.json`. It also holds agent stdout (`stdout.jsonl`), `stderr.log`, and
-`checks.log` for validation output.
-The ignored `.agent-logs/usage.csv` records elapsed seconds and any token counts
-reported by the CLI. Input and cache counts retain each CLI's accounting convention.
-Measure the change against `05-contact_data` (about 1.04M reported Codex input
-tokens). Compare median input tokens for similarly sized units run with the same
-CLI and model. Report cached input separately and note which moves required
-manual extraction.
+in `before.json`. The tool attempt and validation output go to `checks.log`.
+Agent fallbacks also write `stdout.jsonl` and `stderr.log`. The ignored
+`.agent-logs/usage.csv` includes a `mode` column. Tool rows record elapsed move and
+validation time with zero tokens. Agent rows retain the CLI's token accounting.
 
-The runner validates the worktree before staging explicit paths under
-`src/opencold/`, `tests/` and `docs/plans/discovery-split/`. It commits with
-`Split discovery: <unit-id>`, pushes, and checks CI for that commit. On failure it
-leaves the tree for inspection and prints the log location and `git stash -u`.
-Stashing saves uncommitted changes. If the failure came after commit or push,
-inspect that commit and its CI before resuming.
+The runner stages explicit paths and commits each unit as
+`Split discovery: <unit-id> (tool)` or `Split discovery: <unit-id>` for agent mode.
+`--push-every N` defaults to one and pushes every N commits plus any final partial
+batch on a normal exit. The runner checks CI for the pushed HEAD before continuing.
+On failure it stops and prints the log location and any commit range since the
+last green push, using the starting synchronized tip for the first batch.
+Inspect the worktree, unpushed commits, and CI before resuming.
 
 ## Runtime characterization golden
 

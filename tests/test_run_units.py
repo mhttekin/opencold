@@ -18,7 +18,8 @@ PLAN = Path("docs/plans/discovery-split")
 PROMPT = (
     'Continue the discovery.py split. Follow "Rules for coding sessions" in '
     "docs/plans/discovery-split/plan.md. One unit only, then stop and report."
-    " This is a loop session. Review the unstaged changes, mark the unit done,"
+    " The runner attempted move_defs.py and restored the checkout. This is an agent-mode loop session."
+    " Run the review skill on the unstaged changes, mark the unit done,"
     " and leave all changes unstaged and uncommitted. The runner handles Git writes and CI."
 )
 
@@ -50,12 +51,22 @@ def checkout(tmp_path, monkeypatch):
         ".agents/skills/review/SKILL.md": "---\nname: review\n---\n",
         PLAN / "features.json": json.dumps(
             [
-                {"id": "01-first", "passes": False, "requires": "golden-v2"},
-                {"id": "02-next", "passes": False},
+                {
+                    "id": "01-first",
+                    "passes": False,
+                    "requires": "golden-v2",
+                    "target_module": "src/opencold/discovery_first.py",
+                },
+                {
+                    "id": "02-next",
+                    "passes": False,
+                    "target_module": "src/opencold/discovery_next.py",
+                },
             ]
         ),
         PLAN / "progress.md": "## golden-v2 — done\n",
-        "src/opencold/discovery.py": "one\ntwo\nthree\n",
+        "src/opencold/discovery.py": "one\ntwo\nthree\n" + "# filler\n" * 402,
+        "tests/test_invariants.py": 'GRANDFATHERED = {\n    "discovery.py": 405,\n}\n',
         "tests/fixtures/discover_golden.json": "[]\n",
         "tests/fixtures/discover_golden_v2.json": "{}\n",
     }
@@ -64,11 +75,45 @@ def checkout(tmp_path, monkeypatch):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
     (repo / "scripts").mkdir()
-    for name in ("run_units.sh", "run_units.py", "unit_agent.py"):
+    for name in (
+        "run_units.sh",
+        "run_units.py",
+        "unit_agent.py",
+        "unit_checks.py",
+        "unit_usage.py",
+    ):
         shutil.copy2(ROOT / "scripts" / name, repo / "scripts" / name)
     (repo / ".venv/bin").mkdir(parents=True)
     (repo / ".venv/bin/python").symlink_to(sys.executable)
-    executable(repo / "scripts/check.sh", '#!/bin/sh\necho check.sh ran\nexit "${CHECK_EXIT:-0}"\n')
+    executable(
+        repo / "scripts/check.sh",
+        "#!/bin/sh\necho check.sh ran\n"
+        'if [ "$TOOL_RESULT" = check ] && [ -f src/opencold/discovery_first.py ]; then exit 9; fi\n'
+        'exit "${CHECK_EXIT:-0}"\n',
+    )
+    (repo / "scripts/move_defs.py").write_text("""
+import json
+import os
+import sys
+from pathlib import Path
+
+mode = os.environ.get("TOOL_RESULT", "refuse")
+unit_id = sys.argv[1]
+if mode == "refuse" or (mode == "first-only" and unit_id != "01-first"):
+    sys.exit(1)
+source = Path("src/opencold/discovery.py")
+source.write_text("\\n".join(source.read_text().splitlines()[:-1]) + "\\n")
+features = Path("docs/plans/discovery-split/features.json")
+unit = next(entry for entry in json.loads(features.read_text()) if entry["id"] == unit_id)
+Path(unit["target_module"]).write_text("# moved definition\\n")
+if mode == "dirty":
+    Path("outside.txt").touch()
+if mode == "golden":
+    Path("tests/fixtures/discover_golden.json").write_text("changed\\n")
+if mode == "partial":
+    sys.exit(1)
+print("AST equality: PASS (moved and remaining definitions)")
+""")
     git(repo, "add", "--", ".gitignore", ".agents", "docs", "scripts", "src", "tests")
     git(repo, "commit", "-m", "Initial fixture")
     git(repo, "push", "-u", "origin", "main")
@@ -97,6 +142,8 @@ if agent == 'gh':
         print(json.dumps([{'databaseId': 123, 'headSha': 'wrong' if os.environ.get('CI_WRONG') else head}]))
     elif sys.argv[1:3] == ['run', 'watch']:
         assert sys.argv[3] == '123' and '--exit-status' in sys.argv
+        if os.environ.get('CI_FAIL_SECOND') and '02-next' in git('log', '-1', '--format=%s'):
+            sys.exit(1)
         sys.exit(int(os.environ.get('CI_EXIT', '0')))
     elif sys.argv[1:3] == ['run', 'view']:
         assert sys.argv[3] == '123'
@@ -152,6 +199,10 @@ if any(arg.startswith('Runner preflight.') for arg in sys.argv):
     sys.exit()
 
 mode = os.environ.get('AGENT_RESULT', 'success')
+if os.environ.get('EXPECT_RESTORED'):
+    assert git('status', '--porcelain') == ''
+    assert Path('src/opencold/discovery.py').read_text().count('\\n') == 405
+    assert '"discovery.py": 405' in Path('tests/test_invariants.py').read_text()
 if mode == 'exit':
     sys.exit(7)
 features = Path('docs/plans/discovery-split/features.json')
@@ -220,6 +271,145 @@ def calls_from(path):
     return [json.loads(line) for line in path.read_text().splitlines()]
 
 
+@pytest.mark.parametrize("batch_size", ["2", "3"])
+def test_tool_units_batch_without_launching_agents(checkout, monkeypatch, batch_size):
+    repo, calls, _ = checkout
+    monkeypatch.setenv("TOOL_RESULT", "success")
+    monkeypatch.setenv("PREFLIGHT_RESULT", "pwd")
+    result = run(repo, "codex", "--push-every", batch_size, "--max-units", "3")
+    assert result.returncode == 0, result.stderr
+    assert [call[:3] for call in calls_from(calls)] == [
+        ["gh", "run", "list"],
+        ["gh", "run", "watch"],
+        ["gh", "run", "view"],
+    ]
+    assert git(repo, "log", "-2", "--format=%s").splitlines() == [
+        "Split discovery: 02-next (tool)",
+        "Split discovery: 01-first (tool)",
+    ]
+    assert git(repo, "rev-parse", "HEAD") == git(repo, "rev-parse", "origin/main")
+    assert git(repo, "status", "--porcelain") == ""
+    assert '"discovery.py": 403' in (repo / "tests/test_invariants.py").read_text()
+    progress = (repo / PLAN / "progress.md").read_text()
+    assert "01-first" in progress and "405→404" in progress
+    assert "02-next" in progress and "404→403" in progress
+    assert progress.count("mode=tool") == 2
+    with (repo / ".agent-logs/usage.csv").open() as stream:
+        rows = list(csv.DictReader(stream))
+    assert [row["mode"] for row in rows] == ["tool", "tool"]
+    assert all(row["input_tokens"] == row["output_tokens"] == "0" for row in rows)
+    assert all(float(row["duration_seconds"]) >= 0 for row in rows)
+
+
+@pytest.mark.parametrize("failure", ["partial", "dirty", "golden", "check"])
+def test_tool_failure_restores_before_agent(checkout, monkeypatch, failure):
+    repo, calls, _ = checkout
+    monkeypatch.setenv("TOOL_RESULT", failure)
+    monkeypatch.setenv("EXPECT_RESTORED", "1")
+    result = run(repo, "codex", "--max-units", "1")
+    assert result.returncode == 0, result.stderr
+    assert git(repo, "log", "-1", "--format=%s") == "Split discovery: 01-first"
+    assert [call[0] for call in calls_from(calls)].count("codex") == 2
+    assert "mode=tool" not in (repo / PLAN / "progress.md").read_text()
+    assert not (repo / "src/opencold/discovery_first.py").exists()
+
+
+def test_failed_batch_prints_range(checkout, monkeypatch):
+    repo, calls, _ = checkout
+    baseline = git(repo, "rev-parse", "HEAD")
+    monkeypatch.setenv("TOOL_RESULT", "success")
+    monkeypatch.setenv("CI_EXIT", "1")
+    result = run(repo, "codex", "--push-every", "2")
+    assert result.returncode == 1, result.stderr
+    head = git(repo, "rev-parse", "HEAD")
+    assert f"{baseline}..{head}" in result.stderr
+    assert git(repo, "rev-list", "--count", f"{baseline}..{head}") == "2"
+    assert [call[0] for call in calls_from(calls)] == ["gh", "gh"]
+
+
+def test_ci_range_starts_at_last_successful_push(checkout, monkeypatch):
+    repo, _, _ = checkout
+    monkeypatch.setenv("TOOL_RESULT", "success")
+    monkeypatch.setenv("CI_FAIL_SECOND", "1")
+    result = run(repo)
+    assert result.returncode == 1, result.stderr
+    head = git(repo, "rev-parse", "HEAD")
+    green = git(repo, "rev-parse", "HEAD~1")
+    assert f"{green}..{head}" in result.stderr
+
+
+def test_mixed_batch_migrates_legacy_usage_rows(checkout, monkeypatch):
+    repo, calls, _ = checkout
+    logs = repo / ".agent-logs"
+    logs.mkdir()
+    usage_path = logs / "usage.csv"
+    usage_path.write_text(
+        "unit,agent,duration_seconds,input_tokens,output_tokens,cached_input_tokens,"
+        "cache_creation_input_tokens\nold,codex,1.000,600000,2,500000,\n"
+    )
+    monkeypatch.setenv("TOOL_RESULT", "first-only")
+    result = run(repo, "codex", "--push-every", "2")
+    assert result.returncode == 0, result.stderr
+    assert [call[0] for call in calls_from(calls)] == ["codex", "codex", "gh", "gh", "gh"]
+    with usage_path.open() as stream:
+        rows = list(csv.DictReader(stream))
+    assert [row["mode"] for row in rows] == ["agent", "tool", "agent"]
+    assert rows[0]["input_tokens"] == "600000" and rows[0]["cached_input_tokens"] == "500000"
+    assert git(repo, "log", "-2", "--format=%s").splitlines() == [
+        "Split discovery: 02-next",
+        "Split discovery: 01-first (tool)",
+    ]
+
+
+def test_tool_ratchet_exception_removed_at_400_lines(checkout, monkeypatch):
+    repo, _, _ = checkout
+    source = repo / "src/opencold/discovery.py"
+    source.write_text("\n".join(source.read_text().splitlines()[:401]) + "\n")
+    ratchet = repo / "tests/test_invariants.py"
+    ratchet.write_text(ratchet.read_text().replace("405", "401"))
+    git(repo, "add", "--", "src/opencold/discovery.py", "tests/test_invariants.py")
+    git(repo, "commit", "-m", "Set boundary")
+    git(repo, "push", "origin", "main")
+    monkeypatch.setenv("TOOL_RESULT", "success")
+    result = run(repo)
+    assert result.returncode == 0, result.stderr
+    assert '"discovery.py"' not in ratchet.read_text()
+    assert len(source.read_text().splitlines()) == 399
+
+
+def test_real_mover_through_runner_in_temporary_repo(checkout, monkeypatch):
+    import ruff
+
+    repo, calls, _ = checkout
+    shutil.copy2(ROOT / "scripts/move_defs.py", repo / "scripts/move_defs.py")
+    # Keep retained code above the ratchet boundary while moving a small function.
+    code = (
+        "def retained():\n    return (\n"
+        + "".join(f"        {number},\n" for number in range(405))
+        + "    )\n\n\ndef moved():\n    return 1\n"
+    )
+    source = repo / "src/opencold/discovery.py"
+    source.write_text(code)
+    ratchet = repo / "tests/test_invariants.py"
+    ratchet.write_text(ratchet.read_text().replace("405", str(len(code.splitlines()))))
+    features = repo / PLAN / "features.json"
+    units = json.loads(features.read_text())
+    units[0]["functions"] = ["moved"]
+    features.write_text(json.dumps(units))
+    git(repo, "add", "--", "src", "tests", "scripts/move_defs.py", str(PLAN))
+    git(repo, "commit", "-m", "Set real mover fixture")
+    git(repo, "push", "origin", "main")
+    monkeypatch.setenv("PYTHONPATH", str(Path(ruff.__file__).resolve().parent.parent))
+    result = run(repo, "codex", "--max-units", "1")
+    assert result.returncode == 0, result.stderr
+    assert [call[0] for call in calls_from(calls)] == ["gh", "gh", "gh"]
+    assert git(repo, "log", "-1", "--format=%s") == "Split discovery: 01-first (tool)"
+    assert "def moved():" in (repo / "src/opencold/discovery_first.py").read_text()
+    assert "def moved():" not in source.read_text()
+    log = next((repo / ".agent-logs").glob("01-first-*"))
+    assert "AST equality: PASS" in (log / "checks.log").read_text()
+
+
 @pytest.mark.parametrize("agent", ["codex", "claude"])
 @pytest.mark.parametrize(
     "mode,diagnostic", [("pwd", "pwd"), ("no-review", "review"), ("personal", "only advertised")]
@@ -234,7 +424,9 @@ def test_failed_agent_preflight_stops_before_first_unit(
     assert result.returncode == 1, result.stderr
     assert "preflight" in result.stderr and diagnostic in result.stderr
     assert len(calls_from(calls)) == 1
-    assert not list((repo / ".agent-logs").glob("01-first-*"))
+    log = next((repo / ".agent-logs").glob("01-first-*"))
+    assert "move_defs.py" in (log / "checks.log").read_text()
+    assert not (log / "stdout.jsonl").exists()
     assert git(repo, "rev-parse", "HEAD") == head
     assert git(repo, "status", "--porcelain") == ""
 
@@ -296,10 +488,11 @@ def test_success_runs_one_session_per_unit_and_logs_usage(checkout, agent):
     with (repo / ".agent-logs/usage.csv").open() as stream:
         usage = list(csv.DictReader(stream))
     assert [
-        (row["unit"], row["agent"], row["input_tokens"], row["output_tokens"]) for row in usage
+        (row["unit"], row["agent"], row["input_tokens"], row["output_tokens"], row["mode"])
+        for row in usage
     ] == [
-        ("01-first", agent, "50", "25"),
-        ("02-next", agent, "50", "25"),
+        ("01-first", agent, "50", "25", "agent"),
+        ("02-next", agent, "50", "25", "agent"),
     ]
     log = next((repo / ".agent-logs").glob("01-first-*"))
     stdout = log / "stdout.jsonl"
@@ -332,8 +525,12 @@ def test_dry_run_does_not_launch_or_write_logs(checkout):
         ("requires", "golden-v2"),
     ],
 )
-def test_precondition_failure_does_not_launch(checkout, tmp_path, case, diagnostic):
+@pytest.mark.parametrize("tool_result", ["refuse", "success"])
+def test_precondition_failure_does_not_launch(
+    checkout, tmp_path, monkeypatch, case, diagnostic, tool_result
+):
     repo, calls, remote = checkout
+    monkeypatch.setenv("TOOL_RESULT", tool_result)
     if case == "dirty":
         (repo / "untracked").touch()
     elif case == "wrong-branch":
@@ -366,6 +563,7 @@ def test_precondition_failure_does_not_launch(checkout, tmp_path, case, diagnost
     assert "01-first" in result.stderr and diagnostic in result.stderr
     assert "Inspect" in result.stderr
     assert not calls.exists()
+    assert not list((repo / ".agent-logs").glob("01-first-*"))
 
 
 @pytest.mark.parametrize(

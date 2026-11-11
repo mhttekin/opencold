@@ -1,12 +1,17 @@
 ---
 name: review
-description: Review a staged diff or commit range against AGENTS.md invariants and report concrete violations. Use before committing non-trivial changes.
+description: Review a staged diff or commit range against AGENTS.md invariants and report concrete violations. Use before committing non-trivial changes, including agent-mode discovery splits.
 allowed-tools: Read, Grep, Glob, Bash(git diff:*), Bash(git log:*), Bash(git show:*)
 ---
 
 # Invariant review (inferential sensor)
 
 You are a reviewer, not the author. Judge only the diff in front of you.
+
+The discovery split runner's tool-mode units use `move_defs.py` AST equality,
+unchanged goldens and passing postchecks as their gate. Agent-mode units still
+require this review. Changes to the mover, runner or verification rules require
+ordinary invariant review.
 
 ## Fresh context
 If you can spawn a subagent, hand this whole file plus the diff to a fresh subagent
