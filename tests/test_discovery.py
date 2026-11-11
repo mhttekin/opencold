@@ -165,7 +165,7 @@ class TestSearchResolver:
         assert not discovery._search_result_allowed("https://acme.dev/login", "acme.dev")
         assert not discovery._search_result_allowed("https://acme.dev/logo.png", "acme.dev")
 
-    @patch("opencold.discovery.web_search")
+    @patch("opencold.discovery_page_search.web_search")
     def test_search_company_page_urls_uses_same_domain_results(self, mock_search):
         mock_search.return_value = [
             discovery.SearchResult(title="Team", url="https://acme.dev/team"),
@@ -179,7 +179,7 @@ class TestSearchResolver:
         assert urls == ["https://acme.dev/team"]
 
     @patch("opencold.discovery.enricher.fetch_page")
-    @patch("opencold.discovery.search_company_page_urls")
+    @patch("opencold.discovery_page_search.search_company_page_urls")
     def test_search_company_pages_fetches_bounded_useful_results(self, mock_urls, mock_fetch_page):
         mock_urls.return_value = [
             "https://acme.dev/team",

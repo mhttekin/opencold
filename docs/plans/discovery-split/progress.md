@@ -66,3 +66,6 @@ entry and queue status with its code. See plan.md for the session rules.
 
 - 37-linkedin mode=agent, 1518→1429 lines. No state moved (function only; its
   constants stay in discovery_data).
+
+- 38-page_search mode=agent, 1429→1362 lines. No state moved (functions only; the
+  SEARCH_* constants stay in discovery_data).

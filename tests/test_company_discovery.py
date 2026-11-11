@@ -317,6 +317,7 @@ class TestEndToEnd:
         with (
             patch("opencold.discovery.discover_company_candidates", return_value=candidates),
             patch("opencold.discovery.web_search", return_value=[]),
+            patch("opencold.discovery_page_search.web_search", return_value=[]),
             patch(
                 "opencold.icp_expansion.expand_icp_grouped",
                 return_value=icp_expansion.ExpansionResult(),
@@ -353,6 +354,7 @@ class TestEndToEnd:
         with (
             patch("opencold.discovery.web_search", return_value=[]),
             patch("opencold.discovery_linkedin.web_search", return_value=[]),
+            patch("opencold.discovery_page_search.web_search", return_value=[]),
             patch("opencold.enricher._fetch_html", _fetch_for({"acme.test": PLAIN_HTML})),
         ):
             row = discovery.build_company_row(company, "saas", "USA", find_people=True)

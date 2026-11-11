@@ -443,6 +443,7 @@ class TestExpansionEndToEnd:
         with (
             patch("opencold.discovery.discover_company_candidates", return_value=candidates),
             patch("opencold.discovery.web_search", return_value=[]),
+            patch("opencold.discovery_page_search.web_search", return_value=[]),
             patch("opencold.enricher._fetch_html", _fetch_for(html)),
             patch(
                 "opencold.icp_expansion.expand_icp_grouped",
