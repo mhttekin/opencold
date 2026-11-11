@@ -65,9 +65,9 @@ def pick_company_email(emails: list, domain: str, known_names=()) -> tuple[str, 
     ranked highest. A mailbox matching a known person outranks all role inboxes.
     On-domain emails are preferred over off-domain ones.
     """
-    from opencold import discovery  # lazy: discovery imports this module
     from opencold.discovery_contact_data import COMPANY_EMAIL_PRIORITY
     from opencold.discovery_data import ROLE_PREFIXES
+    from opencold.discovery_domains import normalize_domain
 
     best: tuple[int, str, str, str] | None = None
     for email, url in emails:
@@ -81,7 +81,7 @@ def pick_company_email(emails: list, domain: str, known_names=()) -> tuple[str, 
         else:
             default = 45 if local in ROLE_PREFIXES else 55
             rank, etype = COMPANY_EMAIL_PRIORITY.get(local, default), "role_inbox"
-        if discovery.normalize_domain(email_host) != domain:
+        if normalize_domain(email_host) != domain:
             # Penalize off-domain emails enough that any on-domain inbox wins, but
             # a sole freemail address (common for local SMEs) is still returned.
             rank -= 35

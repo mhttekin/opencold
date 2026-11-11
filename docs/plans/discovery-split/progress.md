@@ -202,3 +202,17 @@ metrics matched, and fresh review passed. State audit: `COMPANY_CSV_FIELDS` and
 share the original list objects. No runtime mutations/rebinding, facade writes,
 dynamic writes or patches of the moved names were found; no patch retargeting
 was required. Left unstaged and uncommitted for the runner.
+
+## 11-domains — 2026-11-11 — Codex
+
+Starting commit `3f4aa91`; mode=agent. Moved 13 domain definitions with AST
+equality and facade identity into a 136-line owner. Ratchet 3,820 → 3,731.
+Checks passed (748 passed, 2 xfailed), both goldens unchanged, all 20 eval
+metrics matched, and fresh review passed. State audit: `_SECOND_LEVEL_TLDS`,
+`_AGGREGATOR_DOMAINS` and `_AGGREGATOR_STEMS` moved from discovery to
+discovery_domains; direct re-exports share the original sets. No runtime
+mutations/rebinding, facade writes, dynamic writes or patches targeting these
+sets were found. Existing normalize_domain patches remain at their consuming
+smearch facade; no moved helper patches required retargeting. Retargeted the
+email helper's lazy normalize_domain import to its owner. Left unstaged and
+uncommitted for the runner.
