@@ -9,7 +9,7 @@ import re
 import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field  # noqa: F401
 from itertools import zip_longest
 from pathlib import Path
 from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
@@ -27,6 +27,7 @@ from opencold.discovery_contact_data import (
 from opencold.discovery_contact_data import (
     COMPANY_EMAIL_PRIORITY as COMPANY_EMAIL_PRIORITY,
 )
+from opencold.discovery_contact_model import _CONTACT_PATHS, CompanyContacts
 from opencold.discovery_data import (
     _COMPANY_NAME_PAT as _COMPANY_NAME_PAT,
 )
@@ -2956,34 +2957,6 @@ def discover_company_candidates(
             _add(cand, "sources")
 
     return list(candidates.values())[: max(limit, 1)]
-
-
-# ---------------------------------------------------------------------------
-# Back-end: structured-data-first contact extraction
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class CompanyContacts:
-    emails: list = field(default_factory=list)  # list[tuple[email, source_url]]
-    phones: list = field(default_factory=list)
-    socials: list = field(default_factory=list)
-    address: str = ""
-    linkedin_company_url: str = ""
-    partnership_url: str = ""
-    company_name: str = ""
-
-
-_CONTACT_PATHS = (
-    "",
-    "/contact",
-    "/contact-us",
-    "/about",
-    "/about-us",
-    "/imprint",
-    "/legal",
-    "/company",
-)
 
 
 def _detect_phone_country(phones_joined: str) -> str | None:

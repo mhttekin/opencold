@@ -189,3 +189,5 @@ were found for the moved names. The seeding resolver patch now targets its owner
 the candidate-harvest patch stays at its consuming facade. Retargeted the lazy
 JSON-parser import in icp_expansion to the owner. Loop session: left unstaged and
 uncommitted for the runner.
+
+- 09-contact_model mode=tool, 3886→3859 lines

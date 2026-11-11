@@ -83,7 +83,7 @@
       "CompanyContacts"
     ],
     "target_module": "src/opencold/discovery_contact_model.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "10-csv",
