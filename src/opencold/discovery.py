@@ -19,8 +19,9 @@ from opencold import discovery_reacher, enricher, icp_phrases, translator  # noq
 from opencold import regions_data as rd  # noqa: F401
 from opencold.discovery_classify import _classify_company
 from opencold.discovery_company_csv import write_company_csv  # noqa: F401
+from opencold.discovery_company_linkedin import _linkedin_slug_matches, find_company_linkedin  # noqa: F401
 from opencold.discovery_contact_data import (
-    _LINKEDIN_COMPANY_RE,
+    _LINKEDIN_COMPANY_RE,  # noqa: F401
     _PHONE_RE,  # noqa: F401
     _SOCIAL_HOSTS,  # noqa: F401
     PARTNERSHIP_PATH_HINTS,  # noqa: F401
@@ -217,7 +218,7 @@ from opencold.discovery_region_data import (
     _build_phone_cc as _build_phone_cc,
 )
 from opencold.discovery_region_fit import region_fit
-from opencold.discovery_search import web_search
+from opencold.discovery_search import web_search  # noqa: F401
 from opencold.discovery_search_fallback import _ddg_html_search, _mojeek_search, _searxng_search  # noqa: F401
 from opencold.discovery_search_html import _duckduckgo_search_urls, _fetch_search_html  # noqa: F401
 from opencold.discovery_search_models import SearchResult  # noqa: F401
@@ -546,40 +547,6 @@ def discover_company_candidates(
             _add(cand, "sources")
 
     return list(candidates.values())[: max(limit, 1)]
-
-
-def _linkedin_slug_matches(url: str, company: str, domain: str) -> bool:
-    """Does a linkedin.com/company/<slug> plausibly belong to this company?
-
-    Search results for small companies are noisy — without this check the first
-    hit wins, attaching unrelated profiles (e.g. /company/cotiviti to "Macarpa").
-    Compares the slug against the company-name tokens and the domain stem; tiny
-    slugs (e.g. /company/t) can match anything, so they never pass.
-    """
-    slug = url.rstrip("/").rsplit("/", 1)[-1].lower()
-    slug_compact = re.sub(r"[^a-z0-9]", "", slug)
-    if len(slug_compact) < 3:
-        return False
-    stem = re.sub(r"[^a-z0-9]", "", domain.split(".")[0].lower())
-    candidates = {stem, "".join(_company_tokens(company))}
-    candidates |= {t for t in _company_tokens(company) if len(t) >= 4}
-    return any(c and (c in slug_compact or slug_compact in c) for c in candidates if len(c) >= 3)
-
-
-def find_company_linkedin(company: str, contacts: CompanyContacts, domain: str) -> str:
-    if contacts.linkedin_company_url:
-        return contacts.linkedin_company_url
-    try:
-        for result in web_search(f'"{company}" site:linkedin.com/company', num=5):
-            match = _LINKEDIN_COMPANY_RE.search(result.url)
-            if not match:
-                continue
-            url = match.group(0).split("?")[0]
-            if _linkedin_slug_matches(url, company, domain):
-                return url
-    except Exception:
-        pass
-    return ""
 
 
 # ---------------------------------------------------------------------------

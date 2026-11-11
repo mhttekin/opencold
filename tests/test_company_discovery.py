@@ -294,7 +294,7 @@ class TestCandidateHarvest:
         with (
             patch("opencold.discovery._resolve_llm_provider", return_value=None),
             patch("opencold.discovery.wikipedia_company_names", return_value=[]),
-            patch("opencold.discovery.web_search", return_value=results),
+            patch("opencold.discovery_company_linkedin.web_search", return_value=results),
             patch("opencold.discovery_query.web_search", return_value=results),
         ):
             cands = discovery.discover_company_candidates("insurance", "Bangladesh", limit=10)
@@ -317,7 +317,7 @@ class TestEndToEnd:
         }
         with (
             patch("opencold.discovery.discover_company_candidates", return_value=candidates),
-            patch("opencold.discovery.web_search", return_value=[]),
+            patch("opencold.discovery_company_linkedin.web_search", return_value=[]),
             patch("opencold.discovery_page_search.web_search", return_value=[]),
             patch(
                 "opencold.icp_expansion.expand_icp_grouped",
@@ -353,7 +353,7 @@ class TestEndToEnd:
     def test_find_people_adds_contact_columns(self):
         company = CandidateCompany("Acme", "https://acme.test", "src", "search", "search")
         with (
-            patch("opencold.discovery.web_search", return_value=[]),
+            patch("opencold.discovery_company_linkedin.web_search", return_value=[]),
             patch("opencold.discovery_linkedin.web_search", return_value=[]),
             patch("opencold.discovery_page_search.web_search", return_value=[]),
             patch("opencold.enricher._fetch_html", _fetch_for({"acme.test": PLAIN_HTML})),

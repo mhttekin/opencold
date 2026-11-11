@@ -232,3 +232,5 @@ fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
 - 28-search_fallback mode=tool, 2333→2197 lines
 
 - 29-linkedin_parse mode=tool, 2197→2168 lines
+
+- 30-employment_parse mode=tool, 2168→2013 lines
