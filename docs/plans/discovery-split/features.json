@@ -150,7 +150,7 @@
       "_is_name_company_coincidence"
     ],
     "target_module": "src/opencold/discovery_person_match.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "16-icp_score",
