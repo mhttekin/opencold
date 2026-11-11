@@ -208,3 +208,13 @@ fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
   Owner moved discovery→discovery_sources, facade re-exports it. Five tests now patch
   `opencold.discovery_sources._fetch_source`, where the lookup happens. Checks green,
   golden unchanged, eval metrics identical to baseline. Review: PASS.
+
+- 21-search_parse mode=tool, 3027→2986 lines
+
+- 22-translation mode=agent, start `54c9db7`, 2986→2799 lines; new discovery_translation.py 205.
+  Tool refused `_NATIVE_FUNCTION_WORDS` as mutable_state. Audit: a set bound once, only
+  read via `in`, never mutated or rebound. No `discovery.<name> =` writes, setattr/globals
+  writes or patch targets for it in src/tests/evals/scripts. Owner moved
+  discovery→discovery_translation, facade re-exports it (identity checked). Tests patch
+  `opencold.translator.translate`, so no retargeting needed. Kept `_stem` facade alias.
+  Checks green, golden unchanged, eval metrics identical to baseline. Review: PASS.

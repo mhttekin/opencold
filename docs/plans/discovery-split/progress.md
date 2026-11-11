@@ -48,16 +48,6 @@ Use one short block per unit with its starting commit, extraction result and
 verification verdict. Put detailed evidence in the commit body. Include the unit
 entry and queue status with its code. See plan.md for the session rules.
 
-- 21-search_parse mode=tool, 3027→2986 lines
-
-- 22-translation mode=agent, start `54c9db7`, 2986→2799 lines; new discovery_translation.py 205.
-  Tool refused `_NATIVE_FUNCTION_WORDS` as mutable_state. Audit: a set bound once, only
-  read via `in`, never mutated or rebound. No `discovery.<name> =` writes, setattr/globals
-  writes or patch targets for it in src/tests/evals/scripts. Owner moved
-  discovery→discovery_translation, facade re-exports it (identity checked). Tests patch
-  `opencold.translator.translate`, so no retargeting needed. Kept `_stem` facade alias.
-  Checks green, golden unchanged, eval metrics identical to baseline. Review: PASS.
-
 - 23-lead_score mode=tool, 2799→2734 lines
 
 - 24-person_score mode=tool, 2734→2610 lines
@@ -65,3 +55,5 @@ entry and queue status with its code. See plan.md for the session rules.
 - 25-country mode=tool, 2610→2579 lines
 
 - 26-contacts mode=tool, 2579→2415 lines
+
+- 27-judge mode=tool, 2415→2333 lines

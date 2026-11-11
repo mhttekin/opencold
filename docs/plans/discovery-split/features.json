@@ -299,7 +299,7 @@
     ],
     "target_module": "src/opencold/discovery_judge.py",
     "requires": "golden-v2",
-    "passes": false
+    "passes": true
   },
   {
     "id": "28-search_fallback",
