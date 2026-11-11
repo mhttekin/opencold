@@ -156,6 +156,7 @@ threading, progress callback contents and exception boundaries.
 
 ```sh
 scripts/run_units.sh --agent codex --max-units 3 --dry-run
+scripts/run_units.sh --agent codex --max-units 1 --preflight-only
 scripts/run_units.sh --agent claude --max-units 3 --timeout-min 20
 ```
 
@@ -169,22 +170,35 @@ session. Only one runner can operate on the checkout at a time.
   disabled, and approval policy `never`. `--ignore-user-config` skips user
   settings, and CLI overrides disable plugins and bundled skills.
   [Codex CLI](https://learn.chatgpt.com/docs/developer-commands#codex-exec)
-- Claude uses `-p --output-format json`, `dontAsk`, and the Bash sandbox with
+- Claude uses `-p --output-format stream-json --verbose`, `dontAsk`, and the Bash sandbox with
   unsandboxed retries disabled, an empty network allowlist, and write denials for
   Git metadata. `--setting-sources project` selects project settings, and
   `disableBundledSkills` turns off bundled skills.
   [Claude CLI](https://code.claude.com/docs/en/cli-reference) ·
   [Claude sandbox](https://code.claude.com/docs/en/sandboxing)
 
-Loop sessions use the review skill in `.agents/skills/`. The launcher masks
-non-repo skill directories before CLI startup because config flags alone can
-still allow skill discovery. This uses `sandbox-exec` on macOS and `bwrap` on
-Linux, and stops if isolation cannot start. It leaves global configuration intact.
+The runner gives the agent a temporary `HOME` and sets its config directory
+there. It copies any file-based login into that directory and removes the
+directory when the runner exits. Each CLI applies its own shell sandbox.
+[Codex config](https://developers.openai.com/codex/config-advanced) ·
+[Claude settings](https://code.claude.com/docs/en/settings)
+
+Claude's macOS Keychain login is tied to its config directory. For a Keychain-only
+login, supply `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` or a valid
+`ANTHROPIC_API_KEY` in the runner environment.
+[Claude authentication](https://code.claude.com/docs/en/authentication#credential-management)
+
+Before the first unit of a live run, the runner starts one preflight session
+with the same launch settings as the units. The recorded shell result must
+show a successful `pwd` in the checkout, and the CLI must advertise only the
+repository `review` skill. Any failure stops the run before a unit starts.
+`--preflight-only` runs this check without starting a unit. Its stdout and
+stderr go to `.agent-logs/preflight-<agent>-<timestamp>/`.
 
 Each `.agent-logs/<unit>-<timestamp>/` directory contains the starting commit,
 passes count, discovery line count, and SHA-256 hashes of both golden snapshots
-in `before.json`. It also holds agent stdout (`stdout.jsonl` for Codex or
-`stdout.json` for Claude), `stderr.log`, and `checks.log` for validation output.
+in `before.json`. It also holds agent stdout (`stdout.jsonl`), `stderr.log`, and
+`checks.log` for validation output.
 The ignored `.agent-logs/usage.csv` records elapsed seconds and any token counts
 reported by the CLI. Input and cache counts retain each CLI's accounting convention.
 Measure the change against `05-contact_data` (about 1.04M reported Codex input

@@ -47,6 +47,7 @@ def checkout(tmp_path, monkeypatch):
     git(repo, "remote", "add", "origin", str(remote))
     files = {
         ".gitignore": ".agent-logs/\n.venv/\n",
+        ".agents/skills/review/SKILL.md": "---\nname: review\n---\n",
         PLAN / "features.json": json.dumps(
             [
                 {"id": "01-first", "passes": False, "requires": "golden-v2"},
@@ -68,7 +69,7 @@ def checkout(tmp_path, monkeypatch):
     (repo / ".venv/bin").mkdir(parents=True)
     (repo / ".venv/bin/python").symlink_to(sys.executable)
     executable(repo / "scripts/check.sh", '#!/bin/sh\necho check.sh ran\nexit "${CHECK_EXIT:-0}"\n')
-    git(repo, "add", "--", ".gitignore", "docs", "scripts", "src", "tests")
+    git(repo, "add", "--", ".gitignore", ".agents", "docs", "scripts", "src", "tests")
     git(repo, "commit", "-m", "Initial fixture")
     git(repo, "push", "-u", "origin", "main")
 
@@ -103,6 +104,51 @@ if agent == 'gh':
                           'conclusion': os.environ.get('CI_CONCLUSION', 'success')}))
     else:
         raise AssertionError(sys.argv)
+    sys.exit()
+
+home = Path.home()
+assert home.name.startswith('opencold-agent-')
+config = Path(os.environ['CODEX_HOME' if agent == 'codex' else 'CLAUDE_CONFIG_DIR'])
+assert config.parent == home and not (home / '.agents').exists()
+assert not (config / 'skills').exists()
+auth = config / ('auth.json' if agent == 'codex' else '.credentials.json')
+assert auth.read_text() == 'fixture credentials'
+assert auth.stat().st_mode & 0o777 == 0o600
+if any(arg.startswith('Runner preflight.') for arg in sys.argv):
+    mode = os.environ.get('PREFLIGHT_RESULT', 'success')
+    cwd = str(Path.cwd())
+    pwd = '/wrong-directory' if mode == 'pwd' else cwd
+    skills = [] if mode == 'no-review' else ['review']
+    if mode == 'personal':
+        skills.append('personal')
+    if agent == 'codex':
+        thread = '00000000-0000-0000-0000-000000000000'
+        events = [
+            {'type': 'thread.started', 'thread_id': thread},
+            {'type': 'item.completed', 'item': {'type': 'command_execution',
+                'command': '/bin/sh -lc pwd', 'exit_code': 0, 'aggregated_output': pwd}},
+        ]
+        catalog = '<skills_instructions>\\n## Skills\\n### Skill roots\\n'
+        catalog += f'- `r0` = `{cwd}/.agents/skills`\\n### Available skills\\n'
+        catalog += ''.join(
+            f'- {skill}: Test skill (file: r0/{skill}/SKILL.md)\\n'
+            for skill in skills
+        )
+        session = config / 'sessions' / f'rollout-test-{thread}.jsonl'
+        session.parent.mkdir(exist_ok=True)
+        session.write_text(json.dumps({'type': 'response_item', 'payload': {
+            'role': 'developer', 'content': [{'text': catalog}],
+        }}) + '\\n')
+    else:
+        events = [
+            {'type': 'system', 'subtype': 'init', 'skills': skills},
+            {'type': 'assistant', 'message': {'content': [
+                {'type': 'tool_use', 'name': 'Bash', 'input': {'command': 'pwd'}, 'id': 'pwd'}]}},
+            {'type': 'user', 'message': {'content': [
+                {'type': 'tool_result', 'tool_use_id': 'pwd', 'content': pwd}]}},
+        ]
+    for event in events:
+        print(json.dumps(event))
     sys.exit()
 
 mode = os.environ.get('AGENT_RESULT', 'success')
@@ -143,12 +189,18 @@ print('diagnostic on stderr', file=sys.stderr)
     )
     for name in ("codex", "claude", "gh"):
         executable(bin_dir / name, stub)
-    executable(bin_dir / "sandbox-exec", '#!/bin/sh\nshift 2\nexec "$@"\n')
-    executable(
-        bin_dir / "bwrap",
-        '#!/bin/sh\nwhile [ "$1" != -- ]; do shift; done\nshift\nexec "$@"\n',
-    )
     calls = tmp_path / "calls.jsonl"
+    operator_home = tmp_path / "operator-home"
+    operator_home.mkdir()
+    monkeypatch.setenv("HOME", str(operator_home))
+    for variable, name, auth in (
+        ("CODEX_HOME", "codex-config", "auth.json"),
+        ("CLAUDE_CONFIG_DIR", "claude-config", ".credentials.json"),
+    ):
+        config = operator_home / name
+        (config / "skills").mkdir(parents=True)
+        (config / auth).write_text("fixture credentials")
+        monkeypatch.setenv(variable, str(config))
     monkeypatch.setenv("STUB_CALLS", str(calls))
     monkeypatch.setenv("PATH", str(bin_dir) + os.pathsep + os.environ["PATH"])
     return repo, calls, remote
@@ -169,13 +221,49 @@ def calls_from(path):
 
 
 @pytest.mark.parametrize("agent", ["codex", "claude"])
+@pytest.mark.parametrize(
+    "mode,diagnostic", [("pwd", "pwd"), ("no-review", "review"), ("personal", "only advertised")]
+)
+def test_failed_agent_preflight_stops_before_first_unit(
+    checkout, monkeypatch, agent, mode, diagnostic
+):
+    repo, calls, _ = checkout
+    head = git(repo, "rev-parse", "HEAD")
+    monkeypatch.setenv("PREFLIGHT_RESULT", mode)
+    result = run(repo, agent)
+    assert result.returncode == 1, result.stderr
+    assert "preflight" in result.stderr and diagnostic in result.stderr
+    assert len(calls_from(calls)) == 1
+    assert not list((repo / ".agent-logs").glob("01-first-*"))
+    assert git(repo, "rev-parse", "HEAD") == head
+    assert git(repo, "status", "--porcelain") == ""
+
+
+def test_preflight_only_runs_without_starting_units(checkout):
+    repo, calls, _ = checkout
+    head = git(repo, "rev-parse", "HEAD")
+    result = run(repo, "codex", "--preflight-only")
+    assert result.returncode == 0, result.stderr
+    assert "codex preflight passed" in result.stdout
+    assert len(calls_from(calls)) == 1
+    assert git(repo, "rev-parse", "HEAD") == head
+    assert git(repo, "status", "--porcelain") == ""
+
+
+@pytest.mark.parametrize("agent", ["codex", "claude"])
 def test_success_runs_one_session_per_unit_and_logs_usage(checkout, agent):
     repo, calls, _ = checkout
     result = run(repo, agent)
     assert result.returncode == 0, result.stderr
     recorded = calls_from(calls)
-    sessions = [call for call in recorded if call[0] == agent]
+    preflight, *sessions = [call for call in recorded if call[0] == agent]
     assert len(sessions) == 2
+    assert any(arg.startswith("Runner preflight.") for arg in preflight)
+    assert all(
+        [arg for arg in call if arg != PROMPT]
+        == [arg for arg in preflight if not arg.startswith("Runner preflight.")]
+        for call in sessions
+    )
     assert [call[1:3] for call in recorded if call[0] == "gh"] == [
         ["run", "list"],
         ["run", "watch"],
@@ -195,7 +283,9 @@ def test_success_runs_one_session_per_unit_and_logs_usage(checkout, agent):
             for call in sessions
         )
     else:
-        assert all("-p" in call and "json" in call and "dontAsk" in call for call in sessions)
+        assert all(
+            "-p" in call and "stream-json" in call and "dontAsk" in call for call in sessions
+        )
         settings = json.loads(sessions[0][sessions[0].index("--settings") + 1])
         assert settings["disableBundledSkills"]
         assert settings["sandbox"]["failIfUnavailable"]
@@ -212,7 +302,7 @@ def test_success_runs_one_session_per_unit_and_logs_usage(checkout, agent):
         ("02-next", agent, "50", "25"),
     ]
     log = next((repo / ".agent-logs").glob("01-first-*"))
-    stdout = log / ("stdout.jsonl" if agent == "codex" else "stdout.json")
+    stdout = log / "stdout.jsonl"
     assert json.loads(stdout.read_text())["usage"]["input_tokens"] == 50
     assert "diagnostic on stderr" in (log / "stderr.log").read_text()
     assert git(repo, "status", "--porcelain") == ""
@@ -315,7 +405,7 @@ def test_postcondition_failure_stops_without_retry(checkout, monkeypatch, mode, 
     assert "git stash -u" in result.stderr
     log = next((repo / ".agent-logs").glob("01-first-*"))
     assert log.name in result.stderr
-    assert [call[0] for call in calls_from(calls)].count("codex") == 1
+    assert [call[0] for call in calls_from(calls)].count("codex") == 2
     if not mode.startswith("ci"):
         assert git(repo, "rev-parse", "origin/main") == head
 

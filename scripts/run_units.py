@@ -10,7 +10,6 @@ import json
 import os
 import re
 import shlex
-import signal
 import subprocess
 import sys
 import time
@@ -18,7 +17,13 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from scripts.unit_agent import isolate_skills
+from scripts.unit_agent import (
+    PREFLIGHT_PROMPT,
+    agent_command,
+    agent_environment,
+    verify_preflight,
+    wait_for_agent,
+)
 
 PLAN = Path("docs/plans/discovery-split")
 SOURCE = Path("src/opencold/discovery.py")
@@ -124,108 +129,17 @@ def prerequisite(unit: dict) -> None:
         )
 
 
-def agent_command(agent: str) -> list[str]:
-    if agent == "codex":
-        return [
-            "codex",
-            "-a",
-            "never",
-            "exec",
-            "--ignore-rules",
-            "--ignore-user-config",
-            "--disable",
-            "plugins",
-            "--disable",
-            "apps",
-            "-c",
-            "skills.bundled.enabled=false",
-            "--sandbox",
-            "workspace-write",
-            "-c",
-            "sandbox_workspace_write.network_access=false",
-            "-c",
-            "sandbox_workspace_write.writable_roots=[]",
-            "--json",
-            PROMPT,
-        ]
-    git_dirs = output(
-        "git", "rev-parse", "--path-format=absolute", "--git-common-dir", "--absolute-git-dir"
-    )
-    settings = {
-        "disableBundledSkills": True,
-        "permissions": {
-            "allow": ["Edit(./**)", "Write(./**)"],
-            "deny": ["Edit(./.git)", "Edit(./.git/**)"],
-        },
-        "sandbox": {
-            "enabled": True,
-            "failIfUnavailable": True,
-            "autoAllowBashIfSandboxed": True,
-            "allowUnsandboxedCommands": False,
-            "excludedCommands": [],
-            "network": {"allowedDomains": []},
-            "filesystem": {"denyWrite": sorted({str(Path.cwd() / ".git"), *git_dirs.splitlines()})},
-        },
-    }
-    return [
-        "claude",
-        "-p",
-        PROMPT,
-        "--output-format",
-        "json",
-        "--permission-mode",
-        "dontAsk",
-        "--setting-sources",
-        "project",
-        "--settings",
-        json.dumps(settings),
-        "--no-chrome",
-        "--strict-mcp-config",
-        "--mcp-config",
-        '{"mcpServers":{}}',
-    ]
-
-
-def wait_for_agent(
-    command: list[str],
-    stdout: Path,
-    stderr: Path,
-    timeout: float,
-    *,
-    env: dict[str, str] | None = None,
-) -> int:
-    with stdout.open("wb") as out, stderr.open("wb") as err:
-        with subprocess.Popen(
-            command,
-            stdin=subprocess.DEVNULL,
-            stdout=out,
-            stderr=err,
-            start_new_session=True,
-            env=env,
-        ) as process:
-            try:
-                return process.wait(timeout=timeout)
-            except (subprocess.TimeoutExpired, KeyboardInterrupt):
-                # Git, hooks and other shell children normally share this process group.
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                raise
-
-
 def record_usage(agent: str, unit: str, duration: float, stdout: Path) -> None:
     keys = ("input_tokens", "output_tokens", "cached_input_tokens", "cache_creation_input_tokens")
     totals = {}
     with stdout.open(encoding="utf-8", errors="replace") as stream:
-        records = stream if agent == "codex" else (stream.read(),)
-        for record in records:
+        for record in stream:
             try:
                 event = json.loads(record)
             except ValueError:
                 continue  # An interrupted session can leave a partial record.
             if not isinstance(event, dict) or (
-                agent == "codex" and event.get("type") != "turn.completed"
+                event.get("type") != ("turn.completed" if agent == "codex" else "result")
             ):
                 continue
             usage = event.get("usage")
@@ -246,17 +160,43 @@ def record_usage(agent: str, unit: str, duration: float, stdout: Path) -> None:
             )
 
 
-def run_agent(agent: str, unit: str, log: Path, timeout_min: int) -> None:
-    command = isolate_skills(agent_command(agent))
-    stdout = log / ("stdout.jsonl" if agent == "codex" else "stdout.json")
+def launch_agent(agent: str, prompt: str, log: Path, timeout_min: int, env: dict[str, str]) -> int:
+    git_dirs = []
+    if agent == "claude":
+        git_dirs = output(
+            "git", "rev-parse", "--path-format=absolute", "--git-common-dir", "--absolute-git-dir"
+        ).splitlines()
+    return wait_for_agent(
+        agent_command(agent, prompt, git_dirs),
+        log / "stdout.jsonl",
+        log / "stderr.log",
+        timeout_min * 60,
+        env=dict(env, OPENCOLD_UNIT_NOTES=str((log / "commit-body.txt").resolve())),
+    )
+
+
+def agent_preflight(agent: str, timeout_min: int, env: dict[str, str], log: Path) -> None:
+    log.mkdir(mode=0o700, parents=True)
+    print(f"Running {agent} preflight. Logs: {log}", flush=True)
+    try:
+        status = launch_agent(agent, PREFLIGHT_PROMPT, log, timeout_min, env)
+        require(status == 0, f"agent preflight exit {status}")
+        verify_preflight(agent, log / "stdout.jsonl", env)
+    except subprocess.TimeoutExpired as exc:
+        raise CheckFailed(f"agent preflight timed out after {timeout_min} minute(s)") from exc
+    print(f"{agent} preflight passed (pwd and repository review skill only).", flush=True)
+
+
+def run_agent(agent: str, unit: str, log: Path, timeout_min: int, env: dict[str, str]) -> None:
     start = time.monotonic()
     try:
-        env = dict(os.environ, OPENCOLD_UNIT_NOTES=str((log / "commit-body.txt").resolve()))
-        status = wait_for_agent(command, stdout, log / "stderr.log", timeout_min * 60, env=env)
+        status = launch_agent(agent, PROMPT, log, timeout_min, env)
     except subprocess.TimeoutExpired as exc:
         raise CheckFailed(f"agent timed out after {timeout_min} minute(s)") from exc
     finally:
-        record_usage(agent, unit, time.monotonic() - start, stdout)
+        stdout = log / "stdout.jsonl"
+        if stdout.is_file():
+            record_usage(agent, unit, time.monotonic() - start, stdout)
     require(status == 0, f"agent exit {status}")
 
 
@@ -364,7 +304,8 @@ def positive_int(value: str) -> int:
     return number
 
 
-def run_units(args: argparse.Namespace) -> int:
+def run_units(args: argparse.Namespace, env: dict[str, str] | None = None) -> int:
+    preflight_done = False
     for _ in range(args.max_units):
         unit_id = "(unknown)"
         log = None
@@ -388,13 +329,21 @@ def run_units(args: argparse.Namespace) -> int:
                 )
                 break
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+            if not preflight_done:
+                assert env is not None
+                log = LOGS / f"preflight-{args.agent}-{stamp}"
+                agent_preflight(args.agent, args.timeout_min, env, log)
+                clean_tree()
+                on_main()
+                require(output("git", "rev-parse", "HEAD") == head, "preflight changed HEAD")
+                preflight_done = True
             log = LOGS / f"{unit_id}-{stamp}"
             log.mkdir(mode=0o700, parents=True)
             (log / "before.json").write_text(
                 json.dumps(asdict(before), indent=2) + "\n", encoding="utf-8"
             )
             print(f"Starting {args.agent} for {unit_id}. Logs: {log}", flush=True)
-            run_agent(args.agent, unit_id, log, args.timeout_min)
+            run_agent(args.agent, unit_id, log, args.timeout_min, env)
             head = verify_session(before, units, unit_id, log)
             print(f"{unit_id} verified at {head}. Logs: {log}", flush=True)
         except (CheckFailed, OSError, ValueError, KeyError, TypeError, KeyboardInterrupt) as exc:
@@ -419,7 +368,9 @@ def main() -> int:
     parser.add_argument("--agent", choices=("codex", "claude"), required=True)
     parser.add_argument("--max-units", type=positive_int, required=True)
     parser.add_argument("--timeout-min", type=positive_int, default=20)
-    parser.add_argument("--dry-run", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true")
+    mode.add_argument("--preflight-only", action="store_true")
     args = parser.parse_args()
     os.environ.update(GIT_TERMINAL_PROMPT="0", GH_PROMPT_DISABLED="1")
     if args.dry_run:
@@ -429,10 +380,31 @@ def main() -> int:
         LOGS.mkdir(exist_ok=True)
         with lock_path.open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return run_units(args)
+            with agent_environment(args.agent) as env:
+                if not args.preflight_only:
+                    return run_units(args, env)
+                stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+                log = LOGS / f"preflight-{args.agent}-{stamp}"
+                try:
+                    agent_preflight(args.agent, args.timeout_min, env, log)
+                except (
+                    CheckFailed,
+                    OSError,
+                    ValueError,
+                    KeyError,
+                    TypeError,
+                    KeyboardInterrupt,
+                ) as exc:
+                    print(
+                        f"Agent preflight failed: {exc or 'interrupted'}. Logs: {log}",
+                        file=sys.stderr,
+                    )
+                    return 1
+                return 0
     except OSError as exc:
         print(
-            f"Stopped before selecting a unit: could not lock {lock_path}: {exc}", file=sys.stderr
+            f"Stopped before selecting a unit: could not initialize the runner: {exc}",
+            file=sys.stderr,
         )
         print(
             "Log: none (session not started). Inspect any existing runner and its logs. "
