@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-from opencold import config, discovery, enricher, generator, translator
+from opencold import config, discovery, discovery_website, enricher, generator, translator
 
 GOLDEN = Path(__file__).parent / "fixtures" / "discover_golden.json"
 GOLDEN_V2 = GOLDEN.with_name("discover_golden_v2.json")
@@ -145,6 +145,7 @@ def _offline_rows(monkeypatch):
     translate_mock = Mock(side_effect=translate)
     wiki_mock = Mock(return_value=[("Atlas Pallets", WIKI_SOURCE), ("Invisible", WIKI_SOURCE)])
     monkeypatch.setattr(discovery, "web_search", search_mock)
+    monkeypatch.setattr(discovery_website, "web_search", search_mock)
     monkeypatch.setattr(discovery, "wikipedia_company_names", wiki_mock)
     monkeypatch.setattr(enricher, "_fetch_html", fetch)
     monkeypatch.setattr(translator, "translate", translate_mock)
@@ -255,6 +256,7 @@ def _offline_judged_rows(monkeypatch, judge_timeout):
     search_mock = Mock(side_effect=search)
     monkeypatch.setattr(generator, "_generate_anthropic", provider_mock)
     monkeypatch.setattr(discovery, "web_search", search_mock)
+    monkeypatch.setattr(discovery_website, "web_search", search_mock)
     monkeypatch.setattr(enricher, "_fetch_html", fetch)
     clock = Mock(
         wraps=time,

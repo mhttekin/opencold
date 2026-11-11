@@ -395,7 +395,7 @@
     ],
     "target_module": "src/opencold/discovery_website.py",
     "requires": "golden-v2",
-    "passes": false
+    "passes": true
   },
   {
     "id": "37-linkedin",

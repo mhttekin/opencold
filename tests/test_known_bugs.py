@@ -137,7 +137,7 @@ def test_uk_company_is_not_given_a_danish_site():
     )
     with (
         patch(
-            "opencold.discovery.web_search",
+            "opencold.discovery_website.web_search",
             return_value=[
                 SearchResult(title="Nordic Pallets", url="https://www.nordicpallets.dk/")
             ],

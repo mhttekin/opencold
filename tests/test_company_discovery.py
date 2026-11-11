@@ -371,7 +371,7 @@ class TestWebsiteResolution:
         results = [
             SearchResult(title="Profile", url="https://futurestartup.com/profile/green-delta")
         ]
-        with patch("opencold.discovery.web_search", return_value=results):
+        with patch("opencold.discovery_website.web_search", return_value=results):
             strict = discovery.resolve_company_website("Green Delta Insurance", require_match=True)
             loose = discovery.resolve_company_website("Green Delta Insurance")
         assert strict is None
@@ -379,7 +379,7 @@ class TestWebsiteResolution:
 
     def test_require_match_accepts_real_domain(self):
         results = [SearchResult(title="Green Delta", url="https://green-delta.com/")]
-        with patch("opencold.discovery.web_search", return_value=results):
+        with patch("opencold.discovery_website.web_search", return_value=results):
             assert (
                 discovery.resolve_company_website("Green Delta Insurance", require_match=True)
                 == "https://green-delta.com"
@@ -642,7 +642,7 @@ class TestResolutionContext:
             SearchResult(title="Ground Control", url="https://groundcontrol.com"),
             SearchResult(title="Ground Control", url="https://groundcontrol.co.uk"),
         ]
-        with patch("opencold.discovery.web_search", return_value=results):
+        with patch("opencold.discovery_website.web_search", return_value=results):
             url = discovery.resolve_company_website(
                 "Ground Control",
                 require_match=True,

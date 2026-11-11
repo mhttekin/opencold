@@ -59,3 +59,7 @@ entry and queue status with its code. See plan.md for the session rules.
 - 34-search mode=agent, finished manually; agent sandbox blocked pytest, 1794→1777 lines
 
 - 35-employment mode=tool, 1777→1652 lines
+
+- 36-website mode=agent, 1652→1518 lines. State move: WEBSITE_DIRECTORY_DOMAINS
+  discovery → discovery_website (re-exported, same object). Audit: no writes, no
+  facade/dynamic writes, no patch targets; read only by _is_directory_domain.
