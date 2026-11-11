@@ -48,8 +48,6 @@ Use one short block per unit with its starting commit, extraction result and
 verification verdict. Put detailed evidence in the commit body. Include the unit
 entry and queue status with its code. See plan.md for the session rules.
 
-- 13-search_html mode=tool, 3716→3705 lines
-
 ## Runner context and refusal audit — 2026-11-11 — Codex
 
 Starting commit `f8896bb`; no extraction unit or queue status changed. Added JSON
@@ -73,3 +71,5 @@ fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
   writes, setattr/globals writes or patch targets in src/tests/evals/scripts, so no
   state changed owner. Facade re-exports keep cli.py, evals and tests unchanged.
   Checks green, golden unchanged, eval metrics identical to baseline. Review: PASS.
+
+- 18-size mode=tool, 3220→3198 lines

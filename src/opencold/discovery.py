@@ -181,7 +181,8 @@ from opencold.discovery_seed import (
     _resolve_llm_provider,
     seed_companies_via_llm,
 )
-from opencold.discovery_size_data import _SIZE_BAND_RE, _SME_HINT_RE
+from opencold.discovery_size import size_tier
+from opencold.discovery_size_data import _SIZE_BAND_RE, _SME_HINT_RE  # noqa: F401
 from opencold.emails import pick_company_email
 
 # Re-exported names: tests and icp_expansion resolve these via opencold.discovery.
@@ -2681,29 +2682,6 @@ def region_fit(
         reasons.append(f"region_conflict:{conflict}")
 
     return min(score, 100), enricher.FACT_SEPARATOR.join(reasons)
-
-
-def size_tier(pages_text: str, contacts: CompanyContacts) -> str:
-    """Coarse company-size band (micro|sme|mid|enterprise) from cheap signals.
-
-    Best-effort — emitted as a filter column, not a hard gate."""
-    text = pages_text or ""
-    match = _SIZE_BAND_RE.search(text)
-    if match:
-        try:
-            n = int(re.sub(r"\D", "", match.group(1)))
-            if n >= 1000:
-                return "enterprise"
-            if n >= 200:
-                return "mid"
-            if n >= 20:
-                return "sme"
-            return "micro"
-        except ValueError:
-            pass
-    if _SME_HINT_RE.search(text):
-        return "sme"
-    return ""
 
 
 # ---------------------------------------------------------------------------

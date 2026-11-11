@@ -189,7 +189,7 @@
       "size_tier"
     ],
     "target_module": "src/opencold/discovery_size.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "19-company_csv",
