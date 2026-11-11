@@ -66,3 +66,10 @@ fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
 - 15-person_match mode=tool, 3577→3472 lines
 
 - 16-icp_score mode=tool, 3472→3344 lines
+
+- 17-region mode=agent, start `993c99d`, 3344→3220 lines; new discovery_region.py 154.
+  Tool refused `_HQ_VERB_RE` as mutable_state. Audit: all moved names are a str, an
+  int and compiled regexes, bound once, never rebound. No `discovery.<name> =`
+  writes, setattr/globals writes or patch targets in src/tests/evals/scripts, so no
+  state changed owner. Facade re-exports keep cli.py, evals and tests unchanged.
+  Checks green, golden unchanged, eval metrics identical to baseline. Review: PASS.

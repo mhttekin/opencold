@@ -180,7 +180,7 @@
     ],
     "target_module": "src/opencold/discovery_region.py",
     "requires": "golden-v2",
-    "passes": false
+    "passes": true
   },
   {
     "id": "18-size",
