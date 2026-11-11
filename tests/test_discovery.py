@@ -202,7 +202,7 @@ class TestDiscoverRows:
     @patch("opencold.discovery.search_linkedin_contacts", return_value=[])
     @patch("opencold.discovery.search_company_pages", return_value=[])
     @patch("opencold.discovery.crawl_company_pages")
-    @patch("opencold.discovery._fetch_source")
+    @patch("opencold.discovery_sources._fetch_source")
     def test_builds_prepare_compatible_rows(
         self, mock_fetch, mock_crawl, _mock_search, _mock_linkedin
     ):
@@ -230,7 +230,7 @@ class TestDiscoverRows:
     @patch("opencold.discovery.search_linkedin_contacts", return_value=[])
     @patch("opencold.discovery.search_company_pages", return_value=[])
     @patch("opencold.discovery.crawl_company_pages", return_value=[])
-    @patch("opencold.discovery._fetch_source", return_value=SOURCE_HTML)
+    @patch("opencold.discovery_sources._fetch_source", return_value=SOURCE_HTML)
     def test_require_contact_filters_contactless_rows(
         self, _mock_fetch, _mock_crawl, _mock_search, _mock_linkedin
     ):
@@ -243,7 +243,7 @@ class TestDiscoverRows:
     @patch("opencold.discovery.search_linkedin_contacts", return_value=[])
     @patch("opencold.discovery.search_company_pages")
     @patch("opencold.discovery.crawl_company_pages")
-    @patch("opencold.discovery._fetch_source")
+    @patch("opencold.discovery_sources._fetch_source")
     def test_search_pages_improve_contact_discovery(
         self, mock_fetch, mock_crawl, mock_search, _mock_linkedin
     ):
@@ -280,7 +280,7 @@ class TestDiscoverRows:
         assert len(pages) == 1
         assert pages[0].url == "https://acme.dev/contact"
 
-    @patch("opencold.discovery._fetch_source")
+    @patch("opencold.discovery_sources._fetch_source")
     def test_discover_company_pool_uses_multiple_sources(self, mock_fetch):
         def fake_fetch(source):
             if source.endswith("one"):
@@ -297,7 +297,7 @@ class TestDiscoverRows:
         websites = {c.website for c in companies}
         assert websites == {"https://one.dev", "https://three.dev"}
 
-    @patch("opencold.discovery._fetch_source")
+    @patch("opencold.discovery_sources._fetch_source")
     def test_discover_from_source_follows_internal_detail_pages(self, mock_fetch):
         def fake_fetch(source):
             if source == "https://directory.test":
