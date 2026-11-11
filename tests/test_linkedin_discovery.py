@@ -792,7 +792,7 @@ class TestScoreContactLinkedIn:
 
 
 class TestVerifyCurrentEmployment:
-    @patch("opencold.discovery._ddgs_search")
+    @patch("opencold.discovery_employment._ddgs_search")
     def test_confirms_when_company_in_linkedin_title(self, mock_ddgs):
         mock_ddgs.return_value = [
             SearchResult(
@@ -805,14 +805,14 @@ class TestVerifyCurrentEmployment:
         assert is_current is True
         assert "confirmed_by" in reason
 
-    @patch("opencold.discovery._ddgs_search")
+    @patch("opencold.discovery_employment._ddgs_search")
     def test_no_results_gives_benefit_of_doubt(self, mock_ddgs):
         mock_ddgs.return_value = []
         is_current, reason = verify_current_employment("Cooper Lower", "Botpress")
         assert is_current is True
         assert reason == "no_results_benefit"
 
-    @patch("opencold.discovery._ddgs_search")
+    @patch("opencold.discovery_employment._ddgs_search")
     def test_detects_moved_to_new_company(self, mock_ddgs):
         mock_ddgs.return_value = [
             SearchResult(
@@ -825,7 +825,7 @@ class TestVerifyCurrentEmployment:
         assert is_current is False
         assert "moved_to" in reason
 
-    @patch("opencold.discovery._ddgs_search")
+    @patch("opencold.discovery_employment._ddgs_search")
     def test_confirms_when_company_tokens_in_title(self, mock_ddgs):
         mock_ddgs.return_value = [
             SearchResult(
@@ -837,7 +837,7 @@ class TestVerifyCurrentEmployment:
         is_current, reason = verify_current_employment("Damla Yamanoglu", "Hostinger")
         assert is_current is True
 
-    @patch("opencold.discovery._ddgs_search")
+    @patch("opencold.discovery_employment._ddgs_search")
     def test_short_company_name_gets_benefit_of_doubt(self, mock_ddgs):
         """When LinkedIn title doesn't mention short company name, benefit of doubt."""
         mock_ddgs.return_value = [
@@ -851,14 +851,14 @@ class TestVerifyCurrentEmployment:
         assert is_current is True
         assert reason == "short_company_name_benefit"
 
-    @patch("opencold.discovery._ddgs_search")
+    @patch("opencold.discovery_employment._ddgs_search")
     def test_search_failure_gives_benefit_of_doubt(self, mock_ddgs):
         mock_ddgs.side_effect = Exception("Network error")
         is_current, reason = verify_current_employment("Jane Smith", "Acme")
         assert is_current is True
         assert reason == "no_results_benefit"
 
-    @patch("opencold.discovery._ddgs_search")
+    @patch("opencold.discovery_employment._ddgs_search")
     def test_company_not_in_title_rejected(self, mock_ddgs):
         """If LinkedIn title shows different company, reject."""
         mock_ddgs.return_value = [
@@ -871,7 +871,7 @@ class TestVerifyCurrentEmployment:
         is_current, reason = verify_current_employment("Abrar Sami", "Dorik")
         assert is_current is False
 
-    @patch("opencold.discovery._ddgs_search")
+    @patch("opencold.discovery_employment._ddgs_search")
     def test_opentowork_signal_rejects(self, mock_ddgs):
         """People actively job-hunting are not at the target company."""
         mock_ddgs.return_value = [
@@ -885,7 +885,7 @@ class TestVerifyCurrentEmployment:
         assert is_current is False
         assert reason == "not_currently_employed"
 
-    @patch("opencold.discovery._ddgs_search")
+    @patch("opencold.discovery_employment._ddgs_search")
     def test_joined_pattern_detects_move(self, mock_ddgs):
         mock_ddgs.return_value = [
             SearchResult(
@@ -899,7 +899,7 @@ class TestVerifyCurrentEmployment:
         assert "moved_to" in reason
         assert "Stripe" in reason
 
-    @patch("opencold.discovery._ddgs_search")
+    @patch("opencold.discovery_employment._ddgs_search")
     def test_same_company_in_moved_pattern_not_flagged(self, mock_ddgs):
         """If 'currently at X' matches the target company in snippet, confirm via snippet."""
         mock_ddgs.return_value = [
@@ -912,7 +912,7 @@ class TestVerifyCurrentEmployment:
         is_current, reason = verify_current_employment("Jane Smith", "Acme")
         assert is_current is True
 
-    @patch("opencold.discovery._ddgs_search")
+    @patch("opencold.discovery_employment._ddgs_search")
     def test_snippet_confirms_when_title_unclear(self, mock_ddgs):
         """Company in snippet but not title still confirms."""
         mock_ddgs.return_value = [
@@ -926,7 +926,7 @@ class TestVerifyCurrentEmployment:
         assert is_current is True
         assert "confirm" in reason
 
-    @patch("opencold.discovery._ddgs_search")
+    @patch("opencold.discovery_employment._ddgs_search")
     def test_site_query_contradicts_overrides_snippet(self, mock_ddgs):
         """site:linkedin.com/in showing different company rejects even if snippet has old company."""
         call_count = [0]

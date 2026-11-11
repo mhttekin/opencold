@@ -57,3 +57,5 @@ entry and queue status with its code. See plan.md for the session rules.
 - 33-classify mode=tool, 1831→1794 lines
 
 - 34-search mode=agent, finished manually; agent sandbox blocked pytest, 1794→1777 lines
+
+- 35-employment mode=tool, 1777→1652 lines
