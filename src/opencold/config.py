@@ -197,10 +197,10 @@ def load_dotenv(path: str | None = None) -> None:
 
     Does not override variables already set in the environment. Idempotent and
     fail-silent, no third-party dependency. With no path, searches the cwd and
-    its parents for a `.env` (so it works from a subdirectory of the repo).
+    its parents for a `.env`, unless OPENCOLD_NO_DOTENV is set (tests set it).
     """
     global _DOTENV_LOADED
-    if _DOTENV_LOADED and path is None:
+    if path is None and (_DOTENV_LOADED or os.environ.get("OPENCOLD_NO_DOTENV")):
         return
     if path is not None:
         candidates = [Path(path)]
@@ -208,10 +208,10 @@ def load_dotenv(path: str | None = None) -> None:
         cwd = Path.cwd()
         candidates = [d / ".env" for d in [cwd, *cwd.parents]]
         _DOTENV_LOADED = True  # mark attempted so we don't rescan on every call
-    env_file = next((p for p in candidates if p.is_file()), None)
-    if not env_file:
-        return
     try:
+        env_file = next((p for p in candidates if p.is_file()), None)
+        if not env_file:
+            return
         for raw in env_file.read_text(encoding="utf-8").splitlines():
             line = raw.strip()
             if not line or line.startswith("#") or "=" not in line:

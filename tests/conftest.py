@@ -1,7 +1,11 @@
 """Shared fixtures for opencold tests."""
 
 import json
+import os
 from pathlib import Path
+
+# Tests never read a local .env: set before any opencold code can call load_dotenv().
+os.environ["OPENCOLD_NO_DOTENV"] = "1"
 
 import pytest
 
