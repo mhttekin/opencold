@@ -69,3 +69,7 @@ entry and queue status with its code. See plan.md for the session rules.
 
 - 38-page_search mode=agent, 1429→1362 lines. No state moved (functions only; the
   SEARCH_* constants stay in discovery_data).
+
+- 39-people mode=agent, 1362→1163 lines. No state moved (functions only; their
+  constants stay in discovery_data). TestDiscoverRows patches retargeted to
+  discovery_people.

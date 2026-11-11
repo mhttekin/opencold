@@ -199,9 +199,9 @@ class TestSearchResolver:
 
 
 class TestDiscoverRows:
-    @patch("opencold.discovery.search_linkedin_contacts", return_value=[])
-    @patch("opencold.discovery.search_company_pages", return_value=[])
-    @patch("opencold.discovery.crawl_company_pages")
+    @patch("opencold.discovery_people.search_linkedin_contacts", return_value=[])
+    @patch("opencold.discovery_people.search_company_pages", return_value=[])
+    @patch("opencold.discovery_people.crawl_company_pages")
     @patch("opencold.discovery_sources._fetch_source")
     def test_builds_prepare_compatible_rows(
         self, mock_fetch, mock_crawl, _mock_search, _mock_linkedin
@@ -227,9 +227,9 @@ class TestDiscoverRows:
         assert int(row["icp_score"]) > 50
         assert "engineering" in row["matched_terms"]
 
-    @patch("opencold.discovery.search_linkedin_contacts", return_value=[])
-    @patch("opencold.discovery.search_company_pages", return_value=[])
-    @patch("opencold.discovery.crawl_company_pages", return_value=[])
+    @patch("opencold.discovery_people.search_linkedin_contacts", return_value=[])
+    @patch("opencold.discovery_people.search_company_pages", return_value=[])
+    @patch("opencold.discovery_people.crawl_company_pages", return_value=[])
     @patch("opencold.discovery_sources._fetch_source", return_value=SOURCE_HTML)
     def test_require_contact_filters_contactless_rows(
         self, _mock_fetch, _mock_crawl, _mock_search, _mock_linkedin
@@ -240,9 +240,9 @@ class TestDiscoverRows:
         )
         assert rows == []
 
-    @patch("opencold.discovery.search_linkedin_contacts", return_value=[])
-    @patch("opencold.discovery.search_company_pages")
-    @patch("opencold.discovery.crawl_company_pages")
+    @patch("opencold.discovery_people.search_linkedin_contacts", return_value=[])
+    @patch("opencold.discovery_people.search_company_pages")
+    @patch("opencold.discovery_people.crawl_company_pages")
     @patch("opencold.discovery_sources._fetch_source")
     def test_search_pages_improve_contact_discovery(
         self, mock_fetch, mock_crawl, mock_search, _mock_linkedin
