@@ -48,8 +48,6 @@ Use one short block per unit with its starting commit, extraction result and
 verification verdict. Put detailed evidence in the commit body. Include the unit
 entry and queue status with its code. See plan.md for the session rules.
 
-- 12-pages mode=tool, 3731→3716 lines
-
 - 13-search_html mode=tool, 3716→3705 lines
 
 ## Runner context and refusal audit — 2026-11-11 — Codex
@@ -66,3 +64,5 @@ fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
 - 14-search_primary mode=tool, 3705→3577 lines
 
 - 15-person_match mode=tool, 3577→3472 lines
+
+- 16-icp_score mode=tool, 3472→3344 lines

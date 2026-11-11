@@ -168,3 +168,5 @@ sets were found. Existing normalize_domain patches remain at their consuming
 smearch facade; no moved helper patches required retargeting. Retargeted the
 email helper's lazy normalize_domain import to its owner. Left unstaged and
 uncommitted for the runner.
+
+- 12-pages mode=tool, 3731→3716 lines
