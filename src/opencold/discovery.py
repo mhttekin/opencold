@@ -199,15 +199,16 @@ from opencold.discovery_region_data import (
     _build_phone_cc as _build_phone_cc,
 )
 from opencold.discovery_region_fit import region_fit
+from opencold.discovery_search import web_search
 from opencold.discovery_search_fallback import _ddg_html_search, _mojeek_search, _searxng_search  # noqa: F401
 from opencold.discovery_search_html import _duckduckgo_search_urls, _fetch_search_html  # noqa: F401
 from opencold.discovery_search_models import SearchResult
 from opencold.discovery_search_parse import _unwrap_duckduckgo_url, parse_search_result_urls  # noqa: F401
 from opencold.discovery_search_primary import (
-    _brave_search,
+    _brave_search,  # noqa: F401
     _ddgs_search,
     _get_serper_key,  # noqa: F401
-    _serper_search,
+    _serper_search,  # noqa: F401
 )
 from opencold.discovery_seed import (
     _SEED_SYSTEM,  # noqa: F401
@@ -265,24 +266,6 @@ def __getattr__(name: str) -> str | None | bool:
     if name == "_REACHER_BIN":
         return discovery_reacher._REACHER_BIN
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-def web_search(query: str, num: int = 10) -> list[SearchResult]:
-    """Search the web: ddgs → Brave → Serper → DDG HTML."""
-    # 1. ddgs package — zero-auth, best option
-    results = _ddgs_search(query, num)
-    if results:
-        return results
-    # 2. Brave Search — zero-auth HTML scraping
-    results = _brave_search(query, num)
-    if results:
-        return results
-    # 3. Serper API — paid but reliable
-    results = _serper_search(query, num)
-    if results:
-        return results
-    # 4. DDG HTML scraping — last resort
-    return _ddg_html_search(query, num)
 
 
 # ---------------------------------------------------------------------------

@@ -528,7 +528,7 @@ class TestGuessEmailFromName:
 
 
 class TestWebSearch:
-    @patch("opencold.discovery._ddgs_search")
+    @patch("opencold.discovery_search._ddgs_search")
     def test_uses_ddgs_when_available(self, mock_ddgs):
         mock_ddgs.return_value = [SearchResult(title="Test", url="https://example.com")]
         results = web_search("test query")
@@ -536,8 +536,8 @@ class TestWebSearch:
         assert results[0].title == "Test"
         mock_ddgs.assert_called_once()
 
-    @patch("opencold.discovery._ddgs_search")
-    @patch("opencold.discovery._brave_search")
+    @patch("opencold.discovery_search._ddgs_search")
+    @patch("opencold.discovery_search._brave_search")
     def test_falls_back_to_brave(self, mock_brave, mock_ddgs):
         mock_ddgs.return_value = []
         mock_brave.return_value = [SearchResult(title="Brave Result", url="https://example.com")]
@@ -545,9 +545,9 @@ class TestWebSearch:
         assert len(results) == 1
         assert results[0].title == "Brave Result"
 
-    @patch("opencold.discovery._ddgs_search")
-    @patch("opencold.discovery._brave_search")
-    @patch("opencold.discovery._serper_search")
+    @patch("opencold.discovery_search._ddgs_search")
+    @patch("opencold.discovery_search._brave_search")
+    @patch("opencold.discovery_search._serper_search")
     def test_falls_back_to_serper(self, mock_serper, mock_brave, mock_ddgs):
         mock_ddgs.return_value = []
         mock_brave.return_value = []
@@ -556,10 +556,10 @@ class TestWebSearch:
         assert len(results) == 1
         assert results[0].title == "Serper Result"
 
-    @patch("opencold.discovery._ddgs_search")
-    @patch("opencold.discovery._brave_search")
-    @patch("opencold.discovery._serper_search")
-    @patch("opencold.discovery._ddg_html_search")
+    @patch("opencold.discovery_search._ddgs_search")
+    @patch("opencold.discovery_search._brave_search")
+    @patch("opencold.discovery_search._serper_search")
+    @patch("opencold.discovery_search._ddg_html_search")
     def test_falls_back_to_ddg_html(self, mock_ddg_html, mock_serper, mock_brave, mock_ddgs):
         mock_ddgs.return_value = []
         mock_brave.return_value = []

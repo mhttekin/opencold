@@ -48,8 +48,6 @@ Use one short block per unit with its starting commit, extraction result and
 verification verdict. Put detailed evidence in the commit body. Include the unit
 entry and queue status with its code. See plan.md for the session rules.
 
-- 29-linkedin_parse mode=tool, 2197→2168 lines
-
 - 30-employment_parse mode=tool, 2168→2013 lines
 
 - 31-person_contact mode=tool, 2013→1918 lines
@@ -57,3 +55,5 @@ entry and queue status with its code. See plan.md for the session rules.
 - 32-region_fit mode=tool, 1918→1831 lines
 
 - 33-classify mode=tool, 1831→1794 lines
+
+- 34-search mode=agent, finished manually; agent sandbox blocked pytest, 1794→1777 lines

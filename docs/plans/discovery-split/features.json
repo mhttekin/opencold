@@ -372,7 +372,7 @@
     ],
     "target_module": "src/opencold/discovery_search.py",
     "requires": "golden-v2",
-    "passes": false
+    "passes": true
   },
   {
     "id": "35-employment",
