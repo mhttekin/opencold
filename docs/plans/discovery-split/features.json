@@ -333,7 +333,7 @@
     ],
     "target_module": "src/opencold/discovery_employment_parse.py",
     "requires": "golden-v2",
-    "passes": false
+    "passes": true
   },
   {
     "id": "31-person_contact",
