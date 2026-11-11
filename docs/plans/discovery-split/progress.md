@@ -48,15 +48,6 @@ Use one short block per unit with its starting commit, extraction result and
 verification verdict. Put detailed evidence in the commit body. Include the unit
 entry and queue status with its code. See plan.md for the session rules.
 
-- 16-icp_score mode=tool, 3472→3344 lines
-
-- 17-region mode=agent, start `993c99d`, 3344→3220 lines; new discovery_region.py 154.
-  Tool refused `_HQ_VERB_RE` as mutable_state. Audit: all moved names are a str, an
-  int and compiled regexes, bound once, never rebound. No `discovery.<name> =`
-  writes, setattr/globals writes or patch targets in src/tests/evals/scripts, so no
-  state changed owner. Facade re-exports keep cli.py, evals and tests unchanged.
-  Checks green, golden unchanged, eval metrics identical to baseline. Review: PASS.
-
 - 18-size mode=tool, 3220→3198 lines
 
 - 19-company_csv mode=tool, 3198→3172 lines
@@ -80,3 +71,5 @@ entry and queue status with its code. See plan.md for the session rules.
   Checks green, golden unchanged, eval metrics identical to baseline. Review: PASS.
 
 - 23-lead_score mode=tool, 2799→2734 lines
+
+- 24-person_score mode=tool, 2734→2610 lines

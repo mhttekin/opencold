@@ -265,7 +265,7 @@
       "score_contact"
     ],
     "target_module": "src/opencold/discovery_person_score.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "25-country",
