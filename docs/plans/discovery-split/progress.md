@@ -78,3 +78,11 @@ entry and queue status with its code. See plan.md for the session rules.
   MAX_SEARCH_LANGS stays in discovery_region). web_search patches for direct
   discover_companies_by_query tests retargeted to discovery_query; candidate-harvest
   and golden tests patch both modules (find_company_linkedin still reads discovery's).
+
+- 41-wiki_parse mode=agent, 1078→943 lines. Moved immutable constants
+  (WIKIPEDIA_API, _WIKI_UA, _WIKI_SKIP_SECTIONS, _WIKI_NAME_BLOCKLIST_RE) to
+  discovery_wiki_parse, re-exported as the same objects. They are never rebound
+  and nothing writes them through the facade. The tool refused over the
+  `discovery.time` patch. The golden test runs with use_wiki=False, so it never
+  reaches `_wiki_api_get`'s sleep and no retarget was needed.
+  `_wiki_api_get` patches still hit its callers in discovery.py.

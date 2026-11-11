@@ -454,7 +454,7 @@
       "_parse_wikitext_names"
     ],
     "target_module": "src/opencold/discovery_wiki_parse.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "42-company_linkedin",
