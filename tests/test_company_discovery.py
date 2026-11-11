@@ -295,6 +295,7 @@ class TestCandidateHarvest:
             patch("opencold.discovery._resolve_llm_provider", return_value=None),
             patch("opencold.discovery.wikipedia_company_names", return_value=[]),
             patch("opencold.discovery.web_search", return_value=results),
+            patch("opencold.discovery_query.web_search", return_value=results),
         ):
             cands = discovery.discover_company_candidates("insurance", "Bangladesh", limit=10)
         domains = {discovery.normalize_domain(c.website) for c in cands}
@@ -1097,7 +1098,7 @@ class TestTranslation:
 
         with (
             patch("opencold.translator.translate", side_effect=fake_translate),
-            patch("opencold.discovery.web_search", side_effect=fake_search),
+            patch("opencold.discovery_query.web_search", side_effect=fake_search),
         ):
             discovery.discover_companies_by_query(
                 "recycling", "Morocco", limit=50, target_langs=["fr", "ar"]
@@ -1118,7 +1119,7 @@ class TestTranslation:
 
         with (
             patch("opencold.translator.translate", side_effect=fake_translate),
-            patch("opencold.discovery.web_search", side_effect=fake_search),
+            patch("opencold.discovery_query.web_search", side_effect=fake_search),
         ):
             discovery.discover_companies_by_query("timber", "Turkey", limit=50, target_langs=["tr"])
 
@@ -1136,7 +1137,7 @@ class TestTranslation:
             patch(
                 "opencold.translator.translate", side_effect=AssertionError("must not translate")
             ),
-            patch("opencold.discovery.web_search", side_effect=fake_search),
+            patch("opencold.discovery_query.web_search", side_effect=fake_search),
         ):
             discovery.discover_companies_by_query("timber", "Turkey", limit=50, target_langs=None)
 

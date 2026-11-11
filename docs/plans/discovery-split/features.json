@@ -442,7 +442,7 @@
     ],
     "target_module": "src/opencold/discovery_query.py",
     "requires": "golden-v2",
-    "passes": false
+    "passes": true
   },
   {
     "id": "41-wiki_parse",

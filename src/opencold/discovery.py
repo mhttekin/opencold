@@ -10,12 +10,12 @@ import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field  # noqa: F401
-from itertools import zip_longest
+from itertools import zip_longest  # noqa: F401
 from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse  # noqa: F401
 
 from bs4 import BeautifulSoup  # noqa: F401
 
-from opencold import discovery_reacher, enricher, icp_phrases, translator
+from opencold import discovery_reacher, enricher, icp_phrases, translator  # noqa: F401
 from opencold import regions_data as rd  # noqa: F401
 from opencold.discovery_classify import _classify_company
 from opencold.discovery_company_csv import write_company_csv  # noqa: F401
@@ -159,12 +159,18 @@ from opencold.discovery_person_score import (
     _valid_person_name,  # noqa: F401
     score_contact,  # noqa: F401
 )
+from opencold.discovery_query import (
+    _candidate_from_result,  # noqa: F401
+    _interleave_translations,  # noqa: F401
+    discover_companies_by_query,
+    region_query_templates,  # noqa: F401
+)
 from opencold.discovery_region import (
     _HQ_ADJ_RE,  # noqa: F401
     _HQ_CUSTOMER_RE,  # noqa: F401
     _HQ_PLACE,  # noqa: F401
     _HQ_VERB_RE,  # noqa: F401
-    MAX_SEARCH_LANGS,
+    MAX_SEARCH_LANGS,  # noqa: F401
     _detect_address_country,  # noqa: F401
     _detect_domain_country,  # noqa: F401
     _detect_prose_location,  # noqa: F401
@@ -214,7 +220,7 @@ from opencold.discovery_region_fit import region_fit
 from opencold.discovery_search import web_search
 from opencold.discovery_search_fallback import _ddg_html_search, _mojeek_search, _searxng_search  # noqa: F401
 from opencold.discovery_search_html import _duckduckgo_search_urls, _fetch_search_html  # noqa: F401
-from opencold.discovery_search_models import SearchResult
+from opencold.discovery_search_models import SearchResult  # noqa: F401
 from opencold.discovery_search_parse import _unwrap_duckduckgo_url, parse_search_result_urls  # noqa: F401
 from opencold.discovery_search_primary import (
     _brave_search,  # noqa: F401
@@ -258,7 +264,7 @@ from opencold.discovery_website import (
 from opencold.discovery_website import (
     _company_tokens,
     _domain_matches_company,  # noqa: F401
-    _is_directory_domain,
+    _is_directory_domain,  # noqa: F401
     resolve_company_website,
 )
 from opencold.emails import pick_company_email
@@ -294,97 +300,6 @@ def __getattr__(name: str) -> str | None | bool:
 # contact bundle (company email, phone, address, company LinkedIn). Replaces the
 # brittle person-finder as the default. Person discovery is available opt-in.
 # ===========================================================================
-
-
-def region_query_templates(icp: str, region: str) -> list[str]:
-    icp = (icp or "").strip()
-    region = (region or "").strip()
-    templates = [
-        f"{icp} companies in {region}",
-        f"list of {icp} in {region}",
-        f"top {icp} {region}",
-        f"{icp} {region} contact email",
-        f"{icp} association {region} members",
-    ]
-    # One exact-phrase query per multi-word core chunk ("sustainability
-    # consultancy"): search engines treat the quoted form as adjacency, which
-    # finds companies the bare bag-of-words queries bury under generic matches.
-    templates += [
-        f'"{" ".join(chunk)}" {region}' for chunk in icp_phrases.parse_icp(icp).core_phrases
-    ]
-    return [q for q in templates if q.strip()]
-
-
-def _candidate_from_result(result: SearchResult, reason: str) -> CandidateCompany | None:
-    parsed = urlparse(result.url)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        return None
-    if _is_blocked_host(parsed.netloc):
-        return None
-    domain = normalize_domain(result.url)
-    if not domain or _is_blocked_domain(domain) or _is_directory_domain(domain):
-        return None
-    return CandidateCompany(
-        company=_company_from_domain(domain),
-        website=f"https://{domain}",
-        discovery_source_url=result.url,
-        discovery_reason=reason,
-    )
-
-
-def _interleave_translations(texts: list[str], langs: list[str]) -> list[str]:
-    """Round-robin interleave native translations (one list per business language)
-    with the English originals, native-first, dropping blanks/dupes while preserving
-    order. So Morocco [fr, ar] yields fr[0], ar[0], en[0], fr[1], ar[1], en[1], … —
-    no single language starves the pool."""
-    if not texts:
-        return []
-    lists: list[list[str]] = []
-    for lang in langs:
-        nat = [q for q in translator.translate_many(texts, lang, source="en") if q and q.strip()]
-        if nat:
-            lists.append(nat)
-    lists.append(list(texts))  # English last so native languages take priority slots
-    seen: set[str] = set()
-    out: list[str] = []
-    for tup in zip_longest(*lists):
-        for q in tup:
-            if q and q not in seen:
-                seen.add(q)
-                out.append(q)
-    return out
-
-
-def discover_companies_by_query(
-    icp: str,
-    region: str,
-    limit: int = 50,
-    extra_queries: list[str] | None = None,
-    target_langs: list[str] | None = None,
-) -> list[CandidateCompany]:
-    base = region_query_templates(icp, region)
-    extra = list(extra_queries or [])
-    langs = list(target_langs or [])[:MAX_SEARCH_LANGS]
-    if langs:
-        # Native-language queries ("Türkiye'deki kereste firmaları" / "entreprises de
-        # recyclage au Maroc") surface real local SMEs that English queries bury under
-        # English directory spam. The region name is in every template, so a foreign
-        # same-language result (a French firm in a French Morocco search) is region-
-        # bounded here and rejected downstream by region_fit.
-        queries = _interleave_translations(base, langs)
-        queries += _interleave_translations(extra, langs)
-    else:
-        queries = list(base) + extra
-    candidates: dict[str, CandidateCompany] = {}
-    for query in queries:
-        for result in web_search(query, num=10):
-            cand = _candidate_from_result(result, f"search: {query}")
-            if not cand:
-                continue
-            candidates.setdefault(normalize_domain(cand.website), cand)
-            if len(candidates) >= limit:
-                return list(candidates.values())
-    return list(candidates.values())
 
 
 # ---------------------------------------------------------------------------

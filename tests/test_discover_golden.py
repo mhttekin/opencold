@@ -20,6 +20,7 @@ from opencold import (
     config,
     discovery,
     discovery_page_search,
+    discovery_query,
     discovery_website,
     enricher,
     generator,
@@ -153,6 +154,7 @@ def _offline_rows(monkeypatch):
     translate_mock = Mock(side_effect=translate)
     wiki_mock = Mock(return_value=[("Atlas Pallets", WIKI_SOURCE), ("Invisible", WIKI_SOURCE)])
     monkeypatch.setattr(discovery, "web_search", search_mock)
+    monkeypatch.setattr(discovery_query, "web_search", search_mock)
     monkeypatch.setattr(discovery_website, "web_search", search_mock)
     monkeypatch.setattr(discovery_page_search, "web_search", search_mock)
     monkeypatch.setattr(discovery, "wikipedia_company_names", wiki_mock)
@@ -265,6 +267,7 @@ def _offline_judged_rows(monkeypatch, judge_timeout):
     search_mock = Mock(side_effect=search)
     monkeypatch.setattr(generator, "_generate_anthropic", provider_mock)
     monkeypatch.setattr(discovery, "web_search", search_mock)
+    monkeypatch.setattr(discovery_query, "web_search", search_mock)
     monkeypatch.setattr(discovery_website, "web_search", search_mock)
     monkeypatch.setattr(discovery_page_search, "web_search", search_mock)
     monkeypatch.setattr(enricher, "_fetch_html", fetch)

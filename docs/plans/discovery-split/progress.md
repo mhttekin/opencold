@@ -73,3 +73,8 @@ entry and queue status with its code. See plan.md for the session rules.
 - 39-people mode=agent, 1362→1163 lines. No state moved (functions only; their
   constants stay in discovery_data). TestDiscoverRows patches retargeted to
   discovery_people.
+
+- 40-query mode=agent, 1163→1078 lines. No state moved (functions only;
+  MAX_SEARCH_LANGS stays in discovery_region). web_search patches for direct
+  discover_companies_by_query tests retargeted to discovery_query; candidate-harvest
+  and golden tests patch both modules (find_company_linkedin still reads discovery's).
