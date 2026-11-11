@@ -287,7 +287,7 @@
       "extract_company_contacts"
     ],
     "target_module": "src/opencold/discovery_contacts.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "27-judge",

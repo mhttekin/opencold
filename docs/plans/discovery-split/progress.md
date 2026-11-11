@@ -48,16 +48,6 @@ Use one short block per unit with its starting commit, extraction result and
 verification verdict. Put detailed evidence in the commit body. Include the unit
 entry and queue status with its code. See plan.md for the session rules.
 
-- 19-company_csv mode=tool, 3198→3172 lines
-
-- 20-sources mode=agent, start `b54b051`, 3172→3027 lines; new discovery_sources.py 175.
-  Tool refused `_PROJECT_ROOT` as mutable_state. Audit: a Path bound once, never
-  rebound. Same `parents[2]` depth in the sibling module. No `discovery.<name> =`
-  writes, setattr/globals writes or patch targets for it in src/tests/evals/scripts.
-  Owner moved discovery→discovery_sources, facade re-exports it. Five tests now patch
-  `opencold.discovery_sources._fetch_source`, where the lookup happens. Checks green,
-  golden unchanged, eval metrics identical to baseline. Review: PASS.
-
 - 21-search_parse mode=tool, 3027→2986 lines
 
 - 22-translation mode=agent, start `54c9db7`, 2986→2799 lines; new discovery_translation.py 205.
@@ -73,3 +63,5 @@ entry and queue status with its code. See plan.md for the session rules.
 - 24-person_score mode=tool, 2734→2610 lines
 
 - 25-country mode=tool, 2610→2579 lines
+
+- 26-contacts mode=tool, 2579→2415 lines

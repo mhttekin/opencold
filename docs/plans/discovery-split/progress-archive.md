@@ -198,3 +198,13 @@ fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
   Checks green, golden unchanged, eval metrics identical to baseline. Review: PASS.
 
 - 18-size mode=tool, 3220→3198 lines
+
+- 19-company_csv mode=tool, 3198→3172 lines
+
+- 20-sources mode=agent, start `b54b051`, 3172→3027 lines; new discovery_sources.py 175.
+  Tool refused `_PROJECT_ROOT` as mutable_state. Audit: a Path bound once, never
+  rebound. Same `parents[2]` depth in the sibling module. No `discovery.<name> =`
+  writes, setattr/globals writes or patch targets for it in src/tests/evals/scripts.
+  Owner moved discovery→discovery_sources, facade re-exports it. Five tests now patch
+  `opencold.discovery_sources._fetch_source`, where the lookup happens. Checks green,
+  golden unchanged, eval metrics identical to baseline. Review: PASS.
