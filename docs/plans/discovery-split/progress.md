@@ -48,8 +48,6 @@ Use one short block per unit with its starting commit, extraction result and
 verification verdict. Put detailed evidence in the commit body. Include the unit
 entry and queue status with its code. See plan.md for the session rules.
 
-- 14-search_primary mode=tool, 3705→3577 lines
-
 - 15-person_match mode=tool, 3577→3472 lines
 
 - 16-icp_score mode=tool, 3472→3344 lines
@@ -72,3 +70,5 @@ entry and queue status with its code. See plan.md for the session rules.
   Owner moved discovery→discovery_sources, facade re-exports it. Five tests now patch
   `opencold.discovery_sources._fetch_source`, where the lookup happens. Checks green,
   golden unchanged, eval metrics identical to baseline. Review: PASS.
+
+- 21-search_parse mode=tool, 3027→2986 lines

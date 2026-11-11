@@ -183,3 +183,5 @@ prerequisite checks across both files. Both 33-unit dry-run sweeps: 9 eligible,
 extension was needed: existing owner imports resolve after predecessors move;
 mutable state remains refused. Full checks passed (755 passed, 2 strict xfails);
 fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
+
+- 14-search_primary mode=tool, 3705→3577 lines

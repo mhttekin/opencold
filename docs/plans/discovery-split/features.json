@@ -225,7 +225,7 @@
       "parse_search_result_urls"
     ],
     "target_module": "src/opencold/discovery_search_parse.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "22-translation",
