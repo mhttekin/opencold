@@ -191,3 +191,14 @@ JSON-parser import in icp_expansion to the owner. Loop session: left unstaged an
 uncommitted for the runner.
 
 - 09-contact_model mode=tool, 3886→3859 lines
+
+## 10-csv — 2026-11-11 — Codex
+
+Starting commit `1176153`; mode=agent. Moved three CSV definitions with AST
+equality and facade identity into a 41-line owner. Ratchet 3,859 → 3,820.
+Checks passed (748 passed, 2 xfailed), both goldens unchanged, all 20 eval
+metrics matched, and fresh review passed. State audit: `COMPANY_CSV_FIELDS` and
+`COMPANY_PEOPLE_FIELDS` moved from discovery to discovery_csv; direct re-exports
+share the original list objects. No runtime mutations/rebinding, facade writes,
+dynamic writes or patches of the moved names were found; no patch retargeting
+was required. Left unstaged and uncommitted for the runner.

@@ -28,6 +28,7 @@ from opencold.discovery_contact_data import (
     COMPANY_EMAIL_PRIORITY as COMPANY_EMAIL_PRIORITY,
 )
 from opencold.discovery_contact_model import _CONTACT_PATHS, CompanyContacts
+from opencold.discovery_csv import COMPANY_CSV_FIELDS, COMPANY_PEOPLE_FIELDS, WALL_BANNER
 from opencold.discovery_data import (
     _COMPANY_NAME_PAT as _COMPANY_NAME_PAT,
 )
@@ -3434,46 +3435,6 @@ def _classify_company(
 # ---------------------------------------------------------------------------
 # Orchestrator + CSV writer
 # ---------------------------------------------------------------------------
-
-COMPANY_CSV_FIELDS = [
-    "email",
-    "name",
-    "company",
-    "website",
-    "match_confidence",
-    "verification",
-    "country",
-    "region_fit",
-    "company_email",
-    "email_type",
-    "phone",
-    "address",
-    "linkedin_company_url",
-    "partnership_channel",
-    "size_tier",
-    "icp_score",
-    "matched_terms",
-    "website_status",
-    "company_summary",
-    "personalization_facts",
-    "source_urls",
-    "personalization_score",
-    "discovery_channel",
-    "discovery_source_url",
-    "discovered_at",
-    "lead_score",
-    "lead_score_reasons",
-    "quality_warnings",
-]
-COMPANY_PEOPLE_FIELDS = [
-    "contact_name",
-    "contact_role",
-    "contact_linkedin",
-    "contact_stale_warning",
-]
-
-# Banner drawn in the CSV between verified Top-N and the review pile below.
-WALL_BANNER = "═════ REVIEW BELOW — ICP/region NOT verified ═════"
 
 
 def _now_iso() -> str:

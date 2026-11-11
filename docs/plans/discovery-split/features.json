@@ -90,7 +90,7 @@
     "description": "Extract csv definitions; move associated constants/comments, preserve facade exports. Symbols: COMPANY_CSV_FIELDS, COMPANY_PEOPLE_FIELDS, WALL_BANNER",
     "functions": [],
     "target_module": "src/opencold/discovery_csv.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "11-domains",
