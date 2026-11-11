@@ -217,3 +217,32 @@ in that session. See plan.md for the field template.
   the selected row. Each failed row equality. All nine mutations were reverted.
 - Added prerequisite tags for 25 pending units covering resolution, verification
   and orchestration. No extraction status changed.
+
+## 05-contact_data — 2026-11-10 — Codex
+
+- Agent/CLI: Codex (GPT-6), with fresh review by `review_unit_05`.
+- Starting commit: `4f09738`. Ending reference: this commit and its CI run.
+- Wall-clock duration through verification and review: about 5 minutes.
+- Tokens/cost: `unavailable` (operator fills in).
+- Moved all five owned contact constants and associated comments unchanged by AST
+  comparison into `discovery_contact_data.py` (52 lines). All facade exports retain
+  object identity. Email selection now lazily reads the priority dictionary from
+  its owner; its domain-normalization dependency awaits unit 11.
+- Mutable-state audit: `COMPANY_EMAIL_PRIORITY` (a dictionary) moved from
+  `discovery` to `discovery_contact_data`; no copy or runtime rebinding was added.
+  Searched all Python references, facade assignments, dynamic writes and patch
+  targets: no writes, mutations or patches to any of these five constants were
+  found. Existing consuming lookups share the owner objects; no test patches
+  needed retargeting. The other four constants are patterns or tuples.
+- `discovery.py` ratchet: 4,058 → 4,018 lines. The new module is included in the
+  ratchet's source glob with the default 400-line limit.
+- `check.sh`: three explicit runs including initializer; two passed (717 passed,
+  2 xfailed). Both unchanged runtime goldens passed separately; snapshot bytes
+  match HEAD. All 20 generated eval values equal the exact baseline above.
+  Report moved to `.agent-logs/05-contact_data-eval-4f09738.json`.
+- Fresh reviewer result: `VERDICT: PASS` (no findings), reviewing the patch
+  because staging is sandbox-blocked.
+- Retries/surprises: first post-move check found import ordering; applied Ruff's
+  import fix and lowered the ratchet to the final line count. No behavior changes.
+  The original session's sandbox blocked staging at `.git/index.lock`, so the
+  operator's follow-up session handled the Git steps. No subsequent unit started.

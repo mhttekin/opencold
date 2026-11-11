@@ -44,7 +44,7 @@
     "description": "Extract contact data definitions; move associated constants/comments, preserve facade exports. Symbols: _LINKEDIN_COMPANY_RE, _PHONE_RE, PARTNERSHIP_PATH_HINTS, COMPANY_EMAIL_PRIORITY, _SOCIAL_HOSTS",
     "functions": [],
     "target_module": "src/opencold/discovery_contact_data.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "06-region_data",
