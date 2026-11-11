@@ -218,3 +218,5 @@ fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
   discovery→discovery_translation, facade re-exports it (identity checked). Tests patch
   `opencold.translator.translate`, so no retargeting needed. Kept `_stem` facade alias.
   Checks green, golden unchanged, eval metrics identical to baseline. Review: PASS.
+
+- 23-lead_score mode=tool, 2799→2734 lines
