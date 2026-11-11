@@ -420,7 +420,7 @@ SIZE_MSG = (
 DATA_MODULES = {"sic_data.py", "regions_data.py", "cli_help.py"}
 # Logic modules already over the limit on 2026-11-10. They may not grow.
 GRANDFATHERED = {
-    "discovery.py": 601,
+    "discovery.py": 486,
     "cli.py": 3017,
     "config.py": 519,
     "pipeline.py": 502,

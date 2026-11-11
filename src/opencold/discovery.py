@@ -17,6 +17,7 @@ from bs4 import BeautifulSoup  # noqa: F401
 
 from opencold import discovery_reacher, enricher, icp_phrases, translator  # noqa: F401
 from opencold import regions_data as rd  # noqa: F401
+from opencold.discovery_candidates import _resolve_names, discover_company_candidates  # noqa: F401
 from opencold.discovery_classify import _classify_company
 from opencold.discovery_company_csv import write_company_csv  # noqa: F401
 from opencold.discovery_company_linkedin import _linkedin_slug_matches, find_company_linkedin  # noqa: F401
@@ -164,7 +165,7 @@ from opencold.discovery_person_score import (
 from opencold.discovery_query import (
     _candidate_from_result,  # noqa: F401
     _interleave_translations,  # noqa: F401
-    discover_companies_by_query,
+    discover_companies_by_query,  # noqa: F401
     region_query_templates,  # noqa: F401
 )
 from opencold.discovery_region import (
@@ -179,7 +180,7 @@ from opencold.discovery_region import (
     _region_language,  # noqa: F401
     _region_languages,
     _resolve_place,  # noqa: F401
-    _resolve_region_key,
+    _resolve_region_key,  # noqa: F401
     _target_region_tokens,  # noqa: F401
 )
 from opencold.discovery_region_data import (
@@ -235,7 +236,7 @@ from opencold.discovery_seed import (
     _build_seed_prompt,  # noqa: F401
     _parse_json_object,  # noqa: F401
     _resolve_llm_provider,
-    seed_companies_via_llm,
+    seed_companies_via_llm,  # noqa: F401
 )
 from opencold.discovery_size import size_tier  # noqa: F401
 from opencold.discovery_size_data import _SIZE_BAND_RE, _SME_HINT_RE  # noqa: F401
@@ -245,7 +246,7 @@ from opencold.discovery_sources import (
     _fetch_source,  # noqa: F401
     _internal_detail_links,  # noqa: F401
     discover_companies,  # noqa: F401
-    discover_company_pool,
+    discover_company_pool,  # noqa: F401
     discover_from_source,  # noqa: F401
     extract_companies_from_html,  # noqa: F401
     load_sources,  # noqa: F401
@@ -267,11 +268,11 @@ from opencold.discovery_website import (
     _company_tokens,  # noqa: F401
     _domain_matches_company,  # noqa: F401
     _is_directory_domain,  # noqa: F401
-    resolve_company_website,
+    resolve_company_website,  # noqa: F401
 )
 from opencold.discovery_wiki import (
     wikipedia_category_members,  # noqa: F401
-    wikipedia_company_names,
+    wikipedia_company_names,  # noqa: F401
     wikipedia_list_titles,  # noqa: F401
 )
 from opencold.discovery_wiki_parse import (
@@ -310,122 +311,6 @@ def __getattr__(name: str) -> str | None | bool:
     if name == "_REACHER_BIN":
         return discovery_reacher._REACHER_BIN
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-def _resolve_names(names: list[str], icp: str, region: str, workers: int) -> list[tuple[str, str]]:
-    """Resolve company names to (name, website) via search, in parallel.
-
-    Shared by the LLM seed and Wikipedia channels: disambiguates namesakes with
-    ICP+region context and prefers the target country's ccTLD."""
-    if not names:
-        return []
-    context = f"{icp} {region}".strip()
-    prefer_cc = _REGION_CCTLD.get(_resolve_region_key(region) or "")
-    worker_n = max(1, min(_clamp_workers(workers), len(names)))
-    resolved: list[tuple[str, str]] = []
-    with ThreadPoolExecutor(max_workers=worker_n) as executor:
-        future_to_name = {
-            executor.submit(
-                resolve_company_website, n, require_match=True, context=context, prefer_cc=prefer_cc
-            ): n
-            for n in names
-        }
-        for future in as_completed(future_to_name):
-            name = future_to_name[future]
-            try:
-                url = future.result()
-            except Exception:
-                url = None
-            if url:
-                resolved.append((name, url))
-    return resolved
-
-
-def discover_company_candidates(
-    icp: str,
-    region: str,
-    sources: list[str] | None = None,
-    limit: int = 50,
-    workers: int = 8,
-    use_llm: bool = True,
-    seed_count: int = 30,
-    use_wiki: bool = True,
-    use_translation: bool = True,
-    expansion: set[str] | None = None,
-    use_expansion: bool = True,
-) -> list[CandidateCompany]:
-    """Collect candidate companies from LLM seeding (A), Wikipedia lists (A2),
-    search harvest (B), and an optional manual sources file (C). Deduped by
-    registrable domain; first channel to surface a domain wins and tags it.
-
-    A2 and B are additive and always run (subject to use_wiki); they collaborate
-    so every request is served by search harvest at minimum, with LLM/Wikipedia
-    layering curated names on top."""
-    candidates: dict[str, CandidateCompany] = {}
-    target_langs = _region_languages(region) if use_translation else []
-
-    def _add(cand: CandidateCompany, channel: str) -> None:
-        domain = normalize_domain(cand.website)
-        if not domain or domain in candidates:
-            return
-        cand.discovery_channel = channel
-        candidates[domain] = cand
-
-    extra_queries: list[str] = []
-
-    # Channel A: LLM seed (names -> websites) — only when a provider is configured.
-    if use_llm:
-        prov = _resolve_llm_provider()
-        if prov:
-            seed = seed_companies_via_llm(
-                icp, region, count=seed_count, provider_config=prov, related=expansion
-            )
-            extra_queries = [f"{d} {region}" for d in seed.get("local_directories", [])]
-            for name, url in _resolve_names(seed.get("companies", []), icp, region, workers):
-                _add(
-                    CandidateCompany(
-                        company=name,
-                        website=url,
-                        discovery_source_url=url,
-                        discovery_reason=f"llm seed: {icp} in {region}",
-                    ),
-                    "llm",
-                )
-
-    # Bounded expansion queries (top-N related terms, ONE template each) appended to
-    # the search-harvest extras — capped in expansion_queries to avoid a query explosion.
-    if use_expansion and expansion:
-        from opencold import icp_expansion
-
-        extra_queries += icp_expansion.expansion_queries(expansion, region)
-
-    # Channel A2: Wikipedia "List of ..." names (deterministic, no LLM). Additive.
-    if use_wiki:
-        wiki = wikipedia_company_names(icp, region, max_names=seed_count)
-        wiki_src = {name: src for name, src in wiki}
-        for name, url in _resolve_names([name for name, _ in wiki], icp, region, workers):
-            _add(
-                CandidateCompany(
-                    company=name,
-                    website=url,
-                    discovery_source_url=wiki_src.get(name, url),
-                    discovery_reason=f"wikipedia list: {icp} in {region}",
-                ),
-                "wikipedia",
-            )
-
-    # Channel B: search harvest (always runs).
-    for cand in discover_companies_by_query(
-        icp, region, limit=limit, extra_queries=extra_queries, target_langs=target_langs
-    ):
-        _add(cand, "search")
-
-    # Channel C: optional manual sources (back-compat power-user channel).
-    if sources:
-        for cand in discover_company_pool(sources, limit=limit, workers=workers):
-            _add(cand, "sources")
-
-    return list(candidates.values())[: max(limit, 1)]
 
 
 # ---------------------------------------------------------------------------

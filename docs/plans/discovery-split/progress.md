@@ -94,3 +94,9 @@ entry and queue status with its code. See plan.md for the session rules.
   `time.monotonic`, so the golden patches both modules with the same clock.
   The known-bug patches of `discovery.extract_company_contacts`/`crawl_company_pages`
   stay, because smearch_enrich reads them through the facade.
+
+- 45-candidates mode=agent, 601→486 lines. No state moved (functions only). The
+  tool refused over the shared `discovery._resolve_llm_provider` patch. Only direct
+  discover_company_candidates tests patched it, so they and the wikipedia/_resolve_names/
+  query patches (golden included) now target discovery_candidates. Patches of
+  `discovery.discover_company_candidates` stay: discover_company_rows reads it there.

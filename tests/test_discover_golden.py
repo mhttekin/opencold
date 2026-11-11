@@ -158,7 +158,7 @@ def _offline_rows(monkeypatch):
     monkeypatch.setattr(discovery_query, "web_search", search_mock)
     monkeypatch.setattr(discovery_website, "web_search", search_mock)
     monkeypatch.setattr(discovery_page_search, "web_search", search_mock)
-    monkeypatch.setattr(discovery, "wikipedia_company_names", wiki_mock)
+    monkeypatch.setattr("opencold.discovery_candidates.wikipedia_company_names", wiki_mock)
     monkeypatch.setattr(enricher, "_fetch_html", fetch)
     monkeypatch.setattr(translator, "translate", translate_mock)
     # Freeze the input clock, without replacing the discovery timestamp helper.

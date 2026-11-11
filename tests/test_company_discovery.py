@@ -292,8 +292,8 @@ class TestCandidateHarvest:
             SearchResult(title="LinkedIn", url="https://www.linkedin.com/company/x"),  # blocked
         ]
         with (
-            patch("opencold.discovery._resolve_llm_provider", return_value=None),
-            patch("opencold.discovery.wikipedia_company_names", return_value=[]),
+            patch("opencold.discovery_candidates._resolve_llm_provider", return_value=None),
+            patch("opencold.discovery_candidates.wikipedia_company_names", return_value=[]),
             patch("opencold.discovery_company_linkedin.web_search", return_value=results),
             patch("opencold.discovery_query.web_search", return_value=results),
         ):
@@ -1032,15 +1032,15 @@ class TestWikipediaChannel:
         # Wikipedia contributes a candidate; search harvest still runs alongside.
         with (
             patch(
-                "opencold.discovery.wikipedia_company_names",
+                "opencold.discovery_candidates.wikipedia_company_names",
                 return_value=[("Green Delta Insurance", "https://en.wikipedia.org/wiki/List")],
             ),
             patch(
-                "opencold.discovery._resolve_names",
+                "opencold.discovery_candidates._resolve_names",
                 return_value=[("Green Delta Insurance", "https://greendelta.com.bd")],
             ),
             patch(
-                "opencold.discovery.discover_companies_by_query",
+                "opencold.discovery_candidates.discover_companies_by_query",
                 return_value=[CandidateCompany("Other Co", "https://other.test", "u", "search")],
             ),
         ):
@@ -1055,8 +1055,8 @@ class TestWikipediaChannel:
 
     def test_no_wiki_disables_channel(self):
         with (
-            patch("opencold.discovery.wikipedia_company_names") as wiki,
-            patch("opencold.discovery.discover_companies_by_query", return_value=[]),
+            patch("opencold.discovery_candidates.wikipedia_company_names") as wiki,
+            patch("opencold.discovery_candidates.discover_companies_by_query", return_value=[]),
         ):
             discovery.discover_company_candidates(
                 "insurance companies",
