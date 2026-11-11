@@ -61,7 +61,7 @@
     "description": "Extract size data definitions; move associated constants/comments, preserve facade exports. Symbols: _SIZE_BAND_RE, _SME_HINT_RE",
     "functions": [],
     "target_module": "src/opencold/discovery_size_data.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "08-seed",

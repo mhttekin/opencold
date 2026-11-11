@@ -168,3 +168,13 @@ re-exports share objects, including nested lists. No runtime rebinding, facade
 writes, dynamic writes or patches targeting these names were found; no patch
 retargeting was required. The move tool refused mutable state, so extraction was
 manual. Loop session: left unstaged and uncommitted for the runner.
+
+## 07-size_data — 2026-11-11 — Codex
+
+Starting commit `993bf19`. Moved two compiled regex constants with AST equality
+and preserved facade identity into a 12-line owner. Ratchet 4,011 → 4,003.
+Checks passed (732 passed, 2 xfailed), both goldens unchanged, all 20 eval metrics
+matched, and review passed. The regex objects are immutable; no mutable state
+moved. No writes, dynamic writes or patches targeting either constant were found;
+`size_tier` continues to read the facade imports. Loop session: left unstaged and
+uncommitted for the runner.

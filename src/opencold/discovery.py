@@ -108,6 +108,7 @@ from opencold.discovery_region_data import (
     _build_phone_cc as _build_phone_cc,
 )
 from opencold.discovery_search_models import SearchResult
+from opencold.discovery_size_data import _SIZE_BAND_RE, _SME_HINT_RE
 from opencold.emails import pick_company_email
 
 # Re-exported names: tests and icp_expansion resolve these via opencold.discovery.
@@ -2476,15 +2477,6 @@ def _detect_domain_country(domain: str) -> str | None:
         if n in segments or label.startswith(n) or label.endswith(n):
             return rk
     return None
-
-
-_SIZE_BAND_RE = re.compile(
-    r"(\d[\d,\.]*)\s*\+?\s*(?:employees|staff|people|team members)", re.IGNORECASE
-)
-_SME_HINT_RE = re.compile(
-    r"\b(family[- ]owned|family business|since \d{4}|founded in \d{4}|small team|boutique)\b",
-    re.IGNORECASE,
-)
 
 
 # ---------------------------------------------------------------------------
