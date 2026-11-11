@@ -154,3 +154,17 @@ both goldens were unchanged, all 20 eval metrics matched, and review passed.
 Mutable-state audit: the `COMPANY_EMAIL_PRIORITY` dict moved to the owner without
 copying or rebinding. No facade writes, mutations or patches were found. Git
 writes were blocked in the agent session; `dbec356` completed the unit.
+
+## 06-region_data — 2026-11-11 — Codex
+
+Starting commit `bde213e`. Moved 12 region definitions with AST equality and
+preserved facade identity into a 47-line owner. Ratchet 4,018 → 4,011. Checks
+passed (732 passed, 2 xfailed), both goldens unchanged, all 20 eval metrics
+matched, and review passed. State audit: `_REGION_CCTLD`, `_REGION_PHONE`,
+`_REGION_CITIES`, `_REGION_LANGS`, `_REGION_ALIASES`, `_COUNTRY_NAMES`,
+`_COUNTRY_DEMONYMS`, `_AMBIGUOUS`, `_PHONE_CC`, `_COUNTRY_NAMES_BY_LEN` and
+`_COUNTRY_DEMONYMS_BY_LEN` moved from discovery to discovery_region_data; direct
+re-exports share objects, including nested lists. No runtime rebinding, facade
+writes, dynamic writes or patches targeting these names were found; no patch
+retargeting was required. The move tool refused mutable state, so extraction was
+manual. Loop session: left unstaged and uncommitted for the runner.

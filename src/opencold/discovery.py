@@ -71,6 +71,42 @@ from opencold.discovery_data import (
     SPACE_RE,
 )
 from opencold.discovery_models import CandidateCompany, Contact
+from opencold.discovery_region_data import (
+    _AMBIGUOUS as _AMBIGUOUS,
+)
+from opencold.discovery_region_data import (
+    _COUNTRY_DEMONYMS as _COUNTRY_DEMONYMS,
+)
+from opencold.discovery_region_data import (
+    _COUNTRY_DEMONYMS_BY_LEN as _COUNTRY_DEMONYMS_BY_LEN,
+)
+from opencold.discovery_region_data import (
+    _COUNTRY_NAMES as _COUNTRY_NAMES,
+)
+from opencold.discovery_region_data import (
+    _COUNTRY_NAMES_BY_LEN as _COUNTRY_NAMES_BY_LEN,
+)
+from opencold.discovery_region_data import (
+    _PHONE_CC as _PHONE_CC,
+)
+from opencold.discovery_region_data import (
+    _REGION_ALIASES as _REGION_ALIASES,
+)
+from opencold.discovery_region_data import (
+    _REGION_CCTLD as _REGION_CCTLD,
+)
+from opencold.discovery_region_data import (
+    _REGION_CITIES as _REGION_CITIES,
+)
+from opencold.discovery_region_data import (
+    _REGION_LANGS as _REGION_LANGS,
+)
+from opencold.discovery_region_data import (
+    _REGION_PHONE as _REGION_PHONE,
+)
+from opencold.discovery_region_data import (
+    _build_phone_cc as _build_phone_cc,
+)
 from opencold.discovery_search_models import SearchResult
 from opencold.emails import pick_company_email
 
@@ -2301,49 +2337,6 @@ def write_csv(rows: list[dict], output: str) -> None:
 # contact bundle (company email, phone, address, company LinkedIn). Replaces the
 # brittle person-finder as the default. Person discovery is available opt-in.
 # ===========================================================================
-
-# Region hint maps — keyed by a CANONICAL region name. Freeform user input
-# ("United Kingdom (UK)", "uk", "England") is resolved to a canonical key via
-# _resolve_region_key before lookup, so the signals actually fire regardless of
-# how the region was phrased. Easily extensible.
-# Region lookup tables are DERIVED from regions_data.COUNTRIES (the single source of
-# truth) so widening coverage means editing one file. Names are kept stable for the
-# rest of this module.
-_REGION_CCTLD = {k: v["cctld"] for k, v in rd.COUNTRIES.items() if v.get("cctld")}
-_REGION_PHONE = {k: v["phone"] for k, v in rd.COUNTRIES.items() if v.get("phone")}
-_REGION_CITIES = {
-    k: [fold(c) for c in v["cities"]] for k, v in rd.COUNTRIES.items() if v.get("cities")
-}
-_REGION_LANGS = {k: v["langs"] for k, v in rd.COUNTRIES.items() if v.get("langs")}
-
-# Freeform aliases -> canonical region key. Short aliases (<=3 chars) are matched
-# on word boundaries; longer ones as substrings (longest first). See _resolve_region_key.
-_REGION_ALIASES = {fold(a): k for k, v in rd.COUNTRIES.items() for a in v["aliases"]}
-
-# Foreign-country detection tables. _COUNTRY_NAMES maps any name/variant to its
-# canonical key; _COUNTRY_DEMONYMS maps adjectives ("british"); _AMBIGUOUS holds keys
-# whose NAME doubles as a common word / US place (never trigger a reject, excluded from
-# domain matching). _PHONE_CC maps an E.164 calling code to a country (first listed
-# owner wins for shared codes; +1/+7 pinned to the dominant economy).
-_COUNTRY_NAMES = dict(_REGION_ALIASES)
-_COUNTRY_DEMONYMS = {fold(d): k for k, v in rd.COUNTRIES.items() for d in v.get("demonyms", [])}
-_AMBIGUOUS = {k for k, v in rd.COUNTRIES.items() if v.get("ambiguous")}
-
-
-def _build_phone_cc() -> dict:
-    out: dict[str, str] = {}
-    for key, val in rd.COUNTRIES.items():
-        code = val.get("phone")
-        if code and code not in out:
-            out[code] = key
-    out["+1"] = "united states"
-    out["+7"] = "russia"
-    return out
-
-
-_PHONE_CC = _build_phone_cc()
-_COUNTRY_NAMES_BY_LEN = sorted(_COUNTRY_NAMES, key=len, reverse=True)
-_COUNTRY_DEMONYMS_BY_LEN = sorted(_COUNTRY_DEMONYMS, key=len, reverse=True)
 
 
 def _resolve_region_key(region: str) -> str | None:
