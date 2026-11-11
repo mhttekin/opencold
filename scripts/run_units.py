@@ -186,7 +186,14 @@ def agent_command(agent: str) -> list[str]:
     ]
 
 
-def wait_for_agent(command: list[str], stdout: Path, stderr: Path, timeout: float) -> int:
+def wait_for_agent(
+    command: list[str],
+    stdout: Path,
+    stderr: Path,
+    timeout: float,
+    *,
+    env: dict[str, str] | None = None,
+) -> int:
     with stdout.open("wb") as out, stderr.open("wb") as err:
         with subprocess.Popen(
             command,
@@ -194,6 +201,7 @@ def wait_for_agent(command: list[str], stdout: Path, stderr: Path, timeout: floa
             stdout=out,
             stderr=err,
             start_new_session=True,
+            env=env,
         ) as process:
             try:
                 return process.wait(timeout=timeout)
@@ -243,7 +251,8 @@ def run_agent(agent: str, unit: str, log: Path, timeout_min: int) -> None:
     stdout = log / ("stdout.jsonl" if agent == "codex" else "stdout.json")
     start = time.monotonic()
     try:
-        status = wait_for_agent(command, stdout, log / "stderr.log", timeout_min * 60)
+        env = dict(os.environ, OPENCOLD_UNIT_NOTES=str((log / "commit-body.txt").resolve()))
+        status = wait_for_agent(command, stdout, log / "stderr.log", timeout_min * 60, env=env)
     except subprocess.TimeoutExpired as exc:
         raise CheckFailed(f"agent timed out after {timeout_min} minute(s)") from exc
     finally:
@@ -289,9 +298,14 @@ def verify_session(before: Snapshot, units: list[dict], unit: str, log: Path) ->
     require(
         after.discovery_lines < before.discovery_lines, "discovery.py line count did not decrease"
     )
+    message = ["-m", f"Split discovery: {unit}"]
+    notes = log / "commit-body.txt"
+    require(not notes.is_symlink(), "commit body must be a regular file")
+    if notes.is_file() and (body := notes.read_text(encoding="utf-8").strip()):
+        message.extend(("-m", body))
     synced(before.head)
     checked(["git", "--literal-pathspecs", "add", "--", *paths], log, "git add")
-    checked(["git", "commit", "-m", f"Split discovery: {unit}"], log, "git commit")
+    checked(["git", "commit", *message], log, "git commit")
     head = output("git", "rev-parse", "HEAD")
     require(
         output("git", "show", "-s", "--format=%P", head) == before.head, "expected one new commit"

@@ -115,6 +115,10 @@ threading, progress callback contents and exception boundaries.
    report the unmet prerequisite.
 3. Pure move: no behavior changes, no renames unless required. Keep re-exports
    in discovery.py. Do not fix known bugs, edit labels or extend legacy email code.
+   First run `.venv/bin/python scripts/move_defs.py <unit-id>`. Read only the
+   relevant definitions and direct dependencies in discovery.py. Hand-edit the
+   extraction only if the tool refuses. Update the ratchet and any consumer
+   imports or test patches separately as needed.
    Moving mutable module-level state, including globals rebound at runtime and
    caches, is not a pure move. Record each state move and its old and new owner
    in progress.md. Grep for writes through the facade (`discovery.<name> = ...`)
@@ -134,10 +138,10 @@ threading, progress callback contents and exception boundaries.
    both tracked changes and new files. Include new files with
    `git diff --no-index /dev/null <path>` (exit 1 means there are differences).
    Fix FAIL findings or record why not. Re-review substantive corrections.
-6. Set `passes: true` and append to progress.md: unit id, agent used, starting
-   commit, wall-clock duration, tokens/cost (`unavailable`; the operator fills it
-   in), number of check.sh runs, golden/eval comparison, reviewer verdict, and any
-   retries or surprises. Under the loop, leave changes uncommitted and unstaged.
+6. Set `passes: true` and append one short block to progress.md using the template
+   below. Put timing, test runs, verification evidence and surprises in the
+   commit body. Under the loop, write that body to the file named by
+   `OPENCOLD_UNIT_NOTES` and leave changes uncommitted and unstaged.
    The runner verifies, stages, commits, pushes and checks CI. In manual sessions,
    commit the unit's code and progress/status update in one commit, push to
    `origin/main` and confirm CI is green on all Python versions. Then STOP.
@@ -183,6 +187,10 @@ in `before.json`. It also holds agent stdout (`stdout.jsonl` for Codex or
 `stdout.json` for Claude), `stderr.log`, and `checks.log` for validation output.
 The ignored `.agent-logs/usage.csv` records elapsed seconds and any token counts
 reported by the CLI. Input and cache counts retain each CLI's accounting convention.
+Measure the change against `05-contact_data` (about 1.04M reported Codex input
+tokens). Compare median input tokens for similarly sized units run with the same
+CLI and model. Report cached input separately and note which moves required
+manual extraction.
 
 The runner validates the worktree before staging explicit paths under
 `src/opencold/`, `tests/` and `docs/plans/discovery-split/`. It commits with
@@ -221,13 +229,11 @@ fixed-CSV eval and SIC eval do not replace these runtime checks.
 
 ### Session entry template
 
-- Unit id and agent/CLI:
-- Starting commit; ending reference: this single commit and its CI run.
-- Wall-clock duration:
-- Tokens/cost: `unavailable` (operator fills in).
-- check.sh runs/results; golden unchanged; exact eval comparison:
-- Reviewer verdict:
-- Retries/surprises:
+Use a unit heading with date and agent, followed by a short paragraph recording
+the starting commit, extraction result and verification verdict. Include a short
+state audit when required by rule 3. The unit commit and CI run are the ending
+reference. Keep detailed evidence in the commit body and token usage in the
+ignored CSV when the CLI supplies it.
 
 Include this entry and `passes: true` with the code in the same commit. Push and
 verify the CI matrix (Python 3.11, 3.12 and 3.13) before reporting completion.

@@ -128,6 +128,11 @@ if mode == 'agent-commit':
     git('commit', '-m', 'Fixture unit')
 if mode == 'dirty':
     Path('untracked.txt').touch()
+notes = Path(os.environ['OPENCOLD_UNIT_NOTES'])
+if mode == 'notes-symlink':
+    notes.symlink_to(Path('scripts/check.sh').resolve())
+else:
+    notes.write_text('Fixture verification details.\\n')
 usage = {} if mode == 'no-usage' else {'input_tokens': 50, 'output_tokens': 25}
 if agent == 'codex':
     print(json.dumps({'type': 'turn.completed', 'usage': usage}))
@@ -215,6 +220,7 @@ def test_success_runs_one_session_per_unit_and_logs_usage(checkout, agent):
         "Split discovery: 02-next",
         "Split discovery: 01-first",
     ]
+    assert git(repo, "log", "-1", "--format=%b") == "Fixture verification details."
 
 
 def test_dry_run_does_not_launch_or_write_logs(checkout):
@@ -281,6 +287,7 @@ def test_precondition_failure_does_not_launch(checkout, tmp_path, case, diagnost
         ("no-pass", "passes count"),
         ("wrong-unit", "selected unit"),
         ("dirty", "unexpected changed paths"),
+        ("notes-symlink", "commit body must be a regular file"),
         ("golden", "golden hash"),
         ("same-size", "line count"),
         ("check", "check.sh"),
