@@ -162,13 +162,20 @@ logs. A live run starts one fresh session per unit and defaults to 20 minutes pe
 session. Only one runner can operate on the checkout at a time.
 
 - Codex uses `exec --json --ignore-rules`, workspace-write with shell networking
-  disabled, and approval policy `never`.
+  disabled, and approval policy `never`. `--ignore-user-config` skips user
+  settings, and CLI overrides disable plugins and bundled skills.
   [Codex CLI](https://learn.chatgpt.com/docs/developer-commands#codex-exec)
 - Claude uses `-p --output-format json`, `dontAsk`, and the Bash sandbox with
   unsandboxed retries disabled, an empty network allowlist, and write denials for
-  Git metadata.
+  Git metadata. `--setting-sources project` selects project settings, and
+  `disableBundledSkills` turns off bundled skills.
   [Claude CLI](https://code.claude.com/docs/en/cli-reference) ·
   [Claude sandbox](https://code.claude.com/docs/en/sandboxing)
+
+Loop sessions use the review skill in `.agents/skills/`. The launcher masks
+non-repo skill directories before CLI startup because config flags alone can
+still allow skill discovery. This uses `sandbox-exec` on macOS and `bwrap` on
+Linux, and stops if isolation cannot start. It leaves global configuration intact.
 
 Each `.agent-logs/<unit>-<timestamp>/` directory contains the starting commit,
 passes count, discovery line count, and SHA-256 hashes of both golden snapshots

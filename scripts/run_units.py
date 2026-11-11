@@ -18,6 +18,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from scripts.unit_agent import isolate_skills
+
 PLAN = Path("docs/plans/discovery-split")
 SOURCE = Path("src/opencold/discovery.py")
 GOLDENS = tuple(
@@ -130,6 +132,13 @@ def agent_command(agent: str) -> list[str]:
             "never",
             "exec",
             "--ignore-rules",
+            "--ignore-user-config",
+            "--disable",
+            "plugins",
+            "--disable",
+            "apps",
+            "-c",
+            "skills.bundled.enabled=false",
             "--sandbox",
             "workspace-write",
             "-c",
@@ -143,6 +152,7 @@ def agent_command(agent: str) -> list[str]:
         "git", "rev-parse", "--path-format=absolute", "--git-common-dir", "--absolute-git-dir"
     )
     settings = {
+        "disableBundledSkills": True,
         "permissions": {
             "allow": ["Edit(./**)", "Write(./**)"],
             "deny": ["Edit(./.git)", "Edit(./.git/**)"],
@@ -229,10 +239,11 @@ def record_usage(agent: str, unit: str, duration: float, stdout: Path) -> None:
 
 
 def run_agent(agent: str, unit: str, log: Path, timeout_min: int) -> None:
+    command = isolate_skills(agent_command(agent))
     stdout = log / ("stdout.jsonl" if agent == "codex" else "stdout.json")
     start = time.monotonic()
     try:
-        status = wait_for_agent(agent_command(agent), stdout, log / "stderr.log", timeout_min * 60)
+        status = wait_for_agent(command, stdout, log / "stderr.log", timeout_min * 60)
     except subprocess.TimeoutExpired as exc:
         raise CheckFailed(f"agent timed out after {timeout_min} minute(s)") from exc
     finally:

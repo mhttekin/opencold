@@ -63,7 +63,7 @@ def checkout(tmp_path, monkeypatch):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
     (repo / "scripts").mkdir()
-    for name in ("run_units.sh", "run_units.py"):
+    for name in ("run_units.sh", "run_units.py", "unit_agent.py"):
         shutil.copy2(ROOT / "scripts" / name, repo / "scripts" / name)
     (repo / ".venv/bin").mkdir(parents=True)
     (repo / ".venv/bin/python").symlink_to(sys.executable)
@@ -138,6 +138,11 @@ print('diagnostic on stderr', file=sys.stderr)
     )
     for name in ("codex", "claude", "gh"):
         executable(bin_dir / name, stub)
+    executable(bin_dir / "sandbox-exec", '#!/bin/sh\nshift 2\nexec "$@"\n')
+    executable(
+        bin_dir / "bwrap",
+        '#!/bin/sh\nwhile [ "$1" != -- ]; do shift; done\nshift\nexec "$@"\n',
+    )
     calls = tmp_path / "calls.jsonl"
     monkeypatch.setenv("STUB_CALLS", str(calls))
     monkeypatch.setenv("PATH", str(bin_dir) + os.pathsep + os.environ["PATH"])
@@ -181,11 +186,13 @@ def test_success_runs_one_session_per_unit_and_logs_usage(checkout, agent):
             and "workspace-write" in call
             and "never" in call
             and "--ignore-rules" in call
+            and "--ignore-user-config" in call
             for call in sessions
         )
     else:
         assert all("-p" in call and "json" in call and "dontAsk" in call for call in sessions)
         settings = json.loads(sessions[0][sessions[0].index("--settings") + 1])
+        assert settings["disableBundledSkills"]
         assert settings["sandbox"]["failIfUnavailable"]
         assert not settings["sandbox"]["allowUnsandboxedCommands"]
         assert settings["sandbox"]["excludedCommands"] == []
