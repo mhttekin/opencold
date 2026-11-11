@@ -100,3 +100,6 @@ entry and queue status with its code. See plan.md for the session rules.
   discover_company_candidates tests patched it, so they and the wikipedia/_resolve_names/
   query patches (golden included) now target discovery_candidates. Patches of
   `discovery.discover_company_candidates` stay: discover_company_rows reads it there.
+
+- 46-company_pipeline mode=agent, finished manually; agent session limited,
+  486→314 lines. No state moved (function only); removed facade size exception.

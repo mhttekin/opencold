@@ -6,9 +6,9 @@ import csv  # noqa: F401
 import json  # noqa: F401
 import os  # noqa: F401
 import re  # noqa: F401
-import time
+import time  # noqa: F401
 import urllib.request  # noqa: F401
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed  # noqa: F401
 from dataclasses import dataclass, field  # noqa: F401
 from itertools import zip_longest  # noqa: F401
 from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse  # noqa: F401
@@ -18,9 +18,10 @@ from bs4 import BeautifulSoup  # noqa: F401
 from opencold import discovery_reacher, enricher, icp_phrases, translator  # noqa: F401
 from opencold import regions_data as rd  # noqa: F401
 from opencold.discovery_candidates import _resolve_names, discover_company_candidates  # noqa: F401
-from opencold.discovery_classify import _classify_company
+from opencold.discovery_classify import _classify_company  # noqa: F401
 from opencold.discovery_company_csv import write_company_csv  # noqa: F401
 from opencold.discovery_company_linkedin import _linkedin_slug_matches, find_company_linkedin  # noqa: F401
+from opencold.discovery_company_pipeline import discover_company_rows  # noqa: F401
 from opencold.discovery_company_row import _now_iso, _score_company_lead, build_company_row  # noqa: F401
 from opencold.discovery_contact_data import (
     _LINKEDIN_COMPANY_RE,  # noqa: F401
@@ -135,7 +136,7 @@ from opencold.discovery_judge import (
     _JUDGE_SYSTEM,  # noqa: F401
     _build_judge_prompt,  # noqa: F401
     _country_matches,  # noqa: F401
-    judge_companies,
+    judge_companies,  # noqa: F401
 )
 from opencold.discovery_lead_score import _bad_company_name, score_lead  # noqa: F401
 from opencold.discovery_linkedin import search_linkedin_contacts  # noqa: F401
@@ -178,7 +179,7 @@ from opencold.discovery_region import (
     _detect_domain_country,  # noqa: F401
     _detect_prose_location,  # noqa: F401
     _region_language,  # noqa: F401
-    _region_languages,
+    _region_languages,  # noqa: F401
     _resolve_place,  # noqa: F401
     _resolve_region_key,  # noqa: F401
     _target_region_tokens,  # noqa: F401
@@ -235,14 +236,14 @@ from opencold.discovery_seed import (
     _SEED_SYSTEM,  # noqa: F401
     _build_seed_prompt,  # noqa: F401
     _parse_json_object,  # noqa: F401
-    _resolve_llm_provider,
+    _resolve_llm_provider,  # noqa: F401
     seed_companies_via_llm,  # noqa: F401
 )
 from opencold.discovery_size import size_tier  # noqa: F401
 from opencold.discovery_size_data import _SIZE_BAND_RE, _SME_HINT_RE  # noqa: F401
 from opencold.discovery_sources import (
     _PROJECT_ROOT,  # noqa: F401
-    _clamp_workers,
+    _clamp_workers,  # noqa: F401
     _fetch_source,  # noqa: F401
     _internal_detail_links,  # noqa: F401
     discover_companies,  # noqa: F401
@@ -254,10 +255,10 @@ from opencold.discovery_sources import (
 from opencold.discovery_translation import (
     _NATIVE_FUNCTION_WORDS,  # noqa: F401
     _localize_enrichment,  # noqa: F401
-    _translate_expansion_terms,
+    _translate_expansion_terms,  # noqa: F401
     _translate_icp_terms,  # noqa: F401
     _translate_one,  # noqa: F401
-    _translate_profile,
+    _translate_profile,  # noqa: F401
     _translate_terms,  # noqa: F401
     _translated_term_ok,  # noqa: F401
 )
@@ -311,176 +312,3 @@ def __getattr__(name: str) -> str | None | bool:
     if name == "_REACHER_BIN":
         return discovery_reacher._REACHER_BIN
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-# ---------------------------------------------------------------------------
-# Orchestrator + CSV writer
-# ---------------------------------------------------------------------------
-
-
-def discover_company_rows(
-    icp: str,
-    region: str,
-    sources: list[str] | None = None,
-    limit: int = 30,
-    workers: int = 8,
-    max_pages: int = 4,
-    use_llm: bool = True,
-    seed_count: int = 30,
-    find_people: bool = False,
-    progress_callback: object = None,
-    use_wiki: bool = True,
-    use_translation: bool = True,
-    use_expansion: bool = True,
-) -> list[dict]:
-    """Discover companies for (ICP, region) with a durable contact bundle.
-
-    Builds a candidate pool, then verifies each lead against ICP + region using
-    deterministic evidence and (when a provider is configured) a single batched
-    LLM judge. Returns verified leads first (up to `limit`) followed by the
-    review/rejected pile, each row tagged with match_confidence/verification.
-
-    Args:
-        progress_callback: Optional callable(processed, total, found, elapsed_seconds).
-    """
-    # Crawl more than `limit` so rejected namesakes can be replaced by verified
-    # ones — but cap the pool so latency stays bounded.
-    pool = min(max(limit * 2, limit + 8), 40)
-    # Resolve the target language(s) once, and translate the ICP profile once per
-    # language, so the native-language matcher terms are reused across every company
-    # (not per row). Multilingual markets (morocco -> fr+ar) get every language.
-    # `provenance` maps each ICP token to the derived terms (native translations,
-    # expansion-cluster members) that evidence it — the phrase-aware gate needs the
-    # attribution, not just the flat sets.
-    profile = icp_phrases.parse_icp(icp)
-    target_langs = _region_languages(region) if use_translation else []
-    extra_terms: set[str] = set()
-    weak_terms: set[str] = set()
-    provenance: dict[str, set[str]] = {}
-
-    def _attribute(token: str, terms: set[str]) -> None:
-        if terms:
-            provenance.setdefault(token, set()).update(terms)
-
-    for lang in target_langs:
-        strong_nat, weak_nat, prov_nat = _translate_profile(profile, lang)
-        extra_terms |= strong_nat
-        weak_terms |= weak_nat
-        for token, terms in prov_nat.items():
-            _attribute(token, terms)
-    # Semantic ICP expansion (e.g. "timber" -> sawmill/plywood), computed once and
-    # reused across every company: English terms widen matching directly; their native
-    # translations widen home-language matching; a bounded few also drive extra search
-    # queries (inside discover_company_candidates).
-    expansion: set[str] = set()
-    if use_expansion:
-        from opencold import icp_expansion
-
-        grouped = icp_expansion.expand_icp_grouped(
-            icp,
-            use_llm=use_llm,
-            provider=_resolve_llm_provider() if use_llm else None,
-        )
-        expansion = grouped.flat
-        weak_terms |= grouped.flat
-        for token, terms in grouped.by_token.items():
-            _attribute(token, terms)
-        # Translate ONLY curated terms to native (plywood -> kontrplak), per language,
-        # token by token so the native forms stay attributed. Datamuse-tail
-        # translations spawn generic native words (e.g. "alan") that match.
-        curated_grouped = icp_expansion.curated_terms_grouped(icp)
-        for lang in target_langs:
-            for token, terms in curated_grouped.items():
-                native, safe = _translate_expansion_terms(terms & expansion, lang)
-                weak_terms |= native
-                _attribute(token, safe)
-    candidates = discover_company_candidates(
-        icp,
-        region,
-        sources=sources,
-        limit=pool,
-        workers=workers,
-        use_llm=use_llm,
-        seed_count=seed_count,
-        use_wiki=use_wiki,
-        use_translation=use_translation,
-        expansion=expansion,
-        use_expansion=use_expansion,
-    )
-    # Dedupe by domain up front (channels already dedupe, but be safe).
-    seen: set[str] = set()
-    deduped: list[CandidateCompany] = []
-    for cand in candidates:
-        domain = normalize_domain(cand.website)
-        if domain and domain not in seen:
-            seen.add(domain)
-            deduped.append(cand)
-    candidates = deduped[:pool]
-
-    rows: list[dict] = []
-    workers = _clamp_workers(workers)
-    start = time.monotonic()
-    processed = 0
-    total = len(candidates)
-
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        future_to_company = {
-            executor.submit(
-                build_company_row,
-                company,
-                icp,
-                region,
-                max_pages,
-                find_people,
-                target_langs,
-                extra_terms,
-                weak_terms,
-                provenance,
-            ): company
-            for company in candidates
-        }
-        for future in as_completed(future_to_company):
-            processed += 1
-            try:
-                row = future.result()
-            except Exception:
-                row = None
-            if row is not None:
-                rows.append(row)
-            if progress_callback is not None:
-                try:
-                    progress_callback(processed, total, len(rows), time.monotonic() - start)
-                except Exception:
-                    pass
-
-    # Single batched LLM judge over all built rows, if a provider is available.
-    verdicts: dict = {}
-    if use_llm and rows:
-        prov = _resolve_llm_provider()
-        if prov:
-            verdicts = judge_companies(rows, icp, region, prov)
-
-    # Classify each row, then rank within its confidence band by lead score.
-    for idx, row in enumerate(rows):
-        confidence, why = _classify_company(
-            row,
-            bool(row.get("_icp_evidence")),
-            bool(row.get("_region_conflict")),
-            verdicts.get(idx),
-        )
-        row["match_confidence"] = confidence
-        row["verification"] = why
-
-    def _rank(row: dict) -> int:
-        return int(row.get("lead_score", "0"))
-
-    verified = sorted(
-        (r for r in rows if r["match_confidence"] == "verified"), key=_rank, reverse=True
-    )
-    review = sorted((r for r in rows if r["match_confidence"] == "review"), key=_rank, reverse=True)
-    rejected = sorted(
-        (r for r in rows if r["match_confidence"] == "rejected"), key=_rank, reverse=True
-    )
-
-    # Verified fill the Top-N; the review/rejected pile (capped) goes below the wall.
-    return verified[:limit] + (review + rejected)[:limit]

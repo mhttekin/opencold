@@ -441,7 +441,10 @@ class TestExpansionEndToEnd:
             "<p>We run a modern sawmill and plywood plant.</p></body></html>"
         }
         with (
-            patch("opencold.discovery.discover_company_candidates", return_value=candidates),
+            patch(
+                "opencold.discovery_company_pipeline.discover_company_candidates",
+                return_value=candidates,
+            ),
             patch("opencold.discovery_company_linkedin.web_search", return_value=[]),
             patch("opencold.discovery_page_search.web_search", return_value=[]),
             patch("opencold.enricher._fetch_html", _fetch_for(html)),

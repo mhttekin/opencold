@@ -316,7 +316,10 @@ class TestEndToEnd:
             "noemailco.test": "<html><body><h1>No Email Co</h1><p>We do insurance things.</p></body></html>",
         }
         with (
-            patch("opencold.discovery.discover_company_candidates", return_value=candidates),
+            patch(
+                "opencold.discovery_company_pipeline.discover_company_candidates",
+                return_value=candidates,
+            ),
             patch("opencold.discovery_company_linkedin.web_search", return_value=[]),
             patch("opencold.discovery_page_search.web_search", return_value=[]),
             patch(
