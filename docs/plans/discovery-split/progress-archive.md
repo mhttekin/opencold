@@ -172,3 +172,14 @@ uncommitted for the runner.
 - 12-pages mode=tool, 3731→3716 lines
 
 - 13-search_html mode=tool, 3716→3705 lines
+
+## Runner context and refusal audit — 2026-11-11 — Codex
+
+Starting commit `f8896bb`; no extraction unit or queue status changed. Added JSON
+refusals, read-only move validation, runner refusal CSV and scoped fallback briefs.
+Compacted older progress into progress-archive.md, preserving baseline and
+prerequisite checks across both files. Both 33-unit dry-run sweeps: 9 eligible,
+20 unresolved predecessor dependencies, 4 state-guard refusals. No safe coverage
+extension was needed: existing owner imports resolve after predecessors move;
+mutable state remains refused. Full checks passed (755 passed, 2 strict xfails);
+fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.

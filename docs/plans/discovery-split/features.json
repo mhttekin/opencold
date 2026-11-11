@@ -198,7 +198,7 @@
       "write_company_csv"
     ],
     "target_module": "src/opencold/discovery_company_csv.py",
-    "passes": false
+    "passes": true
   },
   {
     "id": "20-sources",

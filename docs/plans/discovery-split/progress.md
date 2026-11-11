@@ -48,17 +48,6 @@ Use one short block per unit with its starting commit, extraction result and
 verification verdict. Put detailed evidence in the commit body. Include the unit
 entry and queue status with its code. See plan.md for the session rules.
 
-## Runner context and refusal audit — 2026-11-11 — Codex
-
-Starting commit `f8896bb`; no extraction unit or queue status changed. Added JSON
-refusals, read-only move validation, runner refusal CSV and scoped fallback briefs.
-Compacted older progress into progress-archive.md, preserving baseline and
-prerequisite checks across both files. Both 33-unit dry-run sweeps: 9 eligible,
-20 unresolved predecessor dependencies, 4 state-guard refusals. No safe coverage
-extension was needed: existing owner imports resolve after predecessors move;
-mutable state remains refused. Full checks passed (755 passed, 2 strict xfails);
-fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
-
 - 14-search_primary mode=tool, 3705→3577 lines
 
 - 15-person_match mode=tool, 3577→3472 lines
@@ -73,3 +62,5 @@ fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
   Checks green, golden unchanged, eval metrics identical to baseline. Review: PASS.
 
 - 18-size mode=tool, 3220→3198 lines
+
+- 19-company_csv mode=tool, 3198→3172 lines

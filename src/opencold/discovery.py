@@ -18,6 +18,7 @@ from bs4 import BeautifulSoup
 
 from opencold import discovery_reacher, enricher, icp_phrases, translator
 from opencold import regions_data as rd
+from opencold.discovery_company_csv import write_company_csv  # noqa: F401
 from opencold.discovery_contact_data import (
     _LINKEDIN_COMPANY_RE,
     _PHONE_RE,
@@ -28,7 +29,7 @@ from opencold.discovery_contact_data import (
     COMPANY_EMAIL_PRIORITY as COMPANY_EMAIL_PRIORITY,
 )
 from opencold.discovery_contact_model import _CONTACT_PATHS, CompanyContacts
-from opencold.discovery_csv import COMPANY_CSV_FIELDS, COMPANY_PEOPLE_FIELDS, WALL_BANNER
+from opencold.discovery_csv import COMPANY_CSV_FIELDS, COMPANY_PEOPLE_FIELDS, WALL_BANNER  # noqa: F401
 from opencold.discovery_data import (
     _COMPANY_NAME_PAT as _COMPANY_NAME_PAT,
 )
@@ -3169,30 +3170,3 @@ def discover_company_rows(
 
     # Verified fill the Top-N; the review/rejected pile (capped) goes below the wall.
     return verified[:limit] + (review + rejected)[:limit]
-
-
-def write_company_csv(rows: list[dict], output: str) -> None:
-    """Write company leads; draws a visual wall between verified and the rest.
-
-    Verified rows are written first, then a blank gap row and a banner divider,
-    then the review/rejected rows — so opened in a spreadsheet the genuinely
-    verified Top-N sit clearly above the pile that needs review.
-    """
-    fieldnames = list(COMPANY_CSV_FIELDS)
-    if rows and any("contact_name" in r for r in rows):
-        fieldnames += COMPANY_PEOPLE_FIELDS
-    has_verified = any(r.get("match_confidence") == "verified" for r in rows)
-    with open(output, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-        writer.writeheader()
-        wall_drawn = False
-        for row in rows:
-            if (
-                not wall_drawn
-                and has_verified
-                and row.get("match_confidence") not in ("verified", "", None)
-            ):
-                writer.writerow({})  # blank gap row
-                writer.writerow({"company": WALL_BANNER})
-                wall_drawn = True
-            writer.writerow(row)
