@@ -48,8 +48,6 @@ Use one short block per unit with its starting commit, extraction result and
 verification verdict. Put detailed evidence in the commit body. Include the unit
 entry and queue status with its code. See plan.md for the session rules.
 
-- 27-judge mode=tool, 2415→2333 lines
-
 - 28-search_fallback mode=tool, 2333→2197 lines
 
 - 29-linkedin_parse mode=tool, 2197→2168 lines
@@ -57,3 +55,5 @@ entry and queue status with its code. See plan.md for the session rules.
 - 30-employment_parse mode=tool, 2168→2013 lines
 
 - 31-person_contact mode=tool, 2013→1918 lines
+
+- 32-region_fit mode=tool, 1918→1831 lines

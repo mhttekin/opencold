@@ -226,3 +226,5 @@ fresh invariant review: PASS. See refusal-audit.md for evidence and limitations.
 - 25-country mode=tool, 2610→2579 lines
 
 - 26-contacts mode=tool, 2579→2415 lines
+
+- 27-judge mode=tool, 2415→2333 lines
